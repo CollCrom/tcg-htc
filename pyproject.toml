@@ -1,0 +1,12 @@
+[project]
+name = "htc"
+version = "0.1.0"
+description = "TCG Hyperbolic Time Chamber — Flesh and Blood game simulator"
+requires-python = ">=3.12"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
