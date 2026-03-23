@@ -30,6 +30,7 @@ from htc.enums import (
     SubType,
     Zone,
 )
+from htc.engine.events import EventBus, EventType, GameEvent
 from htc.player.interface import PlayerInterface
 from htc.state.combat_state import ChainLink
 from htc.state.game_state import GameState, Layer
@@ -66,6 +67,44 @@ class Game:
         self.state = GameState(rng=Random(seed))
         self.stack_mgr = StackManager()
         self.combat_mgr = CombatManager()
+        self.events = EventBus()
+        self._register_event_handlers()
+
+    def _register_event_handlers(self) -> None:
+        """Register handlers for core game events."""
+        self.events.register_handler(EventType.DEAL_DAMAGE, self._handle_damage)
+        self.events.register_handler(EventType.GAIN_LIFE, self._handle_gain_life)
+        self.events.register_handler(EventType.DRAW_CARD, self._handle_draw_card)
+
+    def _handle_damage(self, event: GameEvent) -> None:
+        """Apply damage to a player."""
+        if event.target_player is not None and event.amount > 0:
+            target = self.state.players[event.target_player]
+            target.life_total -= event.amount
+            target.turn_counters.damage_taken += event.amount
+            # Track damage dealt by the source's controller
+            if event.source:
+                attacker_index = 1 - event.target_player
+                self.state.players[attacker_index].turn_counters.damage_dealt += event.amount
+
+    def _handle_gain_life(self, event: GameEvent) -> None:
+        """Apply life gain to a player."""
+        if event.target_player is not None and event.amount > 0:
+            target = self.state.players[event.target_player]
+            target.life_total += event.amount
+            log.info(f"  Player {event.target_player} gains {event.amount} life (life: {target.life_total})")
+
+    def _handle_draw_card(self, event: GameEvent) -> None:
+        """Draw a card for a player."""
+        if event.target_player is None:
+            return
+        player = self.state.players[event.target_player]
+        if not player.deck:
+            return
+        card = player.deck.pop(0)
+        card.zone = Zone.HAND
+        player.hand.append(card)
+        player.turn_counters.num_cards_drawn += 1
 
     def play(self) -> GameResult:
         """Run a complete game to conclusion."""
@@ -167,10 +206,17 @@ class Game:
 
         # Start Phase (4.2) — no priority
         self.state.phase = Phase.START
-        # TODO: start-of-turn triggers
+        self.events.emit(GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=tp.index,
+        ))
 
         # Action Phase (4.3)
         self.state.phase = Phase.ACTION
+        self.events.emit(GameEvent(
+            event_type=EventType.START_OF_ACTION_PHASE,
+            target_player=tp.index,
+        ))
         self.state.action_points[tp.index] = 1
         self.state.resource_points[0] = 0
         self.state.resource_points[1] = 0
@@ -405,6 +451,14 @@ class Game:
             self.state, card, player_index,
         )
 
+        # Emit play event
+        self.events.emit(GameEvent(
+            event_type=EventType.PLAY_CARD,
+            source=card,
+            target_player=player_index,
+            card=card,
+        ))
+
         color_str = f" ({card.definition.color.value})" if card.definition.color else ""
 
         # If it's an attack and combat chain is closed, open it (7.0.2a)
@@ -516,6 +570,14 @@ class Game:
         link = self.combat_mgr.add_chain_link(self.state, attack_card, defender_index)
         link.has_go_again = has_go_again
 
+        # Emit attack declared event (7.2.4)
+        self.events.emit(GameEvent(
+            event_type=EventType.ATTACK_DECLARED,
+            source=attack_card,
+            target_player=defender_index,
+            data={"chain_link": link, "attacker_index": attacker_index},
+        ))
+
     def _attack_step(self) -> None:
         """Attack Step (7.2): Attack resolves onto combat chain.
         'Attack' event occurs. Turn player gets priority."""
@@ -613,6 +675,14 @@ class Game:
                 self.combat_mgr.add_defender(self.state, link, card)
                 def_color = f" ({card.definition.color.value})" if card.definition.color else ""
                 log.info(f"  Defended with: {card.name}{def_color} (defense={card.base_defense})")
+
+                # Emit defend event (7.0.5a)
+                self.events.emit(GameEvent(
+                    event_type=EventType.DEFEND_DECLARED,
+                    source=card,
+                    target_player=defender_index,
+                    data={"chain_link": link},
+                ))
 
         # 7.3.3: Turn player gets priority after defenders declared
         self._priority_loop_until_pass(allow_actions=False)
@@ -715,10 +785,34 @@ class Game:
         if link is None:
             return
 
-        damage = self.combat_mgr.resolve_damage(self.state, link)
+        damage = self.combat_mgr.calculate_damage(self.state, link)
         if damage > 0:
-            target = self.state.players[link.attack_target_index]
-            log.info(f"  Hit for {damage} damage! (P{target.index} life: {target.life_total})")
+            # Emit damage event through the event bus (enables replacement/prevention)
+            event = self.events.emit(GameEvent(
+                event_type=EventType.DEAL_DAMAGE,
+                source=link.active_attack,
+                target_player=link.attack_target_index,
+                amount=damage,
+                data={"chain_link": link, "is_combat": True},
+            ))
+
+            actual_damage = event.amount if not event.cancelled else 0
+            link.damage_dealt = actual_damage
+            if actual_damage > 0:
+                link.hit = True
+                target = self.state.players[link.attack_target_index]
+                log.info(f"  Hit for {actual_damage} damage! (P{target.index} life: {target.life_total})")
+
+                # Emit hit event
+                self.events.emit(GameEvent(
+                    event_type=EventType.HIT,
+                    source=link.active_attack,
+                    target_player=link.attack_target_index,
+                    amount=actual_damage,
+                    data={"chain_link": link},
+                ))
+            else:
+                log.info(f"  Blocked!")
         else:
             log.info(f"  Blocked!")
 
@@ -829,7 +923,9 @@ class Game:
     def _close_step(self) -> None:
         """Close Step (7.7): Combat chain closes, cards go to graveyard."""
         # 7.7.3: "combat chain closes" event occurs
-        # TODO: triggered effects
+        self.events.emit(GameEvent(
+            event_type=EventType.COMBAT_CHAIN_CLOSES,
+        ))
 
         self.combat_mgr.close_chain(self.state)
         log.debug("  Combat chain closed")
@@ -911,6 +1007,11 @@ class Game:
         """End phase procedure (rules 4.4)."""
         tp = self.state.turn_player
 
+        self.events.emit(GameEvent(
+            event_type=EventType.END_OF_TURN,
+            target_player=tp.index,
+        ))
+
         # 4.4.3b: May arsenal a card from hand
         if not tp.arsenal and tp.hand:
             options = [
@@ -977,14 +1078,14 @@ class Game:
     # --- Utilities ---
 
     def _draw_cards(self, player: PlayerState, count: int) -> None:
-        """Draw cards from deck to hand."""
+        """Draw cards from deck to hand via event system."""
         for _ in range(count):
             if not player.deck:
                 break
-            card = player.deck.pop(0)
-            card.zone = Zone.HAND
-            player.hand.append(card)
-            player.turn_counters.num_cards_drawn += 1
+            self.events.emit(GameEvent(
+                event_type=EventType.DRAW_CARD,
+                target_player=player.index,
+            ))
 
     def _check_game_over(self) -> None:
         """Check if any player's life has reached 0."""
