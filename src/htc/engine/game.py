@@ -717,7 +717,8 @@ class Game:
 
         damage = self.combat_mgr.resolve_damage(self.state, link)
         if damage > 0:
-            log.info(f"  Hit for {damage} damage!")
+            target = self.state.players[link.attack_target_index]
+            log.info(f"  Hit for {damage} damage! (P{target.index} life: {target.life_total})")
         else:
             log.info(f"  Blocked!")
 
