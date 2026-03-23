@@ -347,7 +347,8 @@ class Game:
         link = self.combat_mgr.add_chain_link(self.state, attack_card, defender_index)
         self.state.combat_step = CombatStep.ATTACK
 
-        log.info(f"  Attack: {attack_card.name} (power={attack_card.base_power})")
+        color_str = f" ({attack_card.definition.color.value})" if attack_card.definition.color else ""
+        log.info(f"  Attack: {attack_card.name}{color_str} (power={attack_card.base_power})")
 
         # Defend step
         self.state.combat_step = CombatStep.DEFEND
@@ -436,7 +437,8 @@ class Game:
                     player.hand.remove(card)
                     player.turn_counters.num_cards_defended_from_hand += 1
                 self.combat_mgr.add_defender(self.state, link, card)
-                log.info(f"  Defended with: {card.name} (defense={card.base_defense})")
+                def_color = f" ({card.definition.color.value})" if card.definition.color else ""
+                log.info(f"  Defended with: {card.name}{def_color} (defense={card.base_defense})")
 
     # --- End Phase ---
 
