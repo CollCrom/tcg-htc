@@ -27,6 +27,14 @@ class RandomPlayer:
             opt = self.rng.choice(decision.options)
             return PlayerResponse(selected_option_ids=[opt.action_id])
 
+        # For reaction decisions: usually pass, occasionally play one
+        if decision.decision_type == DecisionType.PLAY_REACTION_OR_PASS:
+            non_pass = [o for o in decision.options if o.action_id != "pass"]
+            if non_pass and self.rng.random() < 0.3:
+                opt = self.rng.choice(non_pass)
+                return PlayerResponse(selected_option_ids=[opt.action_id])
+            return PlayerResponse(selected_option_ids=["pass"])
+
         # For defend decisions: pick 0-3 cards randomly (not the whole hand)
         if decision.decision_type == DecisionType.CHOOSE_DEFENDERS:
             non_pass = [o for o in decision.options if o.action_id != "pass"]

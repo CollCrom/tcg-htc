@@ -22,6 +22,7 @@ from htc.engine.cost import (
 from htc.engine.stack import StackManager
 from htc.enums import (
     ActionType,
+    CardType,
     CombatStep,
     DecisionType,
     EquipmentSlot,
@@ -31,12 +32,13 @@ from htc.enums import (
 )
 from htc.player.interface import PlayerInterface
 from htc.state.combat_state import ChainLink
-from htc.state.game_state import GameState
+from htc.state.game_state import GameState, Layer
 from htc.state.player_state import PlayerState
 
 log = logging.getLogger(__name__)
 
 MAX_TURNS = 200  # safety valve
+MAX_PRIORITY_PASSES = 500  # safety valve per phase
 
 
 @dataclass
@@ -185,53 +187,119 @@ class Game:
         self.state.turn_player_index = 1 - self.state.turn_player_index
         self.state.turn_number += 1
 
+    # --- Action Phase with Priority ---
+
     def _run_action_phase(self) -> None:
-        """Action phase priority loop (rules 4.3)."""
+        """Action phase priority loop (rules 4.3).
+
+        Turn player gains priority. When both players pass in succession
+        with an empty stack and closed combat chain, the action phase ends.
+        """
+        safety = 0
         consecutive_passes = 0
 
-        while not self.state.game_over:
+        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
+            safety += 1
+
+            # If combat chain is open, run combat steps
             if self.state.combat_chain.is_open:
-                self._run_combat()
+                self._run_combat_steps()
                 if self.state.game_over:
                     break
                 # After combat closes, turn player gets priority again
                 consecutive_passes = 0
                 continue
 
-            # Turn player gets priority
+            # If stack has items, resolve them
+            if not self.stack_mgr.is_empty(self.state):
+                self._resolve_stack()
+                if self.state.game_over:
+                    break
+                consecutive_passes = 0
+                continue
+
+            # Stack is empty, chain is closed — turn player gets priority
             tp_index = self.state.turn_player_index
             decision = self._build_action_decision(tp_index)
-
-            if not decision.options:
-                break
 
             response = self._ask(decision)
             action_id = response.first
 
             if action_id is None or action_id == "pass":
                 consecutive_passes += 1
-                # In a 2-player game, if both pass with empty stack and closed chain, action phase ends
-                if consecutive_passes >= 2 and self.stack_mgr.is_empty(self.state):
+                if consecutive_passes >= 2:
+                    # 4.3.4: both pass with empty stack and closed chain
                     break
                 continue
 
             consecutive_passes = 0
             self._execute_action(tp_index, action_id)
 
+    def _resolve_stack(self) -> None:
+        """Resolve the top layer of the stack."""
+        layer = self.stack_mgr.resolve_top(self.state)
+        if layer is None:
+            return
+
+        if layer.card:
+            card = layer.card
+            player = self.state.players[layer.controller_index]
+
+            if card.definition.is_attack:
+                # Attack resolves: move to combat chain, begin combat
+                self._begin_attack(layer.controller_index, card, layer.has_go_again)
+            elif card.definition.is_defense_reaction:
+                # Defense reaction resolves: becomes a defending card (7.4.2d)
+                link = self.state.combat_chain.active_link
+                if link:
+                    self.combat_mgr.add_defender(self.state, link, card)
+                    def_color = f" ({card.definition.color.value})" if card.definition.color else ""
+                    log.info(f"  Defense reaction: {card.name}{def_color} (defense={card.base_defense})")
+                else:
+                    card.zone = Zone.GRAVEYARD
+                    player.graveyard.append(card)
+            elif card.definition.is_attack_reaction:
+                # Attack reaction resolves: apply effect, then graveyard
+                # TODO: apply attack reaction effects
+                card.zone = Zone.GRAVEYARD
+                player.graveyard.append(card)
+                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                log.info(f"  Attack reaction: {card.name}{color_str}")
+            else:
+                # Non-attack, non-reaction: resolve effect, then graveyard
+                card.zone = Zone.GRAVEYARD
+                player.graveyard.append(card)
+
+            # Go again from resolved layer
+            if layer.has_go_again and not card.definition.is_attack:
+                self.state.action_points[layer.controller_index] += 1
+
     def _build_action_decision(self, player_index: int) -> Decision:
-        """Build the list of legal actions for the active player."""
+        """Build the list of legal actions for the active player (non-combat)."""
         options: list[ActionOption] = []
         player = self.state.players[player_index]
         is_turn_player = player_index == self.state.turn_player_index
 
         if is_turn_player and self.stack_mgr.is_empty(self.state):
-            # Can play action cards from hand and arsenal
+            # Can play action cards from hand and arsenal (7.0.1a: only when chain is closed)
             for card in player.hand + player.arsenal:
                 if self._can_play_card(player_index, card):
                     color_str = f" ({card.definition.color.value})" if card.definition.color else ""
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
                         description=f"Play {card.name}{color_str}",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+        # Instants can be played when you have priority
+        for card in player.hand:
+            if card.definition.is_instant and self._can_play_instant(player_index, card):
+                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                if not any(o.card_instance_id == card.instance_id for o in options):
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{color_str} (instant)",
                         action_type=ActionType.PLAY_CARD,
                         card_instance_id=card.instance_id,
                     ))
@@ -251,16 +319,15 @@ class Game:
         )
 
     def _can_play_card(self, player_index: int, card: CardInstance) -> bool:
-        """Check if a player can legally play this card."""
+        """Check if a player can legally play this card as an action."""
         defn = card.definition
 
         # Must be a playable type
-        if not (defn.is_action or defn.is_instant or defn.is_attack_reaction or defn.is_defense_reaction):
+        if not (defn.is_action or defn.is_instant):
             return False
 
-        # Resource cards and blocks can't be played
-        from htc.enums import CardType as CT
-        if defn.types & {CT.RESOURCE, CT.BLOCK}:
+        # Resource cards and blocks can't be played from hand
+        if defn.types & {CardType.RESOURCE, CardType.BLOCK}:
             return False
 
         # Action cards need action points
@@ -273,6 +340,12 @@ class Game:
 
         return True
 
+    def _can_play_instant(self, player_index: int, card: CardInstance) -> bool:
+        """Check if a player can play an instant (no action point needed)."""
+        if not card.definition.is_instant:
+            return False
+        return can_pay_resource_cost(self.state, player_index, card)
+
     def _execute_action(self, player_index: int, action_id: str) -> None:
         """Execute a chosen action."""
         if action_id.startswith("play_"):
@@ -282,7 +355,7 @@ class Game:
                 self._play_card(player_index, card)
 
     def _play_card(self, player_index: int, card: CardInstance) -> None:
-        """Play a card from hand/arsenal onto the stack."""
+        """Play a card from hand/arsenal onto the stack (rules 5.1)."""
         player = self.state.players[player_index]
 
         # Remove from current zone
@@ -322,74 +395,175 @@ class Game:
             player.turn_counters.num_non_attack_actions_played += 1
         elif card.definition.is_instant:
             player.turn_counters.num_instants_played += 1
+        elif card.definition.is_attack_reaction:
+            pass  # tracked at resolution
+        elif card.definition.is_defense_reaction:
+            pass  # tracked at resolution
 
-        # For attack cards: open combat chain and resolve immediately
-        if card.definition.is_attack:
-            self._resolve_attack(player_index, card)
-        else:
-            # Non-attack: put on stack, resolve immediately (simplified)
-            card.zone = Zone.GRAVEYARD
-            player.graveyard.append(card)
-            if card.definition.has_go_again:
-                self.state.action_points[player_index] += 1
+        # Put on stack as a layer (5.1.2)
+        layer = self.stack_mgr.add_card_layer(
+            self.state, card, player_index,
+        )
 
-    # --- Combat ---
+        color_str = f" ({card.definition.color.value})" if card.definition.color else ""
 
-    def _resolve_attack(self, attacker_index: int, attack_card: CardInstance) -> None:
-        """Simplified attack resolution: open chain -> defend -> damage -> close."""
-        defender_index = 1 - attacker_index
-
-        # Open combat chain
-        if not self.state.combat_chain.is_open:
+        # If it's an attack and combat chain is closed, open it (7.0.2a)
+        if card.definition.is_attack and not self.state.combat_chain.is_open:
             self.combat_mgr.open_chain(self.state)
-
-        # Add chain link
-        link = self.combat_mgr.add_chain_link(self.state, attack_card, defender_index)
-        self.state.combat_step = CombatStep.ATTACK
-
-        color_str = f" ({attack_card.definition.color.value})" if attack_card.definition.color else ""
-        log.info(f"  Attack: {attack_card.name}{color_str} (power={attack_card.base_power})")
-
-        # Defend step
-        self.state.combat_step = CombatStep.DEFEND
-        self._defend_step(defender_index, link)
-
-        # Reaction step (simplified: just pass for now)
-        self.state.combat_step = CombatStep.REACTION
-
-        # Damage step
-        self.state.combat_step = CombatStep.DAMAGE
-        damage = self.combat_mgr.resolve_damage(self.state, link)
-        if damage > 0:
-            log.info(f"  Hit for {damage} damage!")
+            log.info(f"  Play attack: {card.name}{color_str} (power={card.base_power})")
+        elif card.definition.is_attack:
+            log.info(f"  Chain attack: {card.name}{color_str} (power={card.base_power})")
         else:
-            log.info(f"  Blocked!")
+            log.info(f"  Play: {card.name}{color_str}")
 
-        # Resolution step
+    # --- Combat Steps (Section 7) ---
+
+    def _run_combat_steps(self) -> None:
+        """Run through combat chain steps for the active chain link.
+
+        Steps: Layer -> Attack -> Defend -> Reaction -> Damage -> Resolution -> Close
+        Per rules section 7.
+        """
+        if not self.state.combat_chain.is_open:
+            return
+
+        # Layer Step (7.1): attack is on the stack
+        self.state.combat_step = CombatStep.LAYER
+        self._layer_step()
+        if self.state.game_over or not self.state.combat_chain.is_open:
+            return
+
+        # Attack Step (7.2): attack resolves onto combat chain
+        self.state.combat_step = CombatStep.ATTACK
+        self._attack_step()
+        if self.state.game_over or not self.state.combat_chain.is_open:
+            return
+
+        # Defend Step (7.3): defender declares defending cards
+        self.state.combat_step = CombatStep.DEFEND
+        self._defend_step()
+        if self.state.game_over or not self.state.combat_chain.is_open:
+            return
+
+        # Reaction Step (7.4): attack/defense reactions
+        self.state.combat_step = CombatStep.REACTION
+        self._reaction_step()
+        if self.state.game_over or not self.state.combat_chain.is_open:
+            return
+
+        # Damage Step (7.5): calculate and apply damage
+        self.state.combat_step = CombatStep.DAMAGE
+        self._damage_step()
+        if self.state.game_over or not self.state.combat_chain.is_open:
+            return
+
+        # Resolution Step (7.6): go again, may continue chain
         self.state.combat_step = CombatStep.RESOLUTION
-        if link.has_go_again:
-            self.state.action_points[attacker_index] += 1
+        continued = self._resolution_step()
+        if self.state.game_over or not self.state.combat_chain.is_open:
+            return
 
-        # Close chain (simplified: close after each attack for now)
+        if continued:
+            # Attacker played another attack — loop back to combat steps
+            # (the new attack is on the stack, combat chain stays open)
+            return
+
+        # Close Step (7.7): combat chain closes
         self.state.combat_step = CombatStep.CLOSE
-        self.combat_mgr.close_chain(self.state)
+        self._close_step()
         self.state.combat_step = None
 
-        self._check_game_over()
+    def _layer_step(self) -> None:
+        """Layer Step (7.1): Attack is on the stack. Turn player gets priority.
+        When the top layer is the attack and all pass, Layer Step ends."""
+        safety = 0
+        consecutive_passes = 0
 
-    def _run_combat(self) -> None:
-        """Full combat resolution when chain is open. For now this is unused
-        since _resolve_attack handles the full flow inline."""
-        pass
+        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
+            safety += 1
 
-    def _defend_step(self, defender_index: int, link: ChainLink) -> None:
-        """Let the defender choose cards to defend with."""
+            # If stack is empty (attack already resolved somehow), move on
+            if self.stack_mgr.is_empty(self.state):
+                break
+
+            top = self.stack_mgr.top(self.state)
+            if top and top.card and top.card.definition.is_attack:
+                # The attack is still on top — priority loop
+                # Turn player gets priority (7.1.2)
+                tp_idx = self.state.turn_player_index
+                decision = self._build_combat_priority_decision(tp_idx, allow_actions=False)
+                response = self._ask(decision)
+                action_id = response.first
+
+                if action_id is None or action_id == "pass":
+                    consecutive_passes += 1
+                    if consecutive_passes >= 2:
+                        # Both passed — resolve the attack
+                        self._resolve_stack()
+                        break
+                    continue
+
+                consecutive_passes = 0
+                self._execute_action(tp_idx, action_id)
+            else:
+                # Something else on top of stack — resolve it
+                self._resolve_stack()
+                consecutive_passes = 0
+
+    def _begin_attack(self, attacker_index: int, attack_card: CardInstance, has_go_again: bool) -> None:
+        """Move an attack from the stack to the combat chain as a new chain link."""
+        defender_index = 1 - attacker_index
+        link = self.combat_mgr.add_chain_link(self.state, attack_card, defender_index)
+        link.has_go_again = has_go_again
+
+    def _attack_step(self) -> None:
+        """Attack Step (7.2): Attack resolves onto combat chain.
+        'Attack' event occurs. Turn player gets priority."""
+        link = self.state.combat_chain.active_link
+        if link is None:
+            return
+
+        # 7.2.4: "attack" event occurs — TODO: triggered effects
+
+        # 7.2.5: Turn player gets priority
+        safety = 0
+        consecutive_passes = 0
+
+        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
+            safety += 1
+
+            if not self.stack_mgr.is_empty(self.state):
+                self._resolve_stack()
+                consecutive_passes = 0
+                continue
+
+            tp_idx = self.state.turn_player_index
+            decision = self._build_combat_priority_decision(tp_idx, allow_actions=False)
+            response = self._ask(decision)
+            action_id = response.first
+
+            if action_id is None or action_id == "pass":
+                consecutive_passes += 1
+                if consecutive_passes >= 2:
+                    break
+                continue
+
+            consecutive_passes = 0
+            self._execute_action(tp_idx, action_id)
+
+    def _defend_step(self) -> None:
+        """Defend Step (7.3): Defender declares defending cards."""
+        link = self.state.combat_chain.active_link
+        if link is None:
+            return
+
+        defender_index = link.attack_target_index
         player = self.state.players[defender_index]
         options: list[ActionOption] = []
 
-        # Cards from hand
+        # Cards from hand with defense value (7.3.2a)
         for card in player.hand:
-            if card.base_defense is not None:
+            if card.base_defense is not None and not card.definition.is_defense_reaction:
                 color_str = f" ({card.definition.color.value})" if card.definition.color else ""
                 options.append(ActionOption(
                     action_id=f"defend_{card.instance_id}",
@@ -398,9 +572,9 @@ class Game:
                     card_instance_id=card.instance_id,
                 ))
 
-        # Equipment
+        # Equipment (public permanents) (7.3.2a)
         for slot, eq in player.equipment.items():
-            if eq and eq.base_defense is not None and eq.base_defense > 0:
+            if eq and not eq.is_tapped and eq.base_defense is not None and eq.base_defense > 0:
                 options.append(ActionOption(
                     action_id=f"defend_{eq.instance_id}",
                     description=f"Defend with {eq.name} (defense={eq.base_defense})",
@@ -408,7 +582,7 @@ class Game:
                     card_instance_id=eq.instance_id,
                 ))
 
-        # Always can pass (choose not to defend)
+        # Always can pass
         options.append(ActionOption(
             action_id="pass",
             description="Don't defend",
@@ -418,7 +592,8 @@ class Game:
         decision = Decision(
             player_index=defender_index,
             decision_type=DecisionType.CHOOSE_DEFENDERS,
-            prompt=f"Defend against {link.active_attack.name if link.active_attack else 'attack'} (power={self.combat_mgr.get_attack_power(self.state, link)})",
+            prompt=f"Defend against {link.active_attack.name if link.active_attack else 'attack'} "
+                   f"(power={self.combat_mgr.get_attack_power(self.state, link)})",
             options=options,
             min_selections=1,
             max_selections=len(options),
@@ -432,13 +607,303 @@ class Game:
             instance_id = int(opt_id.replace("defend_", ""))
             card = player.find_card(instance_id)
             if card:
-                # Remove from hand (if from hand)
                 if card in player.hand:
                     player.hand.remove(card)
                     player.turn_counters.num_cards_defended_from_hand += 1
                 self.combat_mgr.add_defender(self.state, link, card)
                 def_color = f" ({card.definition.color.value})" if card.definition.color else ""
                 log.info(f"  Defended with: {card.name}{def_color} (defense={card.base_defense})")
+
+        # 7.3.3: Turn player gets priority after defenders declared
+        self._priority_loop_until_pass(allow_actions=False)
+
+    def _reaction_step(self) -> None:
+        """Reaction Step (7.4): Players may play attack/defense reactions."""
+        link = self.state.combat_chain.active_link
+        if link is None:
+            return
+
+        attacker_index = 1 - link.attack_target_index
+        defender_index = link.attack_target_index
+
+        safety = 0
+        consecutive_passes = 0
+
+        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
+            safety += 1
+
+            if not self.stack_mgr.is_empty(self.state):
+                self._resolve_stack()
+                consecutive_passes = 0
+                self._check_game_over()
+                continue
+
+            # Turn player (attacker) gets priority first (7.4.2)
+            tp_idx = self.state.turn_player_index
+            decision = self._build_reaction_decision(tp_idx, attacker_index, defender_index)
+            response = self._ask(decision)
+            action_id = response.first
+
+            if action_id is None or action_id == "pass":
+                consecutive_passes += 1
+                if consecutive_passes >= 2:
+                    break
+                continue
+
+            consecutive_passes = 0
+            self._execute_action(tp_idx, action_id)
+
+    def _build_reaction_decision(
+        self, priority_player: int, attacker_index: int, defender_index: int
+    ) -> Decision:
+        """Build decision for reaction step — attack reactions for attacker,
+        defense reactions for defender, instants for either."""
+        options: list[ActionOption] = []
+        player = self.state.players[priority_player]
+
+        for card in player.hand:
+            # Attack reactions: only attacker can play (7.4.2a)
+            if card.definition.is_attack_reaction and priority_player == attacker_index:
+                if can_pay_resource_cost(self.state, priority_player, card):
+                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{color_str} (attack reaction)",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+            # Defense reactions: only defender can play (7.4.2b)
+            if card.definition.is_defense_reaction and priority_player == defender_index:
+                if can_pay_resource_cost(self.state, priority_player, card):
+                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{color_str} (defense reaction)",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+            # Instants: either player can play
+            if card.definition.is_instant:
+                if self._can_play_instant(priority_player, card):
+                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    if not any(o.card_instance_id == card.instance_id for o in options):
+                        options.append(ActionOption(
+                            action_id=f"play_{card.instance_id}",
+                            description=f"Play {card.name}{color_str} (instant)",
+                            action_type=ActionType.PLAY_CARD,
+                            card_instance_id=card.instance_id,
+                        ))
+
+        options.append(ActionOption(
+            action_id="pass",
+            description="Pass",
+            action_type=ActionType.PASS,
+        ))
+
+        return Decision(
+            player_index=priority_player,
+            decision_type=DecisionType.PLAY_REACTION_OR_PASS,
+            prompt="Play a reaction or pass",
+            options=options,
+        )
+
+    def _damage_step(self) -> None:
+        """Damage Step (7.5): Calculate and apply damage."""
+        link = self.state.combat_chain.active_link
+        if link is None:
+            return
+
+        damage = self.combat_mgr.resolve_damage(self.state, link)
+        if damage > 0:
+            target = self.state.players[link.attack_target_index]
+            log.info(f"  Hit for {damage} damage! (P{target.index} life: {target.life_total})")
+        else:
+            log.info(f"  Blocked!")
+
+        self._check_game_over()
+
+        # 7.5.3: Turn player gets priority after damage
+        self._priority_loop_until_pass(allow_actions=False)
+
+    def _resolution_step(self) -> bool:
+        """Resolution Step (7.6): Go again, may continue combat chain.
+
+        Returns True if the attacker played another attack (chain continues).
+        """
+        link = self.state.combat_chain.active_link
+        if link is None:
+            return False
+
+        attacker_index = 1 - link.attack_target_index
+
+        # 7.6.2: If attack has go again, controller gains 1 action point
+        if link.has_go_again:
+            self.state.action_points[attacker_index] += 1
+
+        # 7.6.3: Turn player gets priority
+        # 7.6.3a: Turn player may play another attack during Resolution Step
+        safety = 0
+        consecutive_passes = 0
+
+        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
+            safety += 1
+
+            if not self.stack_mgr.is_empty(self.state):
+                top = self.stack_mgr.top(self.state)
+                if top and top.card and top.card.definition.is_attack:
+                    # New attack on stack — return True to loop back to combat steps
+                    return True
+                self._resolve_stack()
+                consecutive_passes = 0
+                continue
+
+            tp_idx = self.state.turn_player_index
+            decision = self._build_resolution_decision(tp_idx)
+            response = self._ask(decision)
+            action_id = response.first
+
+            if action_id is None or action_id == "pass":
+                consecutive_passes += 1
+                if consecutive_passes >= 2:
+                    # 7.6.4: both pass — move to Close Step
+                    return False
+                continue
+
+            consecutive_passes = 0
+            self._execute_action(tp_idx, action_id)
+
+            # Check if an attack was just put on the stack
+            if not self.stack_mgr.is_empty(self.state):
+                top = self.stack_mgr.top(self.state)
+                if top and top.card and top.card.definition.is_attack:
+                    return True
+
+        return False
+
+    def _build_resolution_decision(self, player_index: int) -> Decision:
+        """Build decision for resolution step — can play attacks (if turn player)
+        and instants."""
+        options: list[ActionOption] = []
+        player = self.state.players[player_index]
+        is_turn_player = player_index == self.state.turn_player_index
+
+        if is_turn_player:
+            # Can play attack cards to continue the chain (7.6.3a)
+            for card in player.hand + player.arsenal:
+                if card.definition.is_attack and self._can_play_card(player_index, card):
+                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{color_str}",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+        # Instants for any player
+        for card in player.hand:
+            if card.definition.is_instant and self._can_play_instant(player_index, card):
+                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                if not any(o.card_instance_id == card.instance_id for o in options):
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{color_str} (instant)",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+        options.append(ActionOption(
+            action_id="pass",
+            description="Pass",
+            action_type=ActionType.PASS,
+        ))
+
+        return Decision(
+            player_index=player_index,
+            decision_type=DecisionType.PLAY_OR_PASS,
+            prompt="Continue combat chain or pass",
+            options=options,
+        )
+
+    def _close_step(self) -> None:
+        """Close Step (7.7): Combat chain closes, cards go to graveyard."""
+        # 7.7.3: "combat chain closes" event occurs
+        # TODO: triggered effects
+
+        self.combat_mgr.close_chain(self.state)
+        log.debug("  Combat chain closed")
+
+    def _build_combat_priority_decision(
+        self, player_index: int, allow_actions: bool = False
+    ) -> Decision:
+        """Build a priority decision during combat (instants only, unless allow_actions)."""
+        options: list[ActionOption] = []
+        player = self.state.players[player_index]
+
+        if allow_actions:
+            for card in player.hand + player.arsenal:
+                if self._can_play_card(player_index, card):
+                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{color_str}",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+        # Instants
+        for card in player.hand:
+            if card.definition.is_instant and self._can_play_instant(player_index, card):
+                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                if not any(o.card_instance_id == card.instance_id for o in options):
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{color_str} (instant)",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+        options.append(ActionOption(
+            action_id="pass",
+            description="Pass",
+            action_type=ActionType.PASS,
+        ))
+
+        return Decision(
+            player_index=player_index,
+            decision_type=DecisionType.PLAY_OR_PASS,
+            prompt="Play an instant or pass",
+            options=options,
+        )
+
+    def _priority_loop_until_pass(self, allow_actions: bool = False) -> None:
+        """Run a priority loop until both players pass with empty stack."""
+        safety = 0
+        consecutive_passes = 0
+
+        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
+            safety += 1
+
+            if not self.stack_mgr.is_empty(self.state):
+                self._resolve_stack()
+                consecutive_passes = 0
+                self._check_game_over()
+                continue
+
+            tp_idx = self.state.turn_player_index
+            decision = self._build_combat_priority_decision(tp_idx, allow_actions=allow_actions)
+            response = self._ask(decision)
+            action_id = response.first
+
+            if action_id is None or action_id == "pass":
+                consecutive_passes += 1
+                if consecutive_passes >= 2:
+                    break
+                continue
+
+            consecutive_passes = 0
+            self._execute_action(tp_idx, action_id)
 
     # --- End Phase ---
 
@@ -523,6 +988,8 @@ class Game:
 
     def _check_game_over(self) -> None:
         """Check if any player's life has reached 0."""
+        if self.state.game_over:
+            return
         for ps in self.state.players:
             if ps.life_total <= 0:
                 self.state.winner = 1 - ps.index
