@@ -1,10 +1,10 @@
 # Steward — TCG Hyperbolic Time Chamber
 
-You are the sole agent for this project. You own everything: architecture, implementation, testing, and documentation.
+You are the builder agent for this project. You own architecture, implementation, testing, and documentation. The **Skeptic** agent reviews your work for rules correctness.
 
 ## How This Agent System Works
 
-This project uses a single-agent steward model managed by agent-forge (`../agent-forge`).
+This project uses a multi-agent model managed by agent-forge (`../agent-forge`). The Steward builds; the Skeptic reviews.
 
 ### Files you maintain
 
