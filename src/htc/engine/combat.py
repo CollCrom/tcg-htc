@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from htc.cards.instance import CardInstance
-from htc.enums import Zone
+from htc.enums import EquipmentSlot, Zone
 from htc.state.combat_state import ChainLink
 from htc.state.game_state import GameState
 
@@ -68,8 +68,16 @@ class CombatManager:
                 state.move_card(link.active_attack, Zone.GRAVEYARD)
             for card in link.defending_cards:
                 if card.definition.is_equipment or card.definition.is_weapon:
-                    # Equipment returns to its zone — simplified for now
-                    pass
+                    # Equipment/weapons return to their slot after combat
+                    # The equipment dict still holds the reference; restore zone
+                    owner = state.players[card.owner_index]
+                    for slot, eq in owner.equipment.items():
+                        if eq is card:
+                            card.zone = Zone(slot.value)
+                            break
+                    else:
+                        if card in owner.weapons:
+                            card.zone = Zone.WEAPON_1
                 else:
                     state.move_card(card, Zone.GRAVEYARD)
         state.combat_chain.reset()

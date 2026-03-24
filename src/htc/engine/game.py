@@ -206,7 +206,9 @@ class Game:
     def _run_turn(self) -> None:
         tp = self.state.turn_player
         log.info(f"=== Turn {self.state.turn_number} (Player {tp.index}) ===")
-        tp.turn_counters.reset()
+        # Reset turn counters for ALL players at start of each turn
+        for player in self.state.players:
+            player.turn_counters.reset()
 
         # Start Phase (4.2) — no priority
         self.state.phase = Phase.START
@@ -663,7 +665,7 @@ class Game:
 
         # Equipment (public permanents) (7.3.2a) — not limited by Dominate
         for slot, eq in player.equipment.items():
-            if eq and not eq.is_tapped and eq.base_defense is not None and eq.base_defense > 0:
+            if eq and not eq.is_tapped and eq.base_defense is not None:
                 mod_def = self.effect_engine.get_modified_defense(self.state, eq)
                 options.append(ActionOption(
                     action_id=f"defend_{eq.instance_id}",
@@ -1037,24 +1039,26 @@ class Game:
                     card.face_up = False
                     tp.arsenal.append(card)
 
-        # 4.4.3c: Pitch zone -> bottom of deck (any order, simplified: random for now)
-        if tp.pitch:
-            self.state.rng.shuffle(tp.pitch)
-            for card in tp.pitch:
-                card.zone = Zone.DECK
-            tp.deck.extend(tp.pitch)
-            tp.pitch.clear()
+        # 4.4.3c: ALL players' pitch zones -> bottom of deck
+        for player in self.state.players:
+            if player.pitch:
+                self.state.rng.shuffle(player.pitch)
+                for card in player.pitch:
+                    card.zone = Zone.DECK
+                player.deck.extend(player.pitch)
+                player.pitch.clear()
 
-        # 4.4.3d: Untap all permanents
+        # 4.4.3d: Untap all turn player's permanents
         for eq in tp.equipment.values():
             if eq:
                 eq.is_tapped = False
         for w in tp.weapons:
             w.is_tapped = False
 
-        # 4.4.3e: Lose all action points and resource points
-        self.state.action_points[tp.index] = 0
-        self.state.resource_points[tp.index] = 0
+        # 4.4.3e: ALL players lose all action points and resource points
+        for i in range(len(self.state.players)):
+            self.state.action_points[i] = 0
+            self.state.resource_points[i] = 0
 
         # 4.4.3f: Draw up to intellect
         intellect = tp.hero.definition.intellect if tp.hero else 4
