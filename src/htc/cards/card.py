@@ -101,6 +101,10 @@ class CardDefinition:
     def has_dominate(self) -> bool:
         return Keyword.DOMINATE in self.keywords
 
+    @property
+    def color_label(self) -> str:
+        """Formatted color string for display, e.g. ' (Red)' or ''."""
+        return f" ({self.color.value})" if self.color else ""
+
     def __repr__(self) -> str:
-        color_str = f" ({self.color.value})" if self.color else ""
-        return f"CardDefinition({self.name!r}{color_str})"
+        return f"CardDefinition({self.name!r}{self.color_label})"

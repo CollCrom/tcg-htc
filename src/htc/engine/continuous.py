@@ -186,76 +186,44 @@ class StagingResolver:
 # ---------------------------------------------------------------------------
 
 
-def make_power_modifier(
+def _make_numeric_modifier(
     amount: int,
     controller_index: int,
+    prop: NumericProperty,
     *,
     source_instance_id: int | None = None,
     duration: EffectDuration = EffectDuration.END_OF_TURN,
     target_filter: Callable[[CardInstance], bool] | None = None,
     condition: Callable[[GameState], bool] | None = None,
 ) -> ContinuousEffect:
+    """Create a +N/-N numeric modification effect for the given property."""
+    substage = ModSubstage.ADD_TO if amount >= 0 else ModSubstage.SUBTRACT_FROM
+    return ContinuousEffect(
+        source_instance_id=source_instance_id,
+        controller_index=controller_index,
+        stage=ModStage.NUMERIC,
+        substage=substage,
+        duration=duration,
+        target_filter=target_filter or (lambda _c: True),
+        numeric_property=prop,
+        modify_numeric=lambda v, _a=amount: v + _a,
+        condition=condition,
+    )
+
+
+def make_power_modifier(amount: int, controller_index: int, **kwargs) -> ContinuousEffect:
     """Create a +N/-N power modification effect."""
-    substage = ModSubstage.ADD_TO if amount >= 0 else ModSubstage.SUBTRACT_FROM
-    return ContinuousEffect(
-        source_instance_id=source_instance_id,
-        controller_index=controller_index,
-        stage=ModStage.NUMERIC,
-        substage=substage,
-        duration=duration,
-        target_filter=target_filter or (lambda _c: True),
-        numeric_property=NumericProperty.POWER,
-        modify_numeric=lambda v, _a=amount: v + _a,
-        condition=condition,
-    )
+    return _make_numeric_modifier(amount, controller_index, NumericProperty.POWER, **kwargs)
 
 
-def make_defense_modifier(
-    amount: int,
-    controller_index: int,
-    *,
-    source_instance_id: int | None = None,
-    duration: EffectDuration = EffectDuration.END_OF_TURN,
-    target_filter: Callable[[CardInstance], bool] | None = None,
-    condition: Callable[[GameState], bool] | None = None,
-) -> ContinuousEffect:
+def make_defense_modifier(amount: int, controller_index: int, **kwargs) -> ContinuousEffect:
     """Create a +N/-N defense modification effect."""
-    substage = ModSubstage.ADD_TO if amount >= 0 else ModSubstage.SUBTRACT_FROM
-    return ContinuousEffect(
-        source_instance_id=source_instance_id,
-        controller_index=controller_index,
-        stage=ModStage.NUMERIC,
-        substage=substage,
-        duration=duration,
-        target_filter=target_filter or (lambda _c: True),
-        numeric_property=NumericProperty.DEFENSE,
-        modify_numeric=lambda v, _a=amount: v + _a,
-        condition=condition,
-    )
+    return _make_numeric_modifier(amount, controller_index, NumericProperty.DEFENSE, **kwargs)
 
 
-def make_cost_modifier(
-    amount: int,
-    controller_index: int,
-    *,
-    source_instance_id: int | None = None,
-    duration: EffectDuration = EffectDuration.END_OF_TURN,
-    target_filter: Callable[[CardInstance], bool] | None = None,
-    condition: Callable[[GameState], bool] | None = None,
-) -> ContinuousEffect:
+def make_cost_modifier(amount: int, controller_index: int, **kwargs) -> ContinuousEffect:
     """Create a +N/-N cost modification effect."""
-    substage = ModSubstage.ADD_TO if amount >= 0 else ModSubstage.SUBTRACT_FROM
-    return ContinuousEffect(
-        source_instance_id=source_instance_id,
-        controller_index=controller_index,
-        stage=ModStage.NUMERIC,
-        substage=substage,
-        duration=duration,
-        target_filter=target_filter or (lambda _c: True),
-        numeric_property=NumericProperty.COST,
-        modify_numeric=lambda v, _a=amount: v + _a,
-        condition=condition,
-    )
+    return _make_numeric_modifier(amount, controller_index, NumericProperty.COST, **kwargs)
 
 
 def make_keyword_grant(

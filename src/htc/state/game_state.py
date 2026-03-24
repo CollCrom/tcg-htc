@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from random import Random
 
 from htc.cards.instance import CardInstance
-from htc.enums import CombatStep, LayerKind, Phase
+from htc.enums import CombatStep, LayerKind, Phase, Zone
 from htc.state.combat_state import CombatChainState
 from htc.state.player_state import PlayerState
 
@@ -61,6 +61,15 @@ class GameState:
 
     def opponent_of(self, player_index: int) -> PlayerState:
         return self.players[1 - player_index]
+
+    def move_card(self, card: CardInstance, target_zone: Zone) -> None:
+        """Move a card to a target zone. Removes from old zone and appends to new."""
+        owner = self.players[card.owner_index]
+        owner.remove_card(card)
+        card.zone = target_zone
+        zone_list = owner.get_zone_cards(target_zone)
+        if zone_list is not None:
+            zone_list.append(card)
 
     def find_card(self, instance_id: int) -> CardInstance | None:
         """Find a card by instance ID across all players."""
