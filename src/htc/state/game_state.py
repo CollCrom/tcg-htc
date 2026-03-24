@@ -33,6 +33,7 @@ class GameState:
     combat_step: CombatStep | None = None
     combat_chain: CombatChainState = field(default_factory=CombatChainState)
     stack: list[Layer] = field(default_factory=list)  # LIFO: last = top
+    continuous_effects: list = field(default_factory=list)  # list[ContinuousEffect]
     priority_player_index: int | None = None
     action_points: dict[int, int] = field(default_factory=lambda: {0: 0, 1: 0})
     resource_points: dict[int, int] = field(default_factory=lambda: {0: 0, 1: 0})

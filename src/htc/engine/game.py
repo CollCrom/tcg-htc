@@ -10,6 +10,7 @@ from htc.cards.instance import CardInstance
 from htc.decks.deck_list import DeckList
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.combat import CombatManager
+from htc.engine.continuous import EffectDuration
 from htc.engine.cost import (
     build_pitch_decision,
     calculate_play_cost,
@@ -19,6 +20,7 @@ from htc.engine.cost import (
     pay_resource_cost,
     pitch_card,
 )
+from htc.engine.effects import EffectEngine
 from htc.engine.stack import StackManager
 from htc.enums import (
     ActionType,
@@ -66,7 +68,8 @@ class Game:
         self.interfaces = [player1, player2]
         self.state = GameState(rng=Random(seed))
         self.stack_mgr = StackManager()
-        self.combat_mgr = CombatManager()
+        self.effect_engine = EffectEngine()
+        self.combat_mgr = CombatManager(self.effect_engine)
         self.events = EventBus()
         self._register_event_handlers()
 
@@ -300,7 +303,7 @@ class Game:
                 if link:
                     self.combat_mgr.add_defender(self.state, link, card)
                     def_color = f" ({card.definition.color.value})" if card.definition.color else ""
-                    log.info(f"  Defense reaction: {card.name}{def_color} (defense={card.base_defense})")
+                    log.info(f"  Defense reaction: {card.name}{def_color} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
                 else:
                     card.zone = Zone.GRAVEYARD
                     player.graveyard.append(card)
@@ -381,7 +384,7 @@ class Game:
             return False
 
         # Must be able to pay resource cost
-        if not can_pay_resource_cost(self.state, player_index, card):
+        if not can_pay_resource_cost(self.state, player_index, card, self.effect_engine):
             return False
 
         return True
@@ -390,7 +393,7 @@ class Game:
         """Check if a player can play an instant (no action point needed)."""
         if not card.definition.is_instant:
             return False
-        return can_pay_resource_cost(self.state, player_index, card)
+        return can_pay_resource_cost(self.state, player_index, card, self.effect_engine)
 
     def _execute_action(self, player_index: int, action_id: str) -> None:
         """Execute a chosen action."""
@@ -414,7 +417,7 @@ class Game:
         pay_action_cost(self.state, player_index, card)
 
         # Pay resource cost (pitch cards as needed)
-        resource_cost = calculate_play_cost(self.state, card)
+        resource_cost = calculate_play_cost(self.state, card, self.effect_engine)
         while self.state.resource_points[player_index] < resource_cost:
             pitch_decision = build_pitch_decision(
                 self.state, player_index,
@@ -464,9 +467,9 @@ class Game:
         # If it's an attack and combat chain is closed, open it (7.0.2a)
         if card.definition.is_attack and not self.state.combat_chain.is_open:
             self.combat_mgr.open_chain(self.state)
-            log.info(f"  Play attack: {card.name}{color_str} (power={card.base_power})")
+            log.info(f"  Play attack: {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
         elif card.definition.is_attack:
-            log.info(f"  Chain attack: {card.name}{color_str} (power={card.base_power})")
+            log.info(f"  Chain attack: {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
         else:
             log.info(f"  Play: {card.name}{color_str}")
 
@@ -627,9 +630,10 @@ class Game:
         for card in player.hand:
             if card.base_defense is not None and not card.definition.is_defense_reaction:
                 color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                mod_def = self.effect_engine.get_modified_defense(self.state, card)
                 options.append(ActionOption(
                     action_id=f"defend_{card.instance_id}",
-                    description=f"Defend with {card.name}{color_str} (defense={card.base_defense})",
+                    description=f"Defend with {card.name}{color_str} (defense={mod_def})",
                     action_type=ActionType.DEFEND_WITH,
                     card_instance_id=card.instance_id,
                 ))
@@ -637,9 +641,10 @@ class Game:
         # Equipment (public permanents) (7.3.2a)
         for slot, eq in player.equipment.items():
             if eq and not eq.is_tapped and eq.base_defense is not None and eq.base_defense > 0:
+                mod_def = self.effect_engine.get_modified_defense(self.state, eq)
                 options.append(ActionOption(
                     action_id=f"defend_{eq.instance_id}",
-                    description=f"Defend with {eq.name} (defense={eq.base_defense})",
+                    description=f"Defend with {eq.name} (defense={mod_def})",
                     action_type=ActionType.DEFEND_WITH,
                     card_instance_id=eq.instance_id,
                 ))
@@ -674,7 +679,7 @@ class Game:
                     player.turn_counters.num_cards_defended_from_hand += 1
                 self.combat_mgr.add_defender(self.state, link, card)
                 def_color = f" ({card.definition.color.value})" if card.definition.color else ""
-                log.info(f"  Defended with: {card.name}{def_color} (defense={card.base_defense})")
+                log.info(f"  Defended with: {card.name}{def_color} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
 
                 # Emit defend event (7.0.5a)
                 self.events.emit(GameEvent(
@@ -734,7 +739,7 @@ class Game:
         for card in player.hand:
             # Attack reactions: only attacker can play (7.4.2a)
             if card.definition.is_attack_reaction and priority_player == attacker_index:
-                if can_pay_resource_cost(self.state, priority_player, card):
+                if can_pay_resource_cost(self.state, priority_player, card, self.effect_engine):
                     color_str = f" ({card.definition.color.value})" if card.definition.color else ""
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
@@ -745,7 +750,7 @@ class Game:
 
             # Defense reactions: only defender can play (7.4.2b)
             if card.definition.is_defense_reaction and priority_player == defender_index:
-                if can_pay_resource_cost(self.state, priority_player, card):
+                if can_pay_resource_cost(self.state, priority_player, card, self.effect_engine):
                     color_str = f" ({card.definition.color.value})" if card.definition.color else ""
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
@@ -928,6 +933,7 @@ class Game:
         ))
 
         self.combat_mgr.close_chain(self.state)
+        self.effect_engine.cleanup_expired_effects(self.state, EffectDuration.END_OF_COMBAT)
         log.debug("  Combat chain closed")
 
     def _build_combat_priority_decision(
@@ -1011,6 +1017,10 @@ class Game:
             event_type=EventType.END_OF_TURN,
             target_player=tp.index,
         ))
+
+        # Clean up continuous effects that expire at end of turn
+        self.effect_engine.cleanup_expired_effects(self.state, EffectDuration.END_OF_TURN)
+        self.effect_engine.cleanup_zone_effects(self.state)
 
         # 4.4.3b: May arsenal a card from hand
         if not tp.arsenal and tp.hand:
