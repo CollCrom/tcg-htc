@@ -63,36 +63,15 @@ class EffectEngine:
 
     def get_modified_power(self, state: GameState, card: CardInstance) -> int:
         base = card.base_power or 0
-        active = self._active_effects(state)
-        value = self._resolver.resolve_numeric(
-            active, card, state, base, NumericProperty.POWER, ModStage.BASE_NUMERIC
-        )
-        value = self._resolver.resolve_numeric(
-            active, card, state, value, NumericProperty.POWER, ModStage.NUMERIC
-        )
-        return max(0, value)
+        return self._resolve_numeric_property(state, card, base, NumericProperty.POWER)
 
     def get_modified_defense(self, state: GameState, card: CardInstance) -> int:
         base = card.base_defense or 0
-        active = self._active_effects(state)
-        value = self._resolver.resolve_numeric(
-            active, card, state, base, NumericProperty.DEFENSE, ModStage.BASE_NUMERIC
-        )
-        value = self._resolver.resolve_numeric(
-            active, card, state, value, NumericProperty.DEFENSE, ModStage.NUMERIC
-        )
-        return max(0, value)
+        return self._resolve_numeric_property(state, card, base, NumericProperty.DEFENSE)
 
     def get_modified_cost(self, state: GameState, card: CardInstance) -> int:
         base = card.cost if card.cost is not None else 0
-        active = self._active_effects(state)
-        value = self._resolver.resolve_numeric(
-            active, card, state, base, NumericProperty.COST, ModStage.BASE_NUMERIC
-        )
-        value = self._resolver.resolve_numeric(
-            active, card, state, value, NumericProperty.COST, ModStage.NUMERIC
-        )
-        return max(0, value)
+        return self._resolve_numeric_property(state, card, base, NumericProperty.COST)
 
     def get_modified_keywords(
         self, state: GameState, card: CardInstance
@@ -122,6 +101,19 @@ class EffectEngine:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _resolve_numeric_property(
+        self, state: GameState, card: CardInstance, base: int, prop: NumericProperty
+    ) -> int:
+        """Apply staging resolution for a numeric property and clamp >= 0."""
+        active = self._active_effects(state)
+        value = self._resolver.resolve_numeric(
+            active, card, state, base, prop, ModStage.BASE_NUMERIC
+        )
+        value = self._resolver.resolve_numeric(
+            active, card, state, value, prop, ModStage.NUMERIC
+        )
+        return max(0, value)
 
     def _active_effects(self, state: GameState) -> list[ContinuousEffect]:
         """Return currently active effects (condition met)."""

@@ -1,7 +1,5 @@
 """Tests for continuous effects and the staging system."""
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
 from htc.engine.continuous import (
     ContinuousEffect,
     EffectDuration,
@@ -14,42 +12,16 @@ from htc.engine.continuous import (
     make_power_modifier,
 )
 from htc.engine.effects import EffectEngine
-from htc.enums import CardType, Keyword, SubType, Zone
-from htc.state.combat_state import ChainLink, CombatChainState
+from htc.enums import Keyword, SubType, Zone
+from htc.state.combat_state import ChainLink
 from htc.state.game_state import GameState
 from htc.state.player_state import PlayerState
+from tests.conftest import make_card
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_attack(instance_id: int = 1, power: int = 3, defense: int = 2, cost: int = 1) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"test-{instance_id}",
-        name="Test Attack",
-        color=None,
-        pitch=None,
-        cost=cost,
-        power=power,
-        defense=defense,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=frozenset(),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=0,
-        zone=Zone.HAND,
-    )
 
 
 def _make_state() -> GameState:
@@ -69,46 +41,28 @@ def _make_state() -> GameState:
 def test_no_effects_returns_base_power():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=5)
+    card = make_card(power=5)
     assert engine.get_modified_power(state, card) == 5
 
 
 def test_no_effects_returns_base_defense():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(defense=3)
+    card = make_card(defense=3)
     assert engine.get_modified_defense(state, card) == 3
 
 
 def test_no_effects_returns_base_cost():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(cost=2)
+    card = make_card(cost=2)
     assert engine.get_modified_cost(state, card) == 2
 
 
 def test_none_power_returns_zero():
     engine = EffectEngine()
     state = _make_state()
-    defn = CardDefinition(
-        unique_id="no-power",
-        name="No Power Card",
-        color=None,
-        pitch=None,
-        cost=0,
-        power=None,
-        defense=2,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset(),
-        supertypes=frozenset(),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    card = CardInstance(instance_id=1, definition=defn, owner_index=0, zone=Zone.HAND)
+    card = make_card(power=None, is_attack=False, name="No Power Card")
     assert engine.get_modified_power(state, card) == 0
 
 
@@ -120,7 +74,7 @@ def test_none_power_returns_zero():
 def test_power_modifier_adds():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     effect = make_power_modifier(2, controller_index=0)
     engine.add_continuous_effect(state, effect)
@@ -131,7 +85,7 @@ def test_power_modifier_adds():
 def test_power_modifier_subtracts():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=5)
+    card = make_card(power=5)
 
     effect = make_power_modifier(-3, controller_index=0)
     engine.add_continuous_effect(state, effect)
@@ -142,7 +96,7 @@ def test_power_modifier_subtracts():
 def test_defense_modifier():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(defense=2)
+    card = make_card(defense=2)
 
     effect = make_defense_modifier(1, controller_index=0)
     engine.add_continuous_effect(state, effect)
@@ -153,7 +107,7 @@ def test_defense_modifier():
 def test_cost_modifier():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(cost=3)
+    card = make_card(cost=3)
 
     effect = make_cost_modifier(-1, controller_index=0)
     engine.add_continuous_effect(state, effect)
@@ -170,7 +124,7 @@ def test_set_then_add_ordering():
     """SET (substage 2) should apply before ADD_TO (substage 5)."""
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     # Add +2 first (timestamp 1)
     add_effect = make_power_modifier(2, controller_index=0)
@@ -194,7 +148,7 @@ def test_timestamp_ordering_within_substage():
     """Within same substage, earlier timestamp applies first."""
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=0)
+    card = make_card(power=0)
 
     # First: +3
     engine.add_continuous_effect(state, make_power_modifier(3, controller_index=0))
@@ -209,7 +163,7 @@ def test_multiply_then_add_ordering():
     """MULTIPLY (substage 3) applies before ADD_TO (substage 5)."""
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     # Add +1
     engine.add_continuous_effect(state, make_power_modifier(1, controller_index=0))
@@ -232,7 +186,7 @@ def test_base_numeric_before_numeric():
     """Stage 7 (BASE_NUMERIC) applies before stage 8 (NUMERIC)."""
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     # Stage 8: +2
     engine.add_continuous_effect(state, make_power_modifier(2, controller_index=0))
@@ -259,30 +213,8 @@ def test_base_numeric_before_numeric():
 def test_target_filter_applies_selectively():
     engine = EffectEngine()
     state = _make_state()
-    attack = _make_attack(instance_id=1, power=3)
-    non_attack = CardInstance(
-        instance_id=2,
-        definition=CardDefinition(
-            unique_id="non-attack",
-            name="Non-Attack",
-            color=None,
-            pitch=None,
-            cost=0,
-            power=2,
-            defense=2,
-            health=None,
-            intellect=None,
-            arcane=None,
-            types=frozenset({CardType.ACTION}),
-            subtypes=frozenset(),
-            supertypes=frozenset(),
-            keywords=frozenset(),
-            functional_text="",
-            type_text="",
-        ),
-        owner_index=0,
-        zone=Zone.HAND,
-    )
+    attack = make_card(instance_id=1, power=3)
+    non_attack = make_card(instance_id=2, power=2, is_attack=False, name="Non-Attack")
 
     # Only buff attacks
     effect = make_power_modifier(
@@ -303,7 +235,7 @@ def test_target_filter_applies_selectively():
 def test_conditional_effect_applies_when_true():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     effect = make_power_modifier(
         2, controller_index=0,
@@ -326,7 +258,7 @@ def test_conditional_effect_applies_when_true():
 def test_end_of_turn_cleanup():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     eot = make_power_modifier(2, controller_index=0, duration=EffectDuration.END_OF_TURN)
     perm = make_power_modifier(1, controller_index=0, duration=EffectDuration.PERMANENT)
@@ -343,7 +275,7 @@ def test_end_of_turn_cleanup():
 def test_end_of_combat_cleanup():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     eoc = make_power_modifier(2, controller_index=0, duration=EffectDuration.END_OF_COMBAT)
     eot = make_power_modifier(1, controller_index=0, duration=EffectDuration.END_OF_TURN)
@@ -360,11 +292,11 @@ def test_end_of_combat_cleanup():
 def test_zone_effect_cleanup():
     engine = EffectEngine()
     state = _make_state()
-    source = _make_attack(instance_id=10, power=1)
+    source = make_card(instance_id=10, power=1)
     source.zone = Zone.HAND
     state.players[0].hand.append(source)
 
-    target = _make_attack(instance_id=20, power=3)
+    target = make_card(instance_id=20, power=3)
 
     effect = ContinuousEffect(
         source_instance_id=10,
@@ -398,7 +330,7 @@ def test_zone_effect_cleanup():
 def test_keyword_grant():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack()
+    card = make_card()
 
     assert Keyword.GO_AGAIN not in engine.get_modified_keywords(state, card)
 
@@ -415,25 +347,7 @@ def test_keyword_removal():
     engine = EffectEngine()
     state = _make_state()
 
-    defn = CardDefinition(
-        unique_id="go-again-card",
-        name="Go Again Card",
-        color=None,
-        pitch=None,
-        cost=1,
-        power=3,
-        defense=2,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=frozenset(),
-        keywords=frozenset({Keyword.GO_AGAIN}),
-        functional_text="",
-        type_text="",
-    )
-    card = CardInstance(instance_id=1, definition=defn, owner_index=0, zone=Zone.HAND)
+    card = make_card(name="Go Again Card", keywords=frozenset({Keyword.GO_AGAIN}))
 
     assert Keyword.GO_AGAIN in engine.get_modified_keywords(state, card)
 
@@ -457,7 +371,7 @@ def test_keyword_removal():
 def test_power_floored_at_zero():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     effect = make_power_modifier(-99, controller_index=0)
     engine.add_continuous_effect(state, effect)
@@ -468,7 +382,7 @@ def test_power_floored_at_zero():
 def test_cost_floored_at_zero():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(cost=1)
+    card = make_card(cost=1)
 
     effect = make_cost_modifier(-10, controller_index=0)
     engine.add_continuous_effect(state, effect)
@@ -484,7 +398,7 @@ def test_cost_floored_at_zero():
 def test_add_and_remove_effect():
     engine = EffectEngine()
     state = _make_state()
-    card = _make_attack(power=3)
+    card = make_card(power=3)
 
     effect = make_power_modifier(2, controller_index=0)
     engine.add_continuous_effect(state, effect)
@@ -519,7 +433,7 @@ def test_combat_manager_uses_modified_power():
     state = _make_state()
     combat_mgr = CombatManager(engine)
 
-    attack = _make_attack(power=3)
+    attack = make_card(power=3)
     link = ChainLink(
         link_number=1,
         active_attack=attack,
@@ -540,8 +454,8 @@ def test_combat_manager_uses_modified_defense():
     state = _make_state()
     combat_mgr = CombatManager(engine)
 
-    attack = _make_attack(power=5)
-    defender = _make_attack(instance_id=2, defense=2)
+    attack = make_card(power=5)
+    defender = make_card(instance_id=2, defense=2)
     link = ChainLink(
         link_number=1,
         active_attack=attack,

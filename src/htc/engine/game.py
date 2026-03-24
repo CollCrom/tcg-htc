@@ -302,22 +302,17 @@ class Game:
                 link = self.state.combat_chain.active_link
                 if link:
                     self.combat_mgr.add_defender(self.state, link, card)
-                    def_color = f" ({card.definition.color.value})" if card.definition.color else ""
-                    log.info(f"  Defense reaction: {card.name}{def_color} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
+                    log.info(f"  Defense reaction: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
                 else:
-                    card.zone = Zone.GRAVEYARD
-                    player.graveyard.append(card)
+                    self.state.move_card(card, Zone.GRAVEYARD)
             elif card.definition.is_attack_reaction:
                 # Attack reaction resolves: apply effect, then graveyard
                 # TODO: apply attack reaction effects
-                card.zone = Zone.GRAVEYARD
-                player.graveyard.append(card)
-                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
-                log.info(f"  Attack reaction: {card.name}{color_str}")
+                self.state.move_card(card, Zone.GRAVEYARD)
+                log.info(f"  Attack reaction: {card.name}{card.definition.color_label}")
             else:
                 # Non-attack, non-reaction: resolve effect, then graveyard
-                card.zone = Zone.GRAVEYARD
-                player.graveyard.append(card)
+                self.state.move_card(card, Zone.GRAVEYARD)
 
             # Go again from resolved layer
             if layer.has_go_again and not card.definition.is_attack:
@@ -333,7 +328,7 @@ class Game:
             # Can play action cards from hand and arsenal (7.0.1a: only when chain is closed)
             for card in player.hand + player.arsenal:
                 if self._can_play_card(player_index, card):
-                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    color_str = card.definition.color_label
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
                         description=f"Play {card.name}{color_str}",
@@ -342,23 +337,8 @@ class Game:
                     ))
 
         # Instants can be played when you have priority
-        for card in player.hand:
-            if card.definition.is_instant and self._can_play_instant(player_index, card):
-                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
-                if not any(o.card_instance_id == card.instance_id for o in options):
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str} (instant)",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
-                    ))
-
-        # Always can pass
-        options.append(ActionOption(
-            action_id="pass",
-            description="Pass",
-            action_type=ActionType.PASS,
-        ))
+        self._add_instant_options(options, player_index)
+        options.append(self._pass_option())
 
         return Decision(
             player_index=player_index,
@@ -366,6 +346,24 @@ class Game:
             prompt="Choose an action",
             options=options,
         )
+
+    def _add_instant_options(self, options: list[ActionOption], player_index: int) -> None:
+        """Append playable instant options from the player's hand, deduplicating."""
+        player = self.state.players[player_index]
+        for card in player.hand:
+            if card.definition.is_instant and self._can_play_instant(player_index, card):
+                if not any(o.card_instance_id == card.instance_id for o in options):
+                    options.append(ActionOption(
+                        action_id=f"play_{card.instance_id}",
+                        description=f"Play {card.name}{card.definition.color_label} (instant)",
+                        action_type=ActionType.PLAY_CARD,
+                        card_instance_id=card.instance_id,
+                    ))
+
+    @staticmethod
+    def _pass_option(description: str = "Pass") -> ActionOption:
+        """Create a pass action option."""
+        return ActionOption(action_id="pass", description=description, action_type=ActionType.PASS)
 
     def _can_play_card(self, player_index: int, card: CardInstance) -> bool:
         """Check if a player can legally play this card as an action."""
@@ -462,7 +460,7 @@ class Game:
             card=card,
         ))
 
-        color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+        color_str = card.definition.color_label
 
         # If it's an attack and combat chain is closed, open it (7.0.2a)
         if card.definition.is_attack and not self.state.combat_chain.is_open:
@@ -629,7 +627,7 @@ class Game:
         # Cards from hand with defense value (7.3.2a)
         for card in player.hand:
             if card.base_defense is not None and not card.definition.is_defense_reaction:
-                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                color_str = card.definition.color_label
                 mod_def = self.effect_engine.get_modified_defense(self.state, card)
                 options.append(ActionOption(
                     action_id=f"defend_{card.instance_id}",
@@ -650,11 +648,7 @@ class Game:
                 ))
 
         # Always can pass
-        options.append(ActionOption(
-            action_id="pass",
-            description="Don't defend",
-            action_type=ActionType.PASS,
-        ))
+        options.append(self._pass_option("Don't defend"))
 
         decision = Decision(
             player_index=defender_index,
@@ -678,8 +672,7 @@ class Game:
                     player.hand.remove(card)
                     player.turn_counters.num_cards_defended_from_hand += 1
                 self.combat_mgr.add_defender(self.state, link, card)
-                def_color = f" ({card.definition.color.value})" if card.definition.color else ""
-                log.info(f"  Defended with: {card.name}{def_color} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
+                log.info(f"  Defended with: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
 
                 # Emit defend event (7.0.5a)
                 self.events.emit(GameEvent(
@@ -740,7 +733,7 @@ class Game:
             # Attack reactions: only attacker can play (7.4.2a)
             if card.definition.is_attack_reaction and priority_player == attacker_index:
                 if can_pay_resource_cost(self.state, priority_player, card, self.effect_engine):
-                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    color_str = card.definition.color_label
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
                         description=f"Play {card.name}{color_str} (attack reaction)",
@@ -751,7 +744,7 @@ class Game:
             # Defense reactions: only defender can play (7.4.2b)
             if card.definition.is_defense_reaction and priority_player == defender_index:
                 if can_pay_resource_cost(self.state, priority_player, card, self.effect_engine):
-                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    color_str = card.definition.color_label
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
                         description=f"Play {card.name}{color_str} (defense reaction)",
@@ -759,23 +752,9 @@ class Game:
                         card_instance_id=card.instance_id,
                     ))
 
-            # Instants: either player can play
-            if card.definition.is_instant:
-                if self._can_play_instant(priority_player, card):
-                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
-                    if not any(o.card_instance_id == card.instance_id for o in options):
-                        options.append(ActionOption(
-                            action_id=f"play_{card.instance_id}",
-                            description=f"Play {card.name}{color_str} (instant)",
-                            action_type=ActionType.PLAY_CARD,
-                            card_instance_id=card.instance_id,
-                        ))
-
-        options.append(ActionOption(
-            action_id="pass",
-            description="Pass",
-            action_type=ActionType.PASS,
-        ))
+        # Instants: either player can play
+        self._add_instant_options(options, priority_player)
+        options.append(self._pass_option())
 
         return Decision(
             player_index=priority_player,
@@ -892,7 +871,7 @@ class Game:
             # Can play attack cards to continue the chain (7.6.3a)
             for card in player.hand + player.arsenal:
                 if card.definition.is_attack and self._can_play_card(player_index, card):
-                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    color_str = card.definition.color_label
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
                         description=f"Play {card.name}{color_str}",
@@ -901,22 +880,8 @@ class Game:
                     ))
 
         # Instants for any player
-        for card in player.hand:
-            if card.definition.is_instant and self._can_play_instant(player_index, card):
-                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
-                if not any(o.card_instance_id == card.instance_id for o in options):
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str} (instant)",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
-                    ))
-
-        options.append(ActionOption(
-            action_id="pass",
-            description="Pass",
-            action_type=ActionType.PASS,
-        ))
+        self._add_instant_options(options, player_index)
+        options.append(self._pass_option())
 
         return Decision(
             player_index=player_index,
@@ -946,7 +911,7 @@ class Game:
         if allow_actions:
             for card in player.hand + player.arsenal:
                 if self._can_play_card(player_index, card):
-                    color_str = f" ({card.definition.color.value})" if card.definition.color else ""
+                    color_str = card.definition.color_label
                     options.append(ActionOption(
                         action_id=f"play_{card.instance_id}",
                         description=f"Play {card.name}{color_str}",
@@ -955,22 +920,8 @@ class Game:
                     ))
 
         # Instants
-        for card in player.hand:
-            if card.definition.is_instant and self._can_play_instant(player_index, card):
-                color_str = f" ({card.definition.color.value})" if card.definition.color else ""
-                if not any(o.card_instance_id == card.instance_id for o in options):
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str} (instant)",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
-                    ))
-
-        options.append(ActionOption(
-            action_id="pass",
-            description="Pass",
-            action_type=ActionType.PASS,
-        ))
+        self._add_instant_options(options, player_index)
+        options.append(self._pass_option())
 
         return Decision(
             player_index=player_index,
@@ -1033,11 +984,7 @@ class Game:
                 )
                 for c in tp.hand
             ]
-            options.append(ActionOption(
-                action_id="pass",
-                description="Don't arsenal",
-                action_type=ActionType.PASS,
-            ))
+            options.append(self._pass_option("Don't arsenal"))
             decision = Decision(
                 player_index=tp.index,
                 decision_type=DecisionType.CHOOSE_ARSENAL_CARD,

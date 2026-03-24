@@ -59,6 +59,20 @@ class PlayerState:
             case _:
                 return []
 
+    def remove_card(self, card: CardInstance) -> bool:
+        """Remove a card from whichever zone list it's in. Returns True if found."""
+        for zone_list in [self.hand, self.deck, self.arsenal, self.pitch,
+                          self.graveyard, self.banished, self.soul,
+                          self.weapons, self.permanents]:
+            if card in zone_list:
+                zone_list.remove(card)
+                return True
+        for slot, eq in self.equipment.items():
+            if eq is card:
+                self.equipment[slot] = None
+                return True
+        return False
+
     def find_card(self, instance_id: int) -> CardInstance | None:
         """Find a card by instance ID across all zones."""
         for zone in [self.hand, self.deck, self.arsenal, self.pitch,

@@ -61,36 +61,15 @@ class CombatManager:
             total += self.effects.get_modified_defense(state, card)
         return total
 
-    def resolve_damage(
-        self, state: GameState, link: ChainLink
-    ) -> int:
-        """Apply damage to the attack target. Returns damage dealt."""
-        damage = self.calculate_damage(state, link)
-        if damage > 0:
-            target = state.players[link.attack_target_index]
-            target.life_total -= damage
-            target.turn_counters.damage_taken += damage
-            attacker_index = 1 - link.attack_target_index
-            state.players[attacker_index].turn_counters.damage_dealt += damage
-            link.damage_dealt = damage
-            link.hit = True
-        return damage
-
     def close_chain(self, state: GameState) -> None:
         """Close the combat chain. Move cards to graveyard."""
         for link in state.combat_chain.chain_links:
-            # Move attack card to graveyard
             if link.active_attack:
-                owner = state.players[link.active_attack.owner_index]
-                link.active_attack.zone = Zone.GRAVEYARD
-                owner.graveyard.append(link.active_attack)
-            # Move defending cards to graveyard
+                state.move_card(link.active_attack, Zone.GRAVEYARD)
             for card in link.defending_cards:
                 if card.definition.is_equipment or card.definition.is_weapon:
                     # Equipment returns to its zone — simplified for now
                     pass
                 else:
-                    owner = state.players[card.owner_index]
-                    card.zone = Zone.GRAVEYARD
-                    owner.graveyard.append(card)
+                    state.move_card(card, Zone.GRAVEYARD)
         state.combat_chain.reset()

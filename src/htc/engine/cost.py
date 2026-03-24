@@ -22,16 +22,21 @@ def calculate_play_cost(
     return effect_engine.get_modified_cost(state, card)
 
 
+def _requires_action_point(card: CardInstance) -> bool:
+    """Check if playing this card costs an action point (actions that aren't instants)."""
+    return card.definition.is_action and not card.definition.is_instant
+
+
 def can_pay_action_cost(state: GameState, player_index: int, card: CardInstance) -> bool:
     """Check if the player can pay the action point cost to play a card."""
-    if card.definition.is_action and not card.definition.is_instant:
+    if _requires_action_point(card):
         return state.action_points[player_index] >= 1
     return True
 
 
 def pay_action_cost(state: GameState, player_index: int, card: CardInstance) -> None:
     """Deduct the action point cost for playing an action card."""
-    if card.definition.is_action and not card.definition.is_instant:
+    if _requires_action_point(card):
         state.action_points[player_index] -= 1
 
 
