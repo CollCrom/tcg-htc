@@ -1,20 +1,25 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from htc.cards.instance import CardInstance
 from htc.enums import ActionType, DecisionType, Zone
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.state.game_state import GameState
 
+if TYPE_CHECKING:
+    from htc.engine.effects import EffectEngine
 
-def calculate_play_cost(state: GameState, card: CardInstance) -> int:
+
+def calculate_play_cost(
+    state: GameState, card: CardInstance, effect_engine: EffectEngine
+) -> int:
     """Calculate the total resource cost to play a card.
 
     Rules 5.1.6: base cost, modified by effects. Action cards also
     cost 1 action point (handled separately).
     """
-    base = card.cost if card.cost is not None else 0
-    # TODO: apply cost modification effects
-    return max(0, base)
+    return effect_engine.get_modified_cost(state, card)
 
 
 def can_pay_action_cost(state: GameState, player_index: int, card: CardInstance) -> bool:
@@ -30,9 +35,11 @@ def pay_action_cost(state: GameState, player_index: int, card: CardInstance) -> 
         state.action_points[player_index] -= 1
 
 
-def can_pay_resource_cost(state: GameState, player_index: int, card: CardInstance) -> bool:
+def can_pay_resource_cost(
+    state: GameState, player_index: int, card: CardInstance, effect_engine: EffectEngine
+) -> bool:
     """Check if the player CAN pay the resource cost (has enough pitchable cards + existing resources)."""
-    cost = calculate_play_cost(state, card)
+    cost = calculate_play_cost(state, card, effect_engine)
     if cost <= 0:
         return True
     available = state.resource_points[player_index]
