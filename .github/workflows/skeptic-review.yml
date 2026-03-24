@@ -23,7 +23,7 @@ jobs:
       - uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
+          direct_prompt: |
             You are the Skeptic agent for the TCG Hyperbolic Time Chamber project.
             Read agents/skeptic.md for your full role definition, then review
             the changes in this PR.
