@@ -86,9 +86,10 @@ class Game:
             target = self.state.players[event.target_player]
             target.life_total = max(0, target.life_total - event.amount)
             target.turn_counters.damage_taken += event.amount
+            target.turn_counters.life_lost += event.amount
             # Track damage dealt by the source's controller
             if event.source:
-                attacker_index = 1 - event.target_player
+                attacker_index = event.source.owner_index
                 self.state.players[attacker_index].turn_counters.damage_dealt += event.amount
 
     def _handle_gain_life(self, event: GameEvent) -> None:
@@ -96,6 +97,7 @@ class Game:
         if event.target_player is not None and event.amount > 0:
             target = self.state.players[event.target_player]
             target.life_total += event.amount
+            target.turn_counters.life_gained += event.amount
             log.info(f"  Player {event.target_player} gains {event.amount} life (life: {target.life_total})")
 
     def _handle_draw_card(self, event: GameEvent) -> None:
@@ -465,9 +467,9 @@ class Game:
         elif card.definition.is_instant:
             player.turn_counters.num_instants_played += 1
         elif card.definition.is_attack_reaction:
-            pass  # tracked at resolution
+            pass  # counter not yet needed
         elif card.definition.is_defense_reaction:
-            pass  # tracked at resolution
+            player.turn_counters.num_defense_reactions_played += 1
 
         # Emit play event
         self.events.emit(GameEvent(
@@ -850,8 +852,13 @@ class Game:
 
         attacker_index = 1 - link.attack_target_index
 
-        # 7.6.2: If attack has go again, controller gains 1 action point
-        if link.has_go_again:
+        # 7.6.2: If attack has go again at resolution time, controller gains 1 AP
+        # Check modified keywords dynamically (effects may have granted/removed go again)
+        has_go_again = link.has_go_again
+        if link.active_attack:
+            attack_keywords = self.effect_engine.get_modified_keywords(self.state, link.active_attack)
+            has_go_again = Keyword.GO_AGAIN in attack_keywords
+        if has_go_again:
             self.state.action_points[attacker_index] += 1
 
         # 7.6.3: Turn player gets priority
@@ -1040,6 +1047,8 @@ class Game:
                     tp.arsenal.append(card)
 
         # 4.4.3c: ALL players' pitch zones -> bottom of deck
+        # TODO: rules say player chooses order (pitch-stacking). Currently random.
+        # Should be a Decision when strategic players are implemented.
         for player in self.state.players:
             if player.pitch:
                 self.state.rng.shuffle(player.pitch)
