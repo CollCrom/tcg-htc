@@ -1,0 +1,39 @@
+name: Skeptic Review
+
+on:
+  pull_request:
+    paths:
+      - 'src/htc/engine/**'
+      - 'src/htc/state/**'
+      - 'src/htc/cards/**'
+      - 'tests/**'
+
+jobs:
+  skeptic-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are the Skeptic agent for the TCG Hyperbolic Time Chamber project.
+            Read agents/skeptic.md for your full role definition, then review
+            the changes in this PR.
+
+            Your review should cover:
+            1. Rules correctness — compare against ref/comprehensive-rules.md
+            2. Talishar cross-reference — compare against ref/talishar-engine-analysis.md
+            3. Test gap analysis — identify missing test coverage for edge cases
+
+            Output a structured review with:
+            - **Correct**: things the code gets right (brief)
+            - **Issues**: rules violations or deviations with rule numbers and severity (critical/minor)
+            - **Missing tests**: specific scenarios that should have test coverage
+            - **Ambiguous**: rules that are unclear and need human judgment
