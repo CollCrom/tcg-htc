@@ -93,6 +93,17 @@ class CardDefinition:
     def is_arena_card(self) -> bool:
         return not self.is_hero and not self.is_token and not self.is_deck_card
 
+    _PERMANENT_SUBTYPES = frozenset({
+        SubType.AFFLICTION, SubType.ALLY, SubType.ASH, SubType.AURA,
+        SubType.CONSTRUCT, SubType.FIGMENT, SubType.INVOCATION,
+        SubType.ITEM, SubType.LANDMARK,
+    })
+
+    @property
+    def is_permanent_when_resolved(self) -> bool:
+        """Deck-cards with these subtypes become permanents on resolution (1.3.3)."""
+        return bool(self.subtypes & self._PERMANENT_SUBTYPES)
+
     @property
     def has_go_again(self) -> bool:
         return Keyword.GO_AGAIN in self.keywords
