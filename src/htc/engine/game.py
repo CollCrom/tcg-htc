@@ -31,6 +31,7 @@ from htc.enums import (
     Keyword,
     Phase,
     SubType,
+    SuperType,
     Zone,
 )
 from htc.engine.events import EventBus, EventType, GameEvent
@@ -781,6 +782,11 @@ class Game:
         if self.state.game_over or not self.state.combat_chain.is_open:
             return
 
+        # Phantasm check (8.3.11): if defended by non-Illusionist attack action
+        # with 6+ power, destroy the Phantasm attack
+        if self._check_phantasm():
+            return  # attack was destroyed, chain link is done
+
         # Reaction Step (7.4): attack/defense reactions
         self.state.combat_step = CombatStep.REACTION
         self._reaction_step()
@@ -1205,6 +1211,48 @@ class Game:
             prompt="Continue combat chain or pass",
             options=options,
         )
+
+    def _check_phantasm(self) -> bool:
+        """Phantasm (8.3.11): if the attack has Phantasm and is defended by a
+        non-Illusionist attack action card with 6+ power, destroy the attack.
+
+        Returns True if the attack was destroyed (skip remaining combat steps).
+        """
+        link = self.state.combat_chain.active_link
+        if link is None or link.active_attack is None:
+            return False
+
+        attack_keywords = self.effect_engine.get_modified_keywords(
+            self.state, link.active_attack
+        )
+        if Keyword.PHANTASM not in attack_keywords:
+            return False
+
+        for card in link.defending_cards:
+            modified_power = self.effect_engine.get_modified_power(self.state, card)
+            if (
+                card.definition.is_attack_action
+                and SuperType.ILLUSIONIST not in card.definition.supertypes
+                and modified_power >= 6
+            ):
+                log.info(
+                    f"  Phantasm triggered! {card.name} (power={modified_power}) "
+                    f"destroys {link.active_attack.name}"
+                )
+                # Destroy the attack — move to graveyard, close chain
+                self.events.emit(GameEvent(
+                    event_type=EventType.DESTROY,
+                    source=card,
+                    card=link.active_attack,
+                    target_player=link.active_attack.owner_index,
+                ))
+                self.combat_mgr.close_chain(self.state)
+                self.effect_engine.cleanup_expired_effects(
+                    self.state, EffectDuration.END_OF_COMBAT
+                )
+                return True
+
+        return False
 
     def _apply_equipment_degradation(self) -> None:
         """Apply Battleworn, Blade Break, and Temper to equipment that defended."""
