@@ -23,6 +23,7 @@ class TurnCounters:
     damage_dealt: int = 0
     life_gained: int = 0
     life_lost: int = 0
+    num_weapon_attacks: int = 0
     has_boosted: bool = False
     has_attacked: bool = False
 

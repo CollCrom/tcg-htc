@@ -22,6 +22,8 @@ class CardInstance:
     is_tapped: bool = False
     face_up: bool = True
     counters: dict[str, int] = field(default_factory=dict)
+    is_proxy: bool = False
+    proxy_source_id: int | None = None  # instance_id of the weapon that created this proxy
 
     # --- Delegation to definition ---
 
