@@ -1,4 +1,4 @@
-name: Skeptic Fix
+name: Skeptic Fix (disabled)
 
 on:
   pull_request_review:
@@ -6,10 +6,8 @@ on:
 
 jobs:
   fix-issues:
+    if: false  # Disabled to reduce API token cost. Remove this line to re-enable.
     runs-on: ubuntu-latest
-    if: >-
-      github.event.review.state == 'changes_requested' &&
-      contains(github.event.review.body, 'Skeptic')
     permissions:
       contents: write
       pull-requests: write

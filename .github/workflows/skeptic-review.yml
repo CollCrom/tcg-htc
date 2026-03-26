@@ -1,4 +1,4 @@
-name: Skeptic Review
+name: Skeptic Review (disabled)
 
 on:
   pull_request:
@@ -9,6 +9,7 @@ on:
 
 jobs:
   skeptic-review:
+    if: false  # Disabled to reduce API token cost. Remove this line to re-enable.
     runs-on: ubuntu-latest
     permissions:
       contents: read
