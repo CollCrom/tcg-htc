@@ -39,15 +39,17 @@ jobs:
             - **Missing tests**: specific scenarios that should have test coverage
             - **Ambiguous**: rules that are unclear and need human judgment
 
-            ## Verdict
+            ## Verdict — MANDATORY
 
-            After completing your review, you MUST submit a formal PR review:
+            After completing your review, you MUST use the Bash tool to execute
+            one of the following shell commands. Do NOT just write the command —
+            actually run it. This is required for the auto-merge workflow.
 
-            - If there are **no critical issues**, approve the PR:
-              `gh pr review ${{ github.event.pull_request.number }} --approve --body "Skeptic review: APPROVED. No critical rules issues found."`
+            If there are NO critical issues, run this exact command:
+            gh pr review ${{ github.event.pull_request.number }} --approve --body "Skeptic: APPROVED"
 
-            - If there are **critical issues**, request changes:
-              `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "Skeptic review: CHANGES REQUESTED. See review comment for critical issues."`
+            If there ARE critical issues, run this exact command:
+            gh pr review ${{ github.event.pull_request.number }} --request-changes --body "Skeptic: CHANGES REQUESTED"
 
             Minor issues and missing tests alone are NOT grounds to request changes —
             only critical issues (wrong game outcomes) should block a PR.
