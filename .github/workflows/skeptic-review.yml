@@ -6,7 +6,6 @@ on:
       - 'src/htc/engine/**'
       - 'src/htc/state/**'
       - 'src/htc/cards/**'
-      - 'tests/**'
 
 jobs:
   skeptic-review:
@@ -22,6 +21,7 @@ jobs:
 
       - uses: anthropics/claude-code-action@beta
         with:
+          model: claude-haiku-4-5-20251001
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           direct_prompt: |
             You are the Skeptic agent for the TCG Hyperbolic Time Chamber project.
