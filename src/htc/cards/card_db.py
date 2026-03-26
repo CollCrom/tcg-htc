@@ -38,9 +38,14 @@ for _kw in Keyword:
 _KEYWORD_WITH_NUMBER = re.compile(r"^(.+?)\s+\d+$")
 
 
-def _parse_keywords(value: str) -> frozenset[Keyword]:
-    """Parse the 'Card Keywords' CSV field into a set of Keyword enums."""
+def _parse_keywords(value: str) -> tuple[frozenset[Keyword], dict[Keyword, int]]:
+    """Parse the 'Card Keywords' CSV field into keywords and their numeric values.
+
+    Returns (keywords_set, keyword_values) where keyword_values maps
+    parameterized keywords to their number, e.g. "Arcane Barrier 2" → {ARCANE_BARRIER: 2}.
+    """
     result: set[Keyword] = set()
+    values: dict[Keyword, int] = {}
     for raw in value.split(","):
         raw = raw.strip()
         if not raw:
@@ -49,13 +54,18 @@ def _parse_keywords(value: str) -> frozenset[Keyword]:
         if key in _KEYWORD_BY_NAME:
             result.add(_KEYWORD_BY_NAME[key])
             continue
-        # Try stripping a trailing number (e.g. "Ward 10" -> "Ward")
+        # Try stripping a trailing number (e.g. "Ward 10" -> "Ward", value=10)
         m = _KEYWORD_WITH_NUMBER.match(raw)
         if m:
             key2 = m.group(1).strip().lower()
             if key2 in _KEYWORD_BY_NAME:
-                result.add(_KEYWORD_BY_NAME[key2])
-    return frozenset(result)
+                kw = _KEYWORD_BY_NAME[key2]
+                result.add(kw)
+                try:
+                    values[kw] = int(raw[len(m.group(1)):].strip())
+                except ValueError:
+                    pass
+    return frozenset(result), values
 
 
 class CardDatabase:
@@ -117,7 +127,7 @@ class CardDatabase:
             return None
 
         card_types, sub_types, super_types = classify_type_string(types_str)
-        keywords = _parse_keywords(row.get("Card Keywords", ""))
+        keywords, keyword_values = _parse_keywords(row.get("Card Keywords", ""))
 
         return CardDefinition(
             unique_id=row["Unique ID"],
@@ -136,4 +146,5 @@ class CardDatabase:
             keywords=keywords,
             functional_text=row.get("Functional Text", ""),
             type_text=row.get("Type Text", ""),
+            keyword_values=keyword_values,
         )

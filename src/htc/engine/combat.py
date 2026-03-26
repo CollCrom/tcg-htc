@@ -65,8 +65,15 @@ class CombatManager:
         """Close the combat chain. Move cards to graveyard."""
         for link in state.combat_chain.chain_links:
             if link.active_attack:
-                state.move_card(link.active_attack, Zone.GRAVEYARD)
+                if link.active_attack.is_proxy:
+                    # Proxies are transient — just discard, don't move to graveyard
+                    link.active_attack.zone = Zone.REMOVED
+                else:
+                    state.move_card(link.active_attack, Zone.GRAVEYARD)
             for card in link.defending_cards:
+                if card.zone == Zone.GRAVEYARD:
+                    # Already destroyed (e.g. Blade Break / Temper)
+                    continue
                 if card.definition.is_equipment or card.definition.is_weapon:
                     # Equipment/weapons return to their slot after combat
                     # The equipment dict still holds the reference; restore zone

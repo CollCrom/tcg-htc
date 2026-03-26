@@ -22,6 +22,8 @@ class CardInstance:
     is_tapped: bool = False
     face_up: bool = True
     counters: dict[str, int] = field(default_factory=dict)
+    is_proxy: bool = False
+    proxy_source_id: int | None = None  # instance_id of the weapon that created this proxy
 
     # --- Delegation to definition ---
 
@@ -44,6 +46,10 @@ class CardInstance:
     @property
     def base_defense(self) -> int | None:
         return self.definition.defense
+
+    @property
+    def keyword_values(self) -> dict:
+        return self.definition.keyword_values
 
     def __repr__(self) -> str:
         return f"CardInstance({self.instance_id}, {self.definition!r}, zone={self.zone.value})"

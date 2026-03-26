@@ -353,6 +353,16 @@ class Game:
                         card_instance_id=card.instance_id,
                     ))
 
+            # Weapon activations (1.4.3): untapped weapons with attack ability
+            for weapon in player.weapons:
+                if self._can_activate_weapon(player_index, weapon):
+                    options.append(ActionOption(
+                        action_id=f"activate_{weapon.instance_id}",
+                        description=f"Attack with {weapon.name} (power={weapon.base_power or 0})",
+                        action_type=ActionType.ACTIVATE_ABILITY,
+                        card_instance_id=weapon.instance_id,
+                    ))
+
         # Instants can be played when you have priority
         self._add_instant_options(options, player_index)
         options.append(self._pass_option())
@@ -417,6 +427,11 @@ class Game:
             card = self.state.find_card(instance_id)
             if card:
                 self._play_card(player_index, card)
+        elif action_id.startswith("activate_"):
+            instance_id = int(action_id.split("_", 1)[1])
+            weapon = self.state.find_card(instance_id)
+            if weapon:
+                self._activate_weapon(player_index, weapon)
 
     def _play_card(self, player_index: int, card: CardInstance) -> None:
         """Play a card from hand/arsenal onto the stack (rules 5.1).
@@ -489,6 +504,107 @@ class Game:
             log.info(f"  Chain attack: {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
         else:
             log.info(f"  Play: {card.name}{color_str}")
+
+    # --- Weapon Activation (rules 1.4.3) ---
+
+    def _can_activate_weapon(self, player_index: int, weapon: CardInstance) -> bool:
+        """Check if a weapon can be activated (untapped, has AP, can pay cost)."""
+        if weapon.is_tapped:
+            return False
+        # Weapons need an action point to activate
+        if self.state.action_points[player_index] < 1:
+            return False
+        # Must be able to pay resource cost
+        cost = self.effect_engine.get_modified_cost(self.state, weapon)
+        if cost > 0:
+            available = self.state.resource_points[player_index]
+            player = self.state.players[player_index]
+            for c in player.hand:
+                if c.pitch is not None:
+                    available += c.pitch
+            if available < cost:
+                return False
+        return True
+
+    def _activate_weapon(self, player_index: int, weapon: CardInstance) -> None:
+        """Activate a weapon to create an attack proxy on the stack (rules 1.4.3).
+
+        Sequence: Tap weapon → Pay costs → Create attack proxy → Put on stack.
+        """
+        player = self.state.players[player_index]
+
+        # Tap the weapon (enforces once-per-turn)
+        weapon.is_tapped = True
+
+        # Pay action point cost
+        self.state.action_points[player_index] -= 1
+
+        # Pay resource cost
+        resource_cost = self.effect_engine.get_modified_cost(self.state, weapon)
+        while self.state.resource_points[player_index] < resource_cost:
+            pitch_decision = build_pitch_decision(
+                self.state, player_index,
+                resource_cost - self.state.resource_points[player_index],
+            )
+            if pitch_decision is None:
+                break
+            response = self._ask(pitch_decision)
+            if response.first:
+                pitch_id = int(response.first.replace("pitch_", ""))
+                pitch_target = player.find_card(pitch_id)
+                if pitch_target:
+                    pitch_card(self.state, player_index, pitch_target)
+
+        pay_resource_cost(self.state, player_index, resource_cost)
+
+        # Create attack proxy — a synthetic card with the weapon's power and keywords
+        proxy = self._create_attack_proxy(weapon, player_index)
+
+        # Put proxy on the stack
+        layer = self.stack_mgr.add_card_layer(self.state, proxy, player_index)
+        layer.has_go_again = weapon.definition.has_go_again
+
+        # Update counters
+        player.turn_counters.num_attacks_played += 1
+        player.turn_counters.num_weapon_attacks += 1
+        player.turn_counters.has_attacked = True
+
+        # Open combat chain if needed
+        if not self.state.combat_chain.is_open:
+            self.combat_mgr.open_chain(self.state)
+
+        log.info(f"  Weapon attack: {weapon.name} (power={weapon.base_power or 0})")
+
+    def _create_attack_proxy(self, weapon: CardInstance, owner_index: int) -> CardInstance:
+        """Create a transient attack card representing a weapon attack."""
+        proxy_def = CardDefinition(
+            unique_id=f"proxy-{weapon.definition.unique_id}",
+            name=f"{weapon.name} (attack)",
+            color=None,
+            pitch=None,
+            cost=None,
+            power=weapon.definition.power,
+            defense=None,
+            health=None,
+            intellect=None,
+            arcane=None,
+            types=frozenset({CardType.ACTION}),
+            subtypes=frozenset({SubType.ATTACK}),
+            supertypes=weapon.definition.supertypes,
+            keywords=weapon.definition.keywords,
+            functional_text="",
+            type_text="Weapon attack proxy",
+            keyword_values=weapon.definition.keyword_values,
+        )
+        proxy = CardInstance(
+            instance_id=self.state.next_instance_id(),
+            definition=proxy_def,
+            owner_index=owner_index,
+            zone=Zone.STACK,
+            is_proxy=True,
+            proxy_source_id=weapon.instance_id,
+        )
+        return proxy
 
     # --- Combat Steps (Section 7) ---
 
@@ -591,6 +707,10 @@ class Game:
         link = self.combat_mgr.add_chain_link(self.state, attack_card, defender_index)
         link.has_go_again = has_go_again
 
+        # If this is a weapon proxy, set the weapon as attack_source
+        if attack_card.is_proxy and attack_card.proxy_source_id is not None:
+            link.attack_source = self.state.find_card(attack_card.proxy_source_id)
+
         # Emit attack declared event (7.2.4)
         self.events.emit(GameEvent(
             event_type=EventType.ATTACK_DECLARED,
@@ -652,6 +772,7 @@ class Game:
             if link.active_attack else frozenset()
         )
         has_dominate = Keyword.DOMINATE in attack_keywords
+        has_overpower = Keyword.OVERPOWER in attack_keywords
 
         # Cards from hand with defense value (7.3.2a)
         for card in player.hand:
@@ -692,6 +813,7 @@ class Game:
         response = self._ask(decision)
 
         hand_cards_defended = 0
+        action_cards_defended = 0
         for opt_id in response.selected_option_ids:
             if opt_id == "pass":
                 continue
@@ -702,9 +824,14 @@ class Game:
                 if card in player.hand:
                     if has_dominate and hand_cards_defended >= 1:
                         continue
+                    # Overpower (8.3.9): can't defend with more than 1 action card
+                    if has_overpower and card.definition.is_action and action_cards_defended >= 1:
+                        continue
                     player.hand.remove(card)
                     player.turn_counters.num_cards_defended_from_hand += 1
                     hand_cards_defended += 1
+                    if card.definition.is_action:
+                        action_cards_defended += 1
                 self.combat_mgr.add_defender(self.state, link, card)
                 log.info(f"  Defended with: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
 
@@ -933,12 +1060,64 @@ class Game:
             options=options,
         )
 
+    def _apply_equipment_degradation(self) -> None:
+        """Apply Battleworn, Blade Break, and Temper to equipment that defended."""
+        for link in self.state.combat_chain.chain_links:
+            for card in link.defending_cards:
+                if not card.definition.is_equipment:
+                    continue
+                keywords = self.effect_engine.get_modified_keywords(self.state, card)
+
+                # Blade Break (8.3.3): destroy after defending
+                if Keyword.BLADE_BREAK in keywords:
+                    self._destroy_equipment(card)
+                    log.info(f"  {card.name} destroyed (Blade Break)")
+                    continue  # skip other degradation if destroyed
+
+                # Battleworn (8.3.2): lose 1 defense counter after defending
+                if Keyword.BATTLEWORN in keywords:
+                    card.counters["defense"] = card.counters.get("defense", 0) - 1
+                    eff_def = self.effect_engine.get_modified_defense(self.state, card)
+                    log.info(f"  {card.name} worn (Battleworn, effective defense={eff_def})")
+
+                # Temper: lose 1 defense counter; if effective defense <= 0, destroy
+                if Keyword.TEMPER in keywords:
+                    card.counters["defense"] = card.counters.get("defense", 0) - 1
+                    eff_def = self.effect_engine.get_modified_defense(self.state, card)
+                    if eff_def <= 0:
+                        self._destroy_equipment(card)
+                        log.info(f"  {card.name} destroyed (Temper, defense reached 0)")
+                    else:
+                        log.info(f"  {card.name} tempered (effective defense={eff_def})")
+
+    def _destroy_equipment(self, card: CardInstance) -> None:
+        """Destroy an equipment card — remove from slot and move to graveyard."""
+        owner = self.state.players[card.owner_index]
+        for slot, eq in owner.equipment.items():
+            if eq is card:
+                owner.equipment[slot] = None
+                break
+        self.state.move_card(card, Zone.GRAVEYARD)
+        self.events.emit(GameEvent(
+            event_type=EventType.DESTROY,
+            source=card,
+            card=card,
+            target_player=card.owner_index,
+        ))
+
     def _close_step(self) -> None:
-        """Close Step (7.7): Combat chain closes, cards go to graveyard."""
+        """Close Step (7.7): Combat chain closes, cards go to graveyard.
+
+        Equipment degradation (Battleworn, Blade Break, Temper) is applied
+        to equipment that defended during this combat chain.
+        """
         # 7.7.3: "combat chain closes" event occurs
         self.events.emit(GameEvent(
             event_type=EventType.COMBAT_CHAIN_CLOSES,
         ))
+
+        # Apply equipment degradation before close_chain moves cards
+        self._apply_equipment_degradation()
 
         self.combat_mgr.close_chain(self.state)
         self.effect_engine.cleanup_expired_effects(self.state, EffectDuration.END_OF_COMBAT)
