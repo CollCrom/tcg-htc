@@ -42,6 +42,11 @@ Output a structured review with:
 - **Missing tests**: specific scenarios that should have test coverage
 - **Ambiguous**: rules that are unclear and need human judgment
 
+### Step 6: Verdict
+After your review, submit a formal PR review decision:
+- **Approve** if there are no critical issues. Minor issues and missing tests alone do not block.
+- **Request changes** if there are critical issues (wrong game outcomes, illegal plays allowed, legal plays blocked).
+
 ## Severity Guide
 
 - **Critical**: The engine produces a wrong game outcome (wrong damage, illegal play allowed, legal play blocked, wrong winner).
