@@ -2,16 +2,9 @@
 
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.combat import CombatManager
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus
 from htc.engine.game import Game
-from htc.engine.stack import StackManager
 from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
-from htc.state.combat_state import ChainLink, CombatChainState
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
-from tests.conftest import make_card
+from tests.conftest import make_card, make_game_shell
 
 
 # ---------------------------------------------------------------------------
@@ -53,22 +46,6 @@ def _make_equipment(
     )
 
 
-def _make_game_shell() -> Game:
-    game = Game.__new__(Game)
-    game.state = GameState()
-    game.state.players = [
-        PlayerState(index=0, life_total=20),
-        PlayerState(index=1, life_total=20),
-    ]
-    game.effect_engine = EffectEngine()
-    game.events = EventBus()
-    game.stack_mgr = StackManager()
-    game.combat_mgr = CombatManager(game.effect_engine)
-    game._register_event_handlers()
-    game.state.action_points = {0: 0, 1: 0}
-    game.state.resource_points = {0: 0, 1: 0}
-    game.state.turn_player_index = 0
-    return game
 
 
 def _setup_defending_equipment(game: Game, equipment: CardInstance) -> None:
@@ -98,7 +75,7 @@ def _setup_defending_equipment(game: Game, equipment: CardInstance) -> None:
 
 def test_battleworn_loses_defense_counter():
     """Battleworn equipment should lose 1 defense counter after defending."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=2, keywords=frozenset({Keyword.BATTLEWORN}))
     _setup_defending_equipment(game, eq)
 
@@ -112,7 +89,7 @@ def test_battleworn_loses_defense_counter():
 
 def test_battleworn_stacks_over_multiple_combats():
     """Multiple defenses should accumulate Battleworn counters."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=3, keywords=frozenset({Keyword.BATTLEWORN}))
 
     # First combat
@@ -133,7 +110,7 @@ def test_battleworn_stacks_over_multiple_combats():
 
 def test_battleworn_defense_floors_at_zero():
     """Battleworn can reduce effective defense to 0 but not below (clamped by engine)."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=1, keywords=frozenset({Keyword.BATTLEWORN}))
     _setup_defending_equipment(game, eq)
 
@@ -151,7 +128,7 @@ def test_battleworn_defense_floors_at_zero():
 
 def test_blade_break_destroys_equipment():
     """Blade Break equipment should be destroyed after defending."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=2, keywords=frozenset({Keyword.BLADE_BREAK}))
     _setup_defending_equipment(game, eq)
 
@@ -164,7 +141,7 @@ def test_blade_break_destroys_equipment():
 
 def test_blade_break_skips_other_degradation():
     """If Blade Break destroys, Battleworn should not also apply."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(
         defense=2,
         keywords=frozenset({Keyword.BLADE_BREAK, Keyword.BATTLEWORN}),
@@ -186,7 +163,7 @@ def test_blade_break_skips_other_degradation():
 
 def test_temper_loses_counter():
     """Temper equipment loses 1 defense counter per defend."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=3, keywords=frozenset({Keyword.TEMPER}))
     _setup_defending_equipment(game, eq)
 
@@ -198,7 +175,7 @@ def test_temper_loses_counter():
 
 def test_temper_destroys_at_zero_defense():
     """Temper equipment is destroyed when effective defense reaches 0."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=1, keywords=frozenset({Keyword.TEMPER}))
     _setup_defending_equipment(game, eq)
 
@@ -211,7 +188,7 @@ def test_temper_destroys_at_zero_defense():
 
 def test_temper_progressive_destruction():
     """Temper equipment survives multiple defenses then breaks."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=2, keywords=frozenset({Keyword.TEMPER}))
 
     # First combat: defense goes from 2 to 1
@@ -236,7 +213,7 @@ def test_temper_progressive_destruction():
 
 def test_non_equipment_not_degraded():
     """Regular hand cards used to defend should not be affected by degradation."""
-    game = _make_game_shell()
+    game = make_game_shell()
     card = make_card(instance_id=10, defense=3)
 
     attack = make_card(instance_id=1, power=5)
@@ -257,7 +234,7 @@ def test_non_equipment_not_degraded():
 
 def test_close_chain_skips_destroyed_equipment():
     """Equipment destroyed by degradation should not be restored to slot."""
-    game = _make_game_shell()
+    game = make_game_shell()
     eq = _make_equipment(defense=1, keywords=frozenset({Keyword.BLADE_BREAK}))
     _setup_defending_equipment(game, eq)
 

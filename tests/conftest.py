@@ -6,9 +6,15 @@ from htc.cards.card import CardDefinition
 from htc.cards.card_db import CardDatabase
 from htc.cards.instance import CardInstance
 from htc.decks.loader import parse_deck_list
+from htc.engine.combat import CombatManager
+from htc.engine.effects import EffectEngine
+from htc.engine.events import EventBus
 from htc.engine.game import Game, GameResult
+from htc.engine.stack import StackManager
 from htc.enums import CardType, SubType, Zone
 from htc.player.random_player import RandomPlayer
+from htc.state.game_state import GameState
+from htc.state.player_state import PlayerState
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 
@@ -89,3 +95,65 @@ def make_card(
         owner_index=owner_index,
         zone=zone,
     )
+
+
+def make_pitch_card(
+    instance_id: int = 200,
+    owner_index: int = 0,
+    pitch: int = 3,
+) -> CardInstance:
+    """Create a pitchable card for testing resource payment."""
+    defn = CardDefinition(
+        unique_id=f"pitch-{instance_id}",
+        name="Pitch Fodder",
+        color=None,
+        pitch=pitch,
+        cost=0,
+        power=None,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset(),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.HAND,
+    )
+
+
+def make_state(life: int = 20) -> GameState:
+    """Create a minimal GameState with two players."""
+    state = GameState()
+    state.players = [
+        PlayerState(index=0, life_total=life),
+        PlayerState(index=1, life_total=life),
+    ]
+    return state
+
+
+def make_game_shell(
+    *,
+    action_points: dict[int, int] | None = None,
+    resource_points: dict[int, int] | None = None,
+    life: int = 20,
+) -> Game:
+    """Create a minimal Game object for unit-testing internal methods."""
+    game = Game.__new__(Game)
+    game.state = make_state(life=life)
+    game.effect_engine = EffectEngine()
+    game.events = EventBus()
+    game.stack_mgr = StackManager()
+    game.combat_mgr = CombatManager(game.effect_engine)
+    game._register_event_handlers()
+    game.state.action_points = action_points or {0: 0, 1: 0}
+    game.state.resource_points = resource_points or {0: 0, 1: 0}
+    game.state.turn_player_index = 0
+    return game

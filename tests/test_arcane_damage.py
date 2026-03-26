@@ -3,37 +3,9 @@
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
 from htc.engine.actions import PlayerResponse
-from htc.engine.combat import CombatManager
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus
 from htc.engine.game import Game
-from htc.engine.stack import StackManager
 from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_game_shell() -> Game:
-    game = Game.__new__(Game)
-    game.state = GameState()
-    game.state.players = [
-        PlayerState(index=0, life_total=20),
-        PlayerState(index=1, life_total=20),
-    ]
-    game.effect_engine = EffectEngine()
-    game.events = EventBus()
-    game.stack_mgr = StackManager()
-    game.combat_mgr = CombatManager(game.effect_engine)
-    game._register_event_handlers()
-    game.state.action_points = {0: 1, 1: 0}
-    game.state.resource_points = {0: 0, 1: 0}
-    game.state.turn_player_index = 0
-    return game
+from tests.conftest import make_game_shell, make_pitch_card
 
 
 def _make_arcane_weapon(
@@ -104,32 +76,6 @@ def _make_arcane_barrier_equipment(
     )
 
 
-def _make_pitch_card(instance_id: int = 200, owner_index: int = 1, pitch: int = 3) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"pitch-{instance_id}",
-        name="Pitch Fodder",
-        color=None,
-        pitch=pitch,
-        cost=0,
-        power=None,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset(),
-        supertypes=frozenset(),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
-    )
-
 
 def _make_arcane_action(
     instance_id: int = 300,
@@ -170,7 +116,7 @@ def _make_arcane_action(
 
 def test_arcane_damage_reduces_life():
     """Arcane damage should reduce the target's life total."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     source = _make_arcane_weapon()
 
     game._deal_arcane_damage(source, 1, 3)
@@ -180,7 +126,7 @@ def test_arcane_damage_reduces_life():
 
 def test_arcane_damage_tracks_counters():
     """Arcane damage should update damage_taken, life_lost, damage_dealt."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     source = _make_arcane_weapon(owner_index=0)
 
     game._deal_arcane_damage(source, 1, 4)
@@ -192,7 +138,7 @@ def test_arcane_damage_tracks_counters():
 
 def test_arcane_damage_checks_game_over():
     """Arcane damage killing a player should end the game."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     game.state.players[1].life_total = 3
     source = _make_arcane_weapon(owner_index=0)
 
@@ -204,7 +150,7 @@ def test_arcane_damage_checks_game_over():
 
 def test_zero_arcane_damage_does_nothing():
     """Zero arcane damage should not emit events or change state."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     source = _make_arcane_weapon()
 
     game._deal_arcane_damage(source, 1, 0)
@@ -219,7 +165,7 @@ def test_zero_arcane_damage_does_nothing():
 
 def test_arcane_barrier_prevents_damage():
     """Player with Arcane Barrier who pays resources prevents arcane damage."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
 
     # Player 1 has Arcane Barrier 2 equipment and resources
     eq = _make_arcane_barrier_equipment(barrier_value=2)
@@ -238,7 +184,7 @@ def test_arcane_barrier_prevents_damage():
 
 def test_arcane_barrier_full_prevention():
     """If barrier >= damage, all damage can be prevented."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
 
     eq = _make_arcane_barrier_equipment(barrier_value=3)
     game.state.players[1].equipment[EquipmentSlot.CHEST] = eq
@@ -253,7 +199,7 @@ def test_arcane_barrier_full_prevention():
 
 def test_arcane_barrier_decline():
     """Player who declines Arcane Barrier takes full damage."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
 
     eq = _make_arcane_barrier_equipment(barrier_value=2)
     game.state.players[1].equipment[EquipmentSlot.CHEST] = eq
@@ -269,7 +215,7 @@ def test_arcane_barrier_decline():
 
 def test_arcane_barrier_no_equipment():
     """Without Arcane Barrier equipment, full damage is dealt."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
 
     game._deal_arcane_damage(_make_arcane_weapon(), 1, 3)
 
@@ -278,7 +224,7 @@ def test_arcane_barrier_no_equipment():
 
 def test_arcane_barrier_no_resources():
     """Arcane Barrier without resources to pay can't prevent anything."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
 
     eq = _make_arcane_barrier_equipment(barrier_value=2)
     game.state.players[1].equipment[EquipmentSlot.CHEST] = eq
@@ -292,13 +238,13 @@ def test_arcane_barrier_no_resources():
 
 def test_arcane_barrier_with_pitching():
     """Player can pitch cards to pay for Arcane Barrier."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
 
     eq = _make_arcane_barrier_equipment(barrier_value=2)
     game.state.players[1].equipment[EquipmentSlot.CHEST] = eq
 
     # Player 1 has a pitchable card but no floating resources
-    pitch_card = _make_pitch_card(instance_id=201, owner_index=1, pitch=3)
+    pitch_card = make_pitch_card(instance_id=201, owner_index=1, pitch=3)
     game.state.players[1].hand = [pitch_card]
 
     # Mock: choose barrier_2, then pitch_201 for resources
@@ -321,7 +267,7 @@ def test_arcane_barrier_with_pitching():
 
 def test_arcane_weapon_deals_arcane_damage():
     """Activating an arcane weapon should deal arcane damage, not create attack proxy."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     staff = _make_arcane_weapon(arcane=2)
     game.state.players[0].weapons.append(staff)
 
@@ -342,7 +288,7 @@ def test_arcane_weapon_deals_arcane_damage():
 
 def test_arcane_weapon_go_again():
     """Arcane weapon with Go Again should grant an action point."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     staff = _make_arcane_weapon(
         arcane=1,
         keywords=frozenset({Keyword.GO_AGAIN}),
@@ -378,7 +324,7 @@ def test_arcane_weapon_activation_cost_from_field():
 
 def test_arcane_action_card_deals_damage_on_resolve():
     """Non-attack action card with arcane value should deal arcane damage when resolved."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     card = _make_arcane_action(arcane=3, cost=0)
 
     # Put card on stack and resolve
@@ -391,7 +337,7 @@ def test_arcane_action_card_deals_damage_on_resolve():
 
 def test_arcane_action_card_with_barrier():
     """Arcane Barrier should apply when arcane action card resolves."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
 
     eq = _make_arcane_barrier_equipment(barrier_value=2)
     game.state.players[1].equipment[EquipmentSlot.CHEST] = eq

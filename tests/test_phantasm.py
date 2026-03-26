@@ -6,38 +6,9 @@ destroy the Phantasm attack.
 
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.combat import CombatManager
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus
 from htc.engine.game import Game
-from htc.engine.stack import StackManager
 from htc.enums import CardType, Keyword, SubType, SuperType, Zone
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
-from tests.conftest import make_card
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_game_shell() -> Game:
-    game = Game.__new__(Game)
-    game.state = GameState()
-    game.state.players = [
-        PlayerState(index=0, life_total=20),
-        PlayerState(index=1, life_total=20),
-    ]
-    game.effect_engine = EffectEngine()
-    game.events = EventBus()
-    game.stack_mgr = StackManager()
-    game.combat_mgr = CombatManager(game.effect_engine)
-    game._register_event_handlers()
-    game.state.action_points = {0: 0, 1: 0}
-    game.state.resource_points = {0: 0, 1: 0}
-    game.state.turn_player_index = 0
-    return game
+from tests.conftest import make_card, make_game_shell
 
 
 def _make_phantasm_attack(instance_id: int = 1, power: int = 5) -> CardInstance:
@@ -111,7 +82,7 @@ def _setup_combat(game: Game, attack: CardInstance, defenders: list[CardInstance
 
 def test_phantasm_triggered_by_non_illusionist_6_power():
     """Non-Illusionist attack action with 6+ power destroys Phantasm attack."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     defender = _make_defender(power=6)
     _setup_combat(game, attack, [defender])
@@ -125,7 +96,7 @@ def test_phantasm_triggered_by_non_illusionist_6_power():
 
 def test_phantasm_not_triggered_by_5_power():
     """Attack action with only 5 power does NOT trigger Phantasm."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     defender = _make_defender(power=5)
     _setup_combat(game, attack, [defender])
@@ -138,7 +109,7 @@ def test_phantasm_not_triggered_by_5_power():
 
 def test_phantasm_not_triggered_by_illusionist():
     """Illusionist attack action with 6+ power does NOT trigger Phantasm."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     defender = _make_defender(
         power=7, supertypes=frozenset({SuperType.ILLUSIONIST}),
@@ -152,7 +123,7 @@ def test_phantasm_not_triggered_by_illusionist():
 
 def test_phantasm_not_triggered_by_non_attack_action():
     """Non-attack action card (even with 6+ power) does NOT trigger Phantasm."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     defender = _make_defender(power=8, is_attack_action=False)
     _setup_combat(game, attack, [defender])
@@ -164,7 +135,7 @@ def test_phantasm_not_triggered_by_non_attack_action():
 
 def test_phantasm_not_triggered_without_keyword():
     """Attack without Phantasm keyword is not affected."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = make_card(instance_id=1, power=5)  # no Phantasm
     defender = _make_defender(power=6)
     _setup_combat(game, attack, [defender])
@@ -176,7 +147,7 @@ def test_phantasm_not_triggered_without_keyword():
 
 def test_phantasm_triggered_by_any_qualifying_defender():
     """If ANY defender meets the criteria, Phantasm triggers."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     small_def = _make_defender(instance_id=10, name="Small", power=3)
     big_def = _make_defender(instance_id=11, name="Big", power=7)
@@ -190,7 +161,7 @@ def test_phantasm_triggered_by_any_qualifying_defender():
 
 def test_phantasm_exact_6_power_triggers():
     """Exactly 6 power should trigger (>= 6, not > 6)."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     defender = _make_defender(power=6)
     _setup_combat(game, attack, [defender])
@@ -202,7 +173,7 @@ def test_phantasm_exact_6_power_triggers():
 
 def test_phantasm_no_defenders():
     """No defenders means Phantasm doesn't trigger."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     _setup_combat(game, attack, [])
 
@@ -213,7 +184,7 @@ def test_phantasm_no_defenders():
 
 def test_phantasm_defending_cards_cleaned_up():
     """When Phantasm triggers, defending cards should also be cleaned up by close_chain."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
     defender = _make_defender(power=6)
     _setup_combat(game, attack, [defender])
@@ -228,7 +199,7 @@ def test_phantasm_defending_cards_cleaned_up():
 
 def test_phantasm_equipment_does_not_trigger():
     """Equipment defense should not trigger Phantasm (not an attack action)."""
-    game = _make_game_shell()
+    game = make_game_shell()
     attack = _make_phantasm_attack()
 
     eq_def = CardDefinition(
