@@ -67,6 +67,8 @@ class EffectEngine:
 
     def get_modified_defense(self, state: GameState, card: CardInstance) -> int:
         base = card.base_defense or 0
+        # Include defense counters (from Battleworn/Temper degradation)
+        base += card.counters.get("defense", 0)
         return self._resolve_numeric_property(state, card, base, NumericProperty.DEFENSE)
 
     def get_modified_cost(self, state: GameState, card: CardInstance) -> int:

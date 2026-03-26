@@ -1053,12 +1053,64 @@ class Game:
             options=options,
         )
 
+    def _apply_equipment_degradation(self) -> None:
+        """Apply Battleworn, Blade Break, and Temper to equipment that defended."""
+        for link in self.state.combat_chain.chain_links:
+            for card in link.defending_cards:
+                if not card.definition.is_equipment:
+                    continue
+                keywords = self.effect_engine.get_modified_keywords(self.state, card)
+
+                # Blade Break (8.3.3): destroy after defending
+                if Keyword.BLADE_BREAK in keywords:
+                    self._destroy_equipment(card)
+                    log.info(f"  {card.name} destroyed (Blade Break)")
+                    continue  # skip other degradation if destroyed
+
+                # Battleworn (8.3.2): lose 1 defense counter after defending
+                if Keyword.BATTLEWORN in keywords:
+                    card.counters["defense"] = card.counters.get("defense", 0) - 1
+                    eff_def = self.effect_engine.get_modified_defense(self.state, card)
+                    log.info(f"  {card.name} worn (Battleworn, effective defense={eff_def})")
+
+                # Temper: lose 1 defense counter; if effective defense <= 0, destroy
+                if Keyword.TEMPER in keywords:
+                    card.counters["defense"] = card.counters.get("defense", 0) - 1
+                    eff_def = self.effect_engine.get_modified_defense(self.state, card)
+                    if eff_def <= 0:
+                        self._destroy_equipment(card)
+                        log.info(f"  {card.name} destroyed (Temper, defense reached 0)")
+                    else:
+                        log.info(f"  {card.name} tempered (effective defense={eff_def})")
+
+    def _destroy_equipment(self, card: CardInstance) -> None:
+        """Destroy an equipment card — remove from slot and move to graveyard."""
+        owner = self.state.players[card.owner_index]
+        for slot, eq in owner.equipment.items():
+            if eq is card:
+                owner.equipment[slot] = None
+                break
+        self.state.move_card(card, Zone.GRAVEYARD)
+        self.events.emit(GameEvent(
+            event_type=EventType.DESTROY,
+            source=card,
+            card=card,
+            target_player=card.owner_index,
+        ))
+
     def _close_step(self) -> None:
-        """Close Step (7.7): Combat chain closes, cards go to graveyard."""
+        """Close Step (7.7): Combat chain closes, cards go to graveyard.
+
+        Equipment degradation (Battleworn, Blade Break, Temper) is applied
+        to equipment that defended during this combat chain.
+        """
         # 7.7.3: "combat chain closes" event occurs
         self.events.emit(GameEvent(
             event_type=EventType.COMBAT_CHAIN_CLOSES,
         ))
+
+        # Apply equipment degradation before close_chain moves cards
+        self._apply_equipment_degradation()
 
         self.combat_mgr.close_chain(self.state)
         self.effect_engine.cleanup_expired_effects(self.state, EffectDuration.END_OF_COMBAT)
