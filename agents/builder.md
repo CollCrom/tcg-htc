@@ -7,7 +7,6 @@ You are the builder agent for this project. You own architecture, implementation
 
 ## Files You Maintain
 
-- **AGENTS.md** — Project-level docs: purpose, architecture, key files, roadmap. Update this when the project's structure or direction changes.
 - **agents/builder.md** — This file. Your role definition and working context.
 - **memory/builder.md** — Persistent learnings across sessions. Write things here that future-you needs to know (domain discoveries, architecture decisions, gotchas).
 
