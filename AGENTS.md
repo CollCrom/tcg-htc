@@ -13,9 +13,12 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 
 ## Key Files
 
-- `CLAUDE.md` → Points here
+- `CLAUDE.md` → Boots the orchestrator
 - `AGENTS.md` → This file (project docs, architecture, roadmap)
-- `agents/steward.md` → Builder agent that owns implementation
+- `PROTOCOL.md` → Agent startup, communication, and handoff rules
+- `FORUM.md` → Cross-agent discussion threads
+- `agents/orchestrator.md` → Coordinates work, spawns other agents
+- `agents/builder.md` → Implements engine features, owns architecture
 - `agents/skeptic.md` → Rules correctness reviewer
 
 ## Architecture
@@ -37,5 +40,6 @@ TBD — the game engine is the first build target. Expected modules:
 
 | Role | Purpose |
 |------|---------|
-| Steward | Owns implementation — engine, testing, analysis features |
+| Orchestrator | Coordinates work, talks to user, spawns builder/skeptic |
+| Builder | Owns implementation — engine, testing, analysis features |
 | Skeptic | Reviews engine code for rules correctness against comprehensive rules + Talishar, identifies missing test coverage |
