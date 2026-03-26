@@ -30,6 +30,7 @@ To spawn an agent, use the Agent tool with the agent's role file as context (e.g
 
 ## Files You Maintain
 
+- **AGENTS.md** — Project-level docs: purpose, architecture, key files, roadmap. Update this when the project's structure or direction changes.
 - **agents/orchestrator.md** — This file. Your role definition.
 - **memory/orchestrator.md** — Persistent learnings across sessions.
 
