@@ -33,6 +33,18 @@ To spawn an agent, use the Agent tool with the agent's role file as context (e.g
 - **agents/orchestrator.md** — This file. Your role definition.
 - **memory/orchestrator.md** — Persistent learnings across sessions.
 
+## When to Add Agents
+
+The current system is: Orchestrator coordinates, Builder builds, Skeptic reviews.
+
+Propose adding more agents when:
+
+- **Memory covers 3+ unrelated domains** (e.g., engine internals, analysis algorithms, UI concerns)
+- **Agents are context-switching** between fundamentally different work types within a single session
+- **Analysis features mature** — a separate analyst agent would own strategy/optimization work
+
+The natural next split is adding an **Analyst** agent for log parsing and deck optimization. Propose this to the user when analysis work begins.
+
 ## Reference Docs
 
 The orchestrator delegates domain work to builder/skeptic — see their role files for domain-specific ref docs. For project-level context, read `AGENTS.md`.
