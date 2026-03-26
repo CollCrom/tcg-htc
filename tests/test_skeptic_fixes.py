@@ -1,28 +1,10 @@
 """Tests for skeptic-identified critical issues."""
 
 from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
 from htc.engine.continuous import make_keyword_grant
 from htc.engine.effects import EffectEngine
 from htc.enums import CardType, Keyword, SubType, Zone
-from htc.state.combat_state import ChainLink
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
-from tests.conftest import make_card, run_game
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_state() -> GameState:
-    state = GameState()
-    state.players = [
-        PlayerState(index=0, life_total=20),
-        PlayerState(index=1, life_total=20),
-    ]
-    return state
+from tests.conftest import make_card, make_state, run_game
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +30,7 @@ def test_life_total_floors_at_zero():
 def test_simultaneous_death_is_draw():
     """If both players reach 0 life, winner should be None (draw)."""
     from htc.engine.game import Game
-    state = _make_state()
+    state = make_state()
     state.players[0].life_total = 0
     state.players[1].life_total = 0
 
@@ -73,7 +55,7 @@ def test_simultaneous_death_is_draw():
 def test_single_death_has_winner():
     """If only one player reaches 0 life, the other wins."""
     from htc.engine.game import Game
-    state = _make_state()
+    state = make_state()
     state.players[0].life_total = 0
     state.players[1].life_total = 5
 
@@ -133,7 +115,7 @@ def test_dominate_limits_hand_defense():
 def test_dominate_via_continuous_effect():
     """Dominate granted by a continuous effect should be detected."""
     engine = EffectEngine()
-    state = _make_state()
+    state = make_state()
     card = make_card(power=5)
 
     assert Keyword.DOMINATE not in engine.get_modified_keywords(state, card)

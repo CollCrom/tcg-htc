@@ -2,16 +2,9 @@
 
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.combat import CombatManager
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus, EventType, GameEvent
-from htc.engine.game import Game
-from htc.engine.stack import StackManager
 from htc.enums import CardType, Keyword, SubType, Zone
-from htc.state.combat_state import CombatChainState
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
 from htc.state.turn_counters import TurnCounters
+from tests.conftest import make_game_shell, make_pitch_card
 
 
 # ---------------------------------------------------------------------------
@@ -53,50 +46,6 @@ def _make_weapon(
     )
 
 
-def _make_pitch_card(instance_id: int = 200, owner_index: int = 0, pitch: int = 3) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"pitch-{instance_id}",
-        name="Pitch Fodder",
-        color=None,
-        pitch=pitch,
-        cost=0,
-        power=None,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset(),
-        supertypes=frozenset(),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
-    )
-
-
-def _make_game_shell() -> Game:
-    """Minimal Game for testing weapon activation."""
-    game = Game.__new__(Game)
-    game.state = GameState()
-    game.state.players = [
-        PlayerState(index=0, life_total=20),
-        PlayerState(index=1, life_total=20),
-    ]
-    game.effect_engine = EffectEngine()
-    game.events = EventBus()
-    game.stack_mgr = StackManager()
-    game.combat_mgr = CombatManager(game.effect_engine)
-    game._register_event_handlers()
-    game.state.action_points = {0: 1, 1: 0}
-    game.state.resource_points = {0: 0, 1: 0}
-    game.state.turn_player_index = 0
-    return game
 
 
 # ---------------------------------------------------------------------------
@@ -105,14 +54,14 @@ def _make_game_shell() -> Game:
 
 
 def test_can_activate_untapped_weapon():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
     assert game._can_activate_weapon(0, weapon) is True
 
 
 def test_cannot_activate_tapped_weapon():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     weapon.is_tapped = True
     game.state.players[0].weapons.append(weapon)
@@ -120,7 +69,7 @@ def test_cannot_activate_tapped_weapon():
 
 
 def test_cannot_activate_without_action_point():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     game.state.action_points[0] = 0
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
@@ -128,7 +77,7 @@ def test_cannot_activate_without_action_point():
 
 
 def test_cannot_activate_weapon_without_resources():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon(cost=2)
     game.state.players[0].weapons.append(weapon)
     # No resources and no cards to pitch
@@ -136,10 +85,10 @@ def test_cannot_activate_weapon_without_resources():
 
 
 def test_can_activate_weapon_with_pitchable_cards():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon(cost=2)
     game.state.players[0].weapons.append(weapon)
-    game.state.players[0].hand.append(_make_pitch_card(pitch=3))
+    game.state.players[0].hand.append(make_pitch_card(pitch=3))
     assert game._can_activate_weapon(0, weapon) is True
 
 
@@ -149,7 +98,7 @@ def test_can_activate_weapon_with_pitchable_cards():
 
 
 def test_proxy_inherits_weapon_power():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon(power=5)
     proxy = game._create_attack_proxy(weapon, 0)
 
@@ -161,7 +110,7 @@ def test_proxy_inherits_weapon_power():
 
 
 def test_proxy_inherits_weapon_keywords():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon(keywords=frozenset({Keyword.GO_AGAIN}))
     proxy = game._create_attack_proxy(weapon, 0)
 
@@ -170,7 +119,7 @@ def test_proxy_inherits_weapon_keywords():
 
 def test_proxy_is_not_sent_to_graveyard():
     """Proxies should be removed (not graveyarded) when combat chain closes."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon(power=3)
     proxy = game._create_attack_proxy(weapon, 0)
 
@@ -193,7 +142,7 @@ def test_proxy_is_not_sent_to_graveyard():
 
 
 def test_weapon_tapped_after_activation():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
 
@@ -205,7 +154,7 @@ def test_weapon_tapped_after_activation():
 
 
 def test_weapon_activation_consumes_action_point():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
     game._activate_weapon(0, weapon)
@@ -214,7 +163,7 @@ def test_weapon_activation_consumes_action_point():
 
 
 def test_weapon_activation_puts_proxy_on_stack():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
     game._activate_weapon(0, weapon)
@@ -228,7 +177,7 @@ def test_weapon_activation_puts_proxy_on_stack():
 
 
 def test_weapon_activation_updates_counters():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
     game._activate_weapon(0, weapon)
@@ -240,7 +189,7 @@ def test_weapon_activation_updates_counters():
 
 
 def test_weapon_activation_opens_combat_chain():
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
     assert game.state.combat_chain.is_open is False
@@ -252,7 +201,7 @@ def test_weapon_activation_opens_combat_chain():
 
 def test_weapon_stays_in_weapon_zone():
     """After activation, weapon should still be in weapon zone (just tapped)."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon()
     game.state.players[0].weapons.append(weapon)
     game._activate_weapon(0, weapon)
@@ -263,7 +212,7 @@ def test_weapon_stays_in_weapon_zone():
 
 def test_go_again_from_weapon():
     """Weapon with Go Again should set has_go_again on the stack layer."""
-    game = _make_game_shell()
+    game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon(keywords=frozenset({Keyword.GO_AGAIN}))
     game.state.players[0].weapons.append(weapon)
     game._activate_weapon(0, weapon)

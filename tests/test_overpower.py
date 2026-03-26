@@ -1,33 +1,8 @@
 """Tests for Overpower keyword (8.3.9): limits defense to 1 action card from hand."""
 
 from htc.engine.actions import PlayerResponse
-from htc.engine.combat import CombatManager
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus
-from htc.engine.game import Game
-from htc.engine.stack import StackManager
 from htc.enums import Keyword, Zone
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
-from tests.conftest import make_card
-
-
-def _make_game_shell() -> Game:
-    game = Game.__new__(Game)
-    game.state = GameState()
-    game.state.players = [
-        PlayerState(index=0, life_total=20),
-        PlayerState(index=1, life_total=20),
-    ]
-    game.effect_engine = EffectEngine()
-    game.events = EventBus()
-    game.stack_mgr = StackManager()
-    game.combat_mgr = CombatManager(game.effect_engine)
-    game._register_event_handlers()
-    game.state.action_points = {0: 0, 1: 0}
-    game.state.resource_points = {0: 0, 1: 0}
-    game.state.turn_player_index = 0
-    return game
+from tests.conftest import make_card, make_game_shell
 
 
 def _mock_ask(first_response: PlayerResponse):
@@ -45,7 +20,7 @@ def _mock_ask(first_response: PlayerResponse):
 
 def test_overpower_limits_action_card_defense():
     """With Overpower, only 1 action card should be accepted for defense."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     attack = make_card(instance_id=1, power=8, keywords=frozenset({Keyword.OVERPOWER}))
@@ -72,7 +47,7 @@ def test_overpower_limits_action_card_defense():
 
 def test_overpower_does_not_limit_equipment():
     """Overpower should not limit equipment defense."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     from htc.cards.card import CardDefinition
@@ -109,7 +84,7 @@ def test_overpower_does_not_limit_equipment():
 
 def test_no_overpower_allows_multiple_action_cards():
     """Without Overpower, multiple action cards can defend."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     attack = make_card(instance_id=1, power=8)

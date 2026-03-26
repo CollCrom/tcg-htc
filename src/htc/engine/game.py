@@ -465,21 +465,7 @@ class Game:
 
         # 5.1.6: Pay resource cost (pitch cards as needed)
         resource_cost = calculate_play_cost(self.state, card, self.effect_engine)
-        while self.state.resource_points[player_index] < resource_cost:
-            pitch_decision = build_pitch_decision(
-                self.state, player_index,
-                resource_cost - self.state.resource_points[player_index],
-            )
-            if pitch_decision is None:
-                break
-            response = self._ask(pitch_decision)
-            if response.first:
-                pitch_id = int(response.first.replace("pitch_", ""))
-                pitch_target = player.find_card(pitch_id)
-                if pitch_target:
-                    pitch_card(self.state, player_index, pitch_target)
-
-        pay_resource_cost(self.state, player_index, resource_cost)
+        self._pitch_to_pay(player_index, resource_cost)
 
         # Update turn counters
         if card.definition.is_attack_action:
@@ -601,21 +587,7 @@ class Game:
         prevent_amount = int(response.first.replace("barrier_", ""))
 
         # Pay resources (pitch cards as needed)
-        while self.state.resource_points[player_index] < prevent_amount:
-            pitch_decision = build_pitch_decision(
-                self.state, player_index,
-                prevent_amount - self.state.resource_points[player_index],
-            )
-            if pitch_decision is None:
-                break
-            pitch_response = self._ask(pitch_decision)
-            if pitch_response.first:
-                pitch_id = int(pitch_response.first.replace("pitch_", ""))
-                pitch_target = player.find_card(pitch_id)
-                if pitch_target:
-                    pitch_card(self.state, player_index, pitch_target)
-
-        pay_resource_cost(self.state, player_index, prevent_amount)
+        self._pitch_to_pay(player_index, prevent_amount)
 
         log.info(f"  Arcane Barrier: Player {player_index} prevents {prevent_amount} arcane damage")
         return damage - prevent_amount
@@ -669,21 +641,7 @@ class Game:
 
         # Pay resource cost
         resource_cost = self._weapon_activation_cost(weapon)
-        while self.state.resource_points[player_index] < resource_cost:
-            pitch_decision = build_pitch_decision(
-                self.state, player_index,
-                resource_cost - self.state.resource_points[player_index],
-            )
-            if pitch_decision is None:
-                break
-            response = self._ask(pitch_decision)
-            if response.first:
-                pitch_id = int(response.first.replace("pitch_", ""))
-                pitch_target = player.find_card(pitch_id)
-                if pitch_target:
-                    pitch_card(self.state, player_index, pitch_target)
-
-        pay_resource_cost(self.state, player_index, resource_cost)
+        self._pitch_to_pay(player_index, resource_cost)
 
         # Update counters
         player.turn_counters.num_weapon_attacks += 1
@@ -1483,6 +1441,24 @@ class Game:
             self.state.winner = 1 - dead[0].index
             self.state.game_over = True
             log.info(f"Player {dead[0].index} defeated! Player {1 - dead[0].index} wins!")
+
+    def _pitch_to_pay(self, player_index: int, cost: int) -> None:
+        """Pitch cards from hand to generate resources, then pay the cost."""
+        player = self.state.players[player_index]
+        while self.state.resource_points[player_index] < cost:
+            pitch_decision = build_pitch_decision(
+                self.state, player_index,
+                cost - self.state.resource_points[player_index],
+            )
+            if pitch_decision is None:
+                break
+            response = self._ask(pitch_decision)
+            if response.first:
+                pitch_id = int(response.first.replace("pitch_", ""))
+                pitch_target = player.find_card(pitch_id)
+                if pitch_target:
+                    pitch_card(self.state, player_index, pitch_target)
+        pay_resource_cost(self.state, player_index, cost)
 
     def _ask(self, decision: Decision) -> PlayerResponse:
         """Route a decision to the appropriate player interface."""

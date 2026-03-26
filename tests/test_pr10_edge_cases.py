@@ -8,8 +8,6 @@ Covers:
 5. Combat chain state interactions with Go Again
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
 from htc.engine.continuous import (
     ContinuousEffect,
     EffectDuration,
@@ -18,38 +16,11 @@ from htc.engine.continuous import (
     make_keyword_grant,
 )
 from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus, EventType, GameEvent
-from htc.engine.game import Game
-from htc.enums import CardType, Keyword, SubType, Zone
+from htc.engine.events import EventType, GameEvent
+from htc.enums import Keyword, Zone
 from htc.state.combat_state import ChainLink, CombatChainState
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
 from htc.state.turn_counters import TurnCounters
-from tests.conftest import make_card
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_state() -> GameState:
-    state = GameState()
-    state.players = [
-        PlayerState(index=0, life_total=20),
-        PlayerState(index=1, life_total=20),
-    ]
-    return state
-
-
-def _make_game_shell(state: GameState | None = None) -> Game:
-    """Create a minimal Game object for unit-testing internal methods."""
-    game = Game.__new__(Game)
-    game.state = state or _make_state()
-    game.effect_engine = EffectEngine()
-    game.events = EventBus()
-    game._register_event_handlers()
-    return game
+from tests.conftest import make_card, make_game_shell, make_state
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +30,7 @@ def _make_game_shell(state: GameState | None = None) -> Game:
 
 def test_go_again_granted_by_effect_during_combat():
     """An effect granting Go Again mid-combat should be respected at resolution."""
-    state = _make_state()
+    state = make_state()
     engine = EffectEngine()
 
     attack = make_card(instance_id=1, name="Plain Attack", power=3)
@@ -85,7 +56,7 @@ def test_go_again_granted_by_effect_during_combat():
 
 def test_go_again_removed_by_effect_during_combat():
     """An effect removing Go Again mid-combat should be respected at resolution."""
-    state = _make_state()
+    state = make_state()
     engine = EffectEngine()
 
     attack = make_card(
@@ -119,7 +90,7 @@ def test_go_again_removed_by_effect_during_combat():
 
 def test_resolution_step_uses_dynamic_go_again():
     """_resolution_step should check modified keywords, not just link.has_go_again."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     attack = make_card(instance_id=1, name="Plain Attack", power=3)
@@ -217,7 +188,7 @@ def test_defense_reaction_counter_independent_of_other_counters():
 
 def test_damage_attributed_to_source_owner():
     """Damage should be attributed to source.owner_index, not inferred."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     # Player 0 owns the source card
@@ -244,7 +215,7 @@ def test_damage_attributed_to_source_owner():
 
 def test_normal_damage_attribution():
     """Normal attack: player 0's card damages player 1."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     source = make_card(instance_id=1, name="Attack", owner_index=0)
@@ -264,7 +235,7 @@ def test_normal_damage_attribution():
 
 def test_damage_without_source_no_dealt_tracking():
     """Damage with no source should not crash or attribute damage_dealt."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     event = GameEvent(
@@ -289,7 +260,7 @@ def test_damage_without_source_no_dealt_tracking():
 
 def test_life_lost_counter_tracks_damage():
     """life_lost counter should increase when taking damage."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     source = make_card(instance_id=1, name="Attack", owner_index=0)
@@ -306,7 +277,7 @@ def test_life_lost_counter_tracks_damage():
 
 def test_life_gained_counter_tracks_healing():
     """life_gained counter should increase on life gain events."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     event = GameEvent(
@@ -322,7 +293,7 @@ def test_life_gained_counter_tracks_healing():
 
 def test_life_counters_accumulate():
     """Multiple damage and heal events should accumulate correctly."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     source = make_card(instance_id=1, name="Attack", owner_index=0)
@@ -361,7 +332,7 @@ def test_life_counters_reset_with_turn():
 
 def test_zero_damage_does_not_affect_counters():
     """Zero-amount damage event should not change any counters."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     event = GameEvent(
@@ -379,7 +350,7 @@ def test_zero_damage_does_not_affect_counters():
 
 def test_zero_life_gain_does_not_affect_counters():
     """Zero-amount life gain event should not change any counters."""
-    game = _make_game_shell()
+    game = make_game_shell()
     state = game.state
 
     event = GameEvent(
@@ -400,7 +371,7 @@ def test_zero_life_gain_does_not_affect_counters():
 
 def test_go_again_from_link_when_no_active_attack():
     """If active_attack is None, fall back to link.has_go_again."""
-    state = _make_state()
+    state = make_state()
     state.action_points = {0: 0, 1: 0}
 
     link = ChainLink(
@@ -424,7 +395,7 @@ def test_go_again_from_link_when_no_active_attack():
 
 def test_go_again_link_false_no_effect_means_no_ap():
     """Without Go Again on link or from effects, no AP should be granted."""
-    state = _make_state()
+    state = make_state()
     engine = EffectEngine()
     state.action_points = {0: 0, 1: 0}
 
