@@ -772,6 +772,7 @@ class Game:
             if link.active_attack else frozenset()
         )
         has_dominate = Keyword.DOMINATE in attack_keywords
+        has_overpower = Keyword.OVERPOWER in attack_keywords
 
         # Cards from hand with defense value (7.3.2a)
         for card in player.hand:
@@ -812,6 +813,7 @@ class Game:
         response = self._ask(decision)
 
         hand_cards_defended = 0
+        action_cards_defended = 0
         for opt_id in response.selected_option_ids:
             if opt_id == "pass":
                 continue
@@ -822,9 +824,14 @@ class Game:
                 if card in player.hand:
                     if has_dominate and hand_cards_defended >= 1:
                         continue
+                    # Overpower (8.3.9): can't defend with more than 1 action card
+                    if has_overpower and card.definition.is_action and action_cards_defended >= 1:
+                        continue
                     player.hand.remove(card)
                     player.turn_counters.num_cards_defended_from_hand += 1
                     hand_cards_defended += 1
+                    if card.definition.is_action:
+                        action_cards_defended += 1
                 self.combat_mgr.add_defender(self.state, link, card)
                 log.info(f"  Defended with: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
 
