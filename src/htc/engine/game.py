@@ -329,6 +329,10 @@ class Game:
                 log.info(f"  Permanent: {card.name}{card.definition.color_label} enters the arena")
             else:
                 # Non-attack, non-reaction, non-permanent: resolve effect, then graveyard
+                # If the card has arcane damage, deal it
+                if card.definition.arcane and card.definition.arcane > 0:
+                    target_index = 1 - layer.controller_index
+                    self._deal_arcane_damage(card, target_index, card.definition.arcane)
                 self.state.move_card(card, Zone.GRAVEYARD)
 
             # Go again from resolved layer
@@ -353,12 +357,16 @@ class Game:
                         card_instance_id=card.instance_id,
                     ))
 
-            # Weapon activations (1.4.3): untapped weapons with attack ability
+            # Weapon activations (1.4.3): untapped weapons
             for weapon in player.weapons:
                 if self._can_activate_weapon(player_index, weapon):
+                    if weapon.definition.arcane and weapon.definition.arcane > 0:
+                        desc = f"Activate {weapon.name} (arcane={weapon.definition.arcane})"
+                    else:
+                        desc = f"Attack with {weapon.name} (power={weapon.base_power or 0})"
                     options.append(ActionOption(
                         action_id=f"activate_{weapon.instance_id}",
-                        description=f"Attack with {weapon.name} (power={weapon.base_power or 0})",
+                        description=desc,
                         action_type=ActionType.ACTIVATE_ABILITY,
                         card_instance_id=weapon.instance_id,
                     ))
@@ -505,7 +513,125 @@ class Game:
         else:
             log.info(f"  Play: {card.name}{color_str}")
 
+    # --- Arcane Damage ---
+
+    def _deal_arcane_damage(
+        self, source: CardInstance, target_player_index: int, amount: int
+    ) -> None:
+        """Deal arcane damage to a player, with Arcane Barrier prevention.
+
+        Before damage is applied, the target player may pay resources to
+        activate Arcane Barrier on their equipment to prevent some or all
+        of the arcane damage.
+        """
+        if amount <= 0:
+            return
+
+        # Check for Arcane Barrier on target's equipment
+        remaining = self._apply_arcane_barrier(target_player_index, amount)
+
+        if remaining > 0:
+            self.events.emit(GameEvent(
+                event_type=EventType.DEAL_DAMAGE,
+                source=source,
+                target_player=target_player_index,
+                amount=remaining,
+                data={"damage_type": "arcane"},
+            ))
+            log.info(
+                f"  Arcane damage: {remaining} to Player {target_player_index} "
+                f"(life: {self.state.players[target_player_index].life_total})"
+            )
+            self._check_game_over()
+        else:
+            log.info(f"  Arcane damage fully prevented by Arcane Barrier")
+
+    def _apply_arcane_barrier(self, player_index: int, damage: int) -> int:
+        """Let the player use Arcane Barrier to prevent arcane damage.
+
+        Returns the remaining damage after prevention.
+        """
+        player = self.state.players[player_index]
+
+        # Collect total Arcane Barrier value from equipment
+        total_barrier = 0
+        for eq in player.equipment.values():
+            if eq and Keyword.ARCANE_BARRIER in eq.definition.keywords:
+                total_barrier += eq.definition.keyword_value(Keyword.ARCANE_BARRIER)
+
+        if total_barrier <= 0:
+            return damage
+
+        # Calculate how much can be prevented (limited by barrier and damage)
+        max_prevent = min(total_barrier, damage)
+
+        # Check if the player can pay any resources
+        available_resources = self.state.resource_points[player_index]
+        for card in player.hand:
+            if card.pitch is not None:
+                available_resources += card.pitch
+
+        if available_resources <= 0:
+            return damage
+
+        # Ask the player how much to prevent (0 to max_prevent)
+        max_affordable = min(max_prevent, available_resources)
+        options = [
+            ActionOption(
+                action_id=f"barrier_{n}",
+                description=f"Pay {n} resource(s) to prevent {n} arcane damage",
+                action_type=ActionType.ACTIVATE_ABILITY,
+            )
+            for n in range(1, max_affordable + 1)
+        ]
+        options.append(self._pass_option("Don't use Arcane Barrier"))
+
+        decision = Decision(
+            player_index=player_index,
+            decision_type=DecisionType.OPTIONAL_ABILITY,
+            prompt=f"Use Arcane Barrier to prevent up to {max_affordable} of {damage} arcane damage?",
+            options=options,
+        )
+        response = self._ask(decision)
+
+        if response.first is None or response.first == "pass":
+            return damage
+
+        prevent_amount = int(response.first.replace("barrier_", ""))
+
+        # Pay resources (pitch cards as needed)
+        while self.state.resource_points[player_index] < prevent_amount:
+            pitch_decision = build_pitch_decision(
+                self.state, player_index,
+                prevent_amount - self.state.resource_points[player_index],
+            )
+            if pitch_decision is None:
+                break
+            pitch_response = self._ask(pitch_decision)
+            if pitch_response.first:
+                pitch_id = int(pitch_response.first.replace("pitch_", ""))
+                pitch_target = player.find_card(pitch_id)
+                if pitch_target:
+                    pitch_card(self.state, player_index, pitch_target)
+
+        pay_resource_cost(self.state, player_index, prevent_amount)
+
+        log.info(f"  Arcane Barrier: Player {player_index} prevents {prevent_amount} arcane damage")
+        return damage - prevent_amount
+
     # --- Weapon Activation (rules 1.4.3) ---
+
+    @staticmethod
+    def _weapon_activation_cost(weapon: CardInstance) -> int:
+        """Get the resource cost to activate a weapon.
+
+        Weapons store activation cost in functional text as {r} tokens
+        (e.g. '{r}{r}' = 2), since the CSV 'Cost' field is for play cost.
+        Falls back to the card's cost field if set.
+        """
+        if weapon.definition.cost is not None:
+            return weapon.definition.cost
+        return weapon.definition.functional_text.count("{r}")
 
     def _can_activate_weapon(self, player_index: int, weapon: CardInstance) -> bool:
         """Check if a weapon can be activated (untapped, has AP, can pay cost)."""
@@ -515,7 +641,7 @@ class Game:
         if self.state.action_points[player_index] < 1:
             return False
         # Must be able to pay resource cost
-        cost = self.effect_engine.get_modified_cost(self.state, weapon)
+        cost = self._weapon_activation_cost(weapon)
         if cost > 0:
             available = self.state.resource_points[player_index]
             player = self.state.players[player_index]
@@ -527,9 +653,10 @@ class Game:
         return True
 
     def _activate_weapon(self, player_index: int, weapon: CardInstance) -> None:
-        """Activate a weapon to create an attack proxy on the stack (rules 1.4.3).
+        """Activate a weapon ability (rules 1.4.3).
 
-        Sequence: Tap weapon → Pay costs → Create attack proxy → Put on stack.
+        Physical weapons (power > 0): create attack proxy → combat chain.
+        Arcane weapons (arcane > 0): deal arcane damage directly.
         """
         player = self.state.players[player_index]
 
@@ -540,7 +667,7 @@ class Game:
         self.state.action_points[player_index] -= 1
 
         # Pay resource cost
-        resource_cost = self.effect_engine.get_modified_cost(self.state, weapon)
+        resource_cost = self._weapon_activation_cost(weapon)
         while self.state.resource_points[player_index] < resource_cost:
             pitch_decision = build_pitch_decision(
                 self.state, player_index,
@@ -557,23 +684,42 @@ class Game:
 
         pay_resource_cost(self.state, player_index, resource_cost)
 
-        # Create attack proxy — a synthetic card with the weapon's power and keywords
-        proxy = self._create_attack_proxy(weapon, player_index)
+        # Update counters
+        player.turn_counters.num_weapon_attacks += 1
 
-        # Put proxy on the stack
+        # Branch: arcane ability vs physical attack
+        if weapon.definition.arcane and weapon.definition.arcane > 0:
+            self._activate_arcane_weapon(player_index, weapon)
+        else:
+            self._activate_attack_weapon(player_index, weapon)
+
+    def _activate_attack_weapon(self, player_index: int, weapon: CardInstance) -> None:
+        """Activate a physical weapon — create attack proxy on the stack."""
+        player = self.state.players[player_index]
+
+        proxy = self._create_attack_proxy(weapon, player_index)
         layer = self.stack_mgr.add_card_layer(self.state, proxy, player_index)
         layer.has_go_again = weapon.definition.has_go_again
 
-        # Update counters
         player.turn_counters.num_attacks_played += 1
-        player.turn_counters.num_weapon_attacks += 1
         player.turn_counters.has_attacked = True
 
-        # Open combat chain if needed
         if not self.state.combat_chain.is_open:
             self.combat_mgr.open_chain(self.state)
 
         log.info(f"  Weapon attack: {weapon.name} (power={weapon.base_power or 0})")
+
+    def _activate_arcane_weapon(self, player_index: int, weapon: CardInstance) -> None:
+        """Activate an arcane weapon — deal arcane damage directly (no combat chain)."""
+        arcane_damage = weapon.definition.arcane or 0
+        target_index = 1 - player_index
+
+        # Go again from weapon (e.g. Surgent Aethertide)
+        if weapon.definition.has_go_again:
+            self.state.action_points[player_index] += 1
+
+        log.info(f"  Arcane activation: {weapon.name} (arcane={arcane_damage})")
+        self._deal_arcane_damage(weapon, target_index, arcane_damage)
 
     def _create_attack_proxy(self, weapon: CardInstance, owner_index: int) -> CardInstance:
         """Create a transient attack card representing a weapon attack."""
