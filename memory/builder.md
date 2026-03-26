@@ -1,6 +1,6 @@
-# Steward Memory
+# Builder Memory
 
-Persistent learnings across sessions. Update this before shutdown.
+Persistent learnings across sessions. Update this as you go.
 
 ## Decisions
 
