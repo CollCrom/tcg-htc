@@ -45,5 +45,9 @@ class CardInstance:
     def base_defense(self) -> int | None:
         return self.definition.defense
 
+    @property
+    def keyword_values(self) -> dict:
+        return self.definition.keyword_values
+
     def __repr__(self) -> str:
         return f"CardInstance({self.instance_id}, {self.definition!r}, zone={self.zone.value})"

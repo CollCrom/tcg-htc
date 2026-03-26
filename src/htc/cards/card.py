@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from htc.enums import CardType, Color, Keyword, SubType, SuperType
+
+# Immutable mapping type for use in frozen dataclasses.
+_EMPTY_KW_VALUES: dict[Keyword, int] = {}
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,7 @@ class CardDefinition:
     keywords: frozenset[Keyword]
     functional_text: str
     type_text: str
+    keyword_values: dict[Keyword, int] = field(default_factory=dict)
 
     # --- Convenience properties ---
 
@@ -103,6 +107,10 @@ class CardDefinition:
     def is_permanent_when_resolved(self) -> bool:
         """Deck-cards with these subtypes become permanents on resolution (1.3.3)."""
         return bool(self.subtypes & self._PERMANENT_SUBTYPES)
+
+    def keyword_value(self, keyword: Keyword, default: int = 0) -> int:
+        """Get the numeric parameter for a keyword (e.g. Arcane Barrier 2 → 2)."""
+        return self.keyword_values.get(keyword, default)
 
     @property
     def has_go_again(self) -> bool:
