@@ -1,51 +1,30 @@
 name: Auto Merge
 
 on:
-  check_suite:
+  workflow_run:
+    workflows: ["Tests"]
     types: [completed]
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.event.check_suite.pull_requests[0].base.ref == 'main'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
     permissions:
       contents: write
       pull-requests: write
     steps:
       - name: Get PR number
         id: pr
-        run: |
-          echo "number=${{ github.event.check_suite.pull_requests[0].number }}" >> "$GITHUB_OUTPUT"
-
-      - name: Check if all tests pass
-        id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR=${{ steps.pr.outputs.number }}
-          if [ -z "$PR" ] || [ "$PR" = "0" ]; then
-            echo "No PR found, skipping"
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Check if all status checks passed
-          CHECKS_PASS=$(gh pr checks "$PR" --repo "${{ github.repository }}" 2>&1 || true)
-          ALL_PASS=true
-          if echo "$CHECKS_PASS" | grep -qE "fail|pending"; then
-            ALL_PASS=false
-          fi
-
-          echo "all_pass=$ALL_PASS"
-
-          if [ "$ALL_PASS" = "true" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          fi
+          # workflow_run doesn't directly give us the PR number, so look it up from the head branch
+          HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
+          PR=$(gh pr list --repo "${{ github.repository }}" --head "$HEAD_BRANCH" --base main --json number --jq '.[0].number')
+          echo "number=$PR" >> "$GITHUB_OUTPUT"
 
       - name: Squash merge PR
-        if: steps.check.outputs.ready == 'true'
+        if: steps.pr.outputs.number
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
