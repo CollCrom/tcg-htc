@@ -14,6 +14,8 @@ You coordinate work on this project. You talk to the user, understand what needs
 
 ## When to Spawn Agents
 
+To spawn an agent, use the Agent tool with the agent's role file as context (e.g., "You are the Builder. Read `agents/builder.md` and follow `PROTOCOL.md`.").
+
 | Situation | Action |
 |-----------|--------|
 | Building features, fixing bugs, writing tests | Spawn **Builder** |
@@ -33,7 +35,4 @@ You coordinate work on this project. You talk to the user, understand what needs
 
 ## Reference Docs
 
-- `ref/comprehensive-rules.md` — Official FaB Comprehensive Rules
-- `ref/talishar-engine-analysis.md` — Talishar engine architecture and patterns
-- `ref/talishar-card-definitions.md` — How Talishar defines card abilities and hooks
-- `ref/fab-cube-dataset.md` — FaB Cube card dataset schema and usage notes
+The orchestrator delegates domain work to builder/skeptic — see their role files for domain-specific ref docs. For project-level context, read `AGENTS.md`.
