@@ -1,0 +1,64 @@
+name: Skeptic Fix
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  fix-issues:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.review.state == 'changes_requested' &&
+      contains(github.event.review.body, 'Skeptic')
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install pytest
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          model: claude-opus-4-6-20250610
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            The Skeptic agent has requested changes on this PR. Your job is
+            to read the skeptic's review, fix all critical issues identified,
+            and push the fixes.
+
+            ## Steps
+
+            1. Read the skeptic's review comment on PR #${{ github.event.pull_request.number }}:
+               Run: gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments --jq '.[-1].body'
+
+            2. Read agents/skeptic.md to understand the severity guide.
+
+            3. Read ref/comprehensive-rules.md for the relevant rule sections
+               cited in the review.
+
+            4. Fix ONLY the critical issues — do not fix minor issues or
+               add missing tests (those are suggestions, not blockers).
+
+            5. Run the test suite to make sure your fixes don't break anything:
+               python -m pytest -v
+
+            6. Commit your fixes with a clear message explaining what was fixed
+               and why (reference the rule numbers from the review).
+
+            7. Push the commit:
+               git push
+
+            Do not modify the skeptic workflow, test CI, or any other
+            infrastructure files. Only fix engine/state/card code and tests.
