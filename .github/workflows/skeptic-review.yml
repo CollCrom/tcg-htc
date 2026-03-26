@@ -6,7 +6,6 @@ on:
       - 'src/htc/engine/**'
       - 'src/htc/state/**'
       - 'src/htc/cards/**'
-      - 'tests/**'
 
 jobs:
   skeptic-review:
@@ -22,6 +21,7 @@ jobs:
 
       - uses: anthropics/claude-code-action@beta
         with:
+          model: claude-haiku-4-5-20251001
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           direct_prompt: |
             You are the Skeptic agent for the TCG Hyperbolic Time Chamber project.
@@ -38,3 +38,16 @@ jobs:
             - **Issues**: rules violations or deviations with rule numbers and severity (critical/minor)
             - **Missing tests**: specific scenarios that should have test coverage
             - **Ambiguous**: rules that are unclear and need human judgment
+
+            ## Verdict
+
+            After completing your review, you MUST submit a formal PR review:
+
+            - If there are **no critical issues**, approve the PR:
+              `gh pr review ${{ github.event.pull_request.number }} --approve --body "Skeptic review: APPROVED. No critical rules issues found."`
+
+            - If there are **critical issues**, request changes:
+              `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "Skeptic review: CHANGES REQUESTED. See review comment for critical issues."`
+
+            Minor issues and missing tests alone are NOT grounds to request changes —
+            only critical issues (wrong game outcomes) should block a PR.
