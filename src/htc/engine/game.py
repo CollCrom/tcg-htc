@@ -12,16 +12,12 @@ from htc.engine.action_builder import ActionBuilder
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.combat import CombatManager
 from htc.engine.continuous import EffectDuration
-from htc.engine.keyword_engine import KeywordEngine
 from htc.engine.cost import (
-    build_pitch_decision,
     calculate_play_cost,
-    can_pay_action_cost,
-    can_pay_resource_cost,
     pay_action_cost,
-    pay_resource_cost,
-    pitch_card,
 )
+from htc.engine.cost_manager import CostManager
+from htc.engine.keyword_engine import KeywordEngine
 from htc.engine.effects import EffectEngine
 from htc.engine.stack import StackManager
 from htc.enums import (
@@ -75,6 +71,7 @@ class Game:
         self.effect_engine = EffectEngine()
         self.combat_mgr = CombatManager(self.effect_engine)
         self.action_builder = ActionBuilder(self.effect_engine)
+        self.cost_manager = CostManager(self.effect_engine, lambda d: self._ask(d))
         self.events = EventBus()
         self.keyword_engine = KeywordEngine(
             self.effect_engine, self.events, lambda d: self._ask(d),
@@ -1294,21 +1291,7 @@ class Game:
 
     def _pitch_to_pay(self, player_index: int, cost: int) -> None:
         """Pitch cards from hand to generate resources, then pay the cost."""
-        player = self.state.players[player_index]
-        while self.state.resource_points[player_index] < cost:
-            pitch_decision = build_pitch_decision(
-                self.state, player_index,
-                cost - self.state.resource_points[player_index],
-            )
-            if pitch_decision is None:
-                break
-            response = self._ask(pitch_decision)
-            if response.first:
-                pitch_id = int(response.first.replace("pitch_", ""))
-                pitch_target = player.find_card(pitch_id)
-                if pitch_target:
-                    pitch_card(self.state, player_index, pitch_target)
-        pay_resource_cost(self.state, player_index, cost)
+        self.cost_manager.pitch_to_pay(self.state, player_index, cost)
 
     def _ask(self, decision: Decision) -> PlayerResponse:
         """Route a decision to the appropriate player interface."""

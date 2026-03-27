@@ -8,6 +8,7 @@ from htc.cards.instance import CardInstance
 from htc.decks.loader import parse_deck_list
 from htc.engine.action_builder import ActionBuilder
 from htc.engine.combat import CombatManager
+from htc.engine.cost_manager import CostManager
 from htc.engine.effects import EffectEngine
 from htc.engine.events import EventBus
 from htc.engine.game import Game, GameResult
@@ -155,6 +156,7 @@ def make_game_shell(
     game.stack_mgr = StackManager()
     game.combat_mgr = CombatManager(game.effect_engine)
     game.action_builder = ActionBuilder(game.effect_engine)
+    game.cost_manager = CostManager(game.effect_engine, lambda d: game._ask(d))
     game.keyword_engine = KeywordEngine(
         game.effect_engine, game.events, lambda d: game._ask(d),
     )
