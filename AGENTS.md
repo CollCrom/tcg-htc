@@ -74,6 +74,13 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 | `ref/decklist-cindra.md` | Reference deck: Red Cindra (Calling Brisbane) |
 | `ref/decklist-victor.md` | Reference deck: Victor Goldmane |
 
+## Versioning
+
+- **Scheme:** Semantic versioning (`MAJOR.MINOR.PATCH`)
+- **Current:** `0.1.0` (pre-release, engine under active development)
+- **Tags:** Tag on main after milestone merges: `git tag v0.X.0`
+- **No formal releases yet** — will add GitHub releases when the engine is playable end-to-end
+
 ## Roadmap
 
 1. **Game engine** — FaB rules engine, deck loading, game simulation *(current)*
