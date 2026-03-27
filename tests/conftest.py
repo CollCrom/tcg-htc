@@ -15,6 +15,7 @@ from htc.engine.combat import CombatManager
 from htc.engine.cost_manager import CostManager
 from htc.engine.effects import EffectEngine
 from htc.engine.events import EventBus
+from htc.engine.abilities import AbilityRegistry
 from htc.engine.game import Game, GameResult
 from htc.engine.keyword_engine import KeywordEngine
 from htc.engine.stack import StackManager
@@ -262,6 +263,8 @@ def make_game_shell(
     game.keyword_engine = KeywordEngine(
         game.effect_engine, game.events, lambda d: game._ask(d),
     )
+    game.ability_registry = AbilityRegistry()
+    game._register_abilities()
     game._register_event_handlers()
     game.state.action_points = action_points or {0: 0, 1: 0}
     game.state.resource_points = resource_points or {0: 0, 1: 0}
