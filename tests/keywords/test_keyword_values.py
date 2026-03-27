@@ -6,7 +6,7 @@ from htc.cards.card_db import CardDatabase, _parse_keywords
 from htc.enums import Keyword
 from tests.conftest import make_card
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 
 def test_parse_keyword_with_number():
