@@ -23,12 +23,56 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 
 ## Architecture
 
-TBD — the game engine is the first build target. Expected modules:
+### Modules
 
-- **Engine** — FaB rules, game state, turn structure, combat, chain links
-- **Decks** — Deck loading, validation, hero/equipment/sideboard configuration
-- **Simulation** — Run games between two decks, collect results
+- **`engine/`** — FaB rules engine (2945 lines)
+  - `game.py` — Game loop, turn structure, combat chain, damage
+  - `action_builder.py` — Decision building, legal action sets
+  - `keyword_engine.py` — Keyword enforcement (Arcane Barrier, Phantasm, Stealth, etc.)
+  - `cost_manager.py` — Resource/action point payment
+  - `combat.py` — Combat chain management
+  - `continuous.py` — Continuous effect staging (rules 6.2-6.3)
+  - `effects.py` — Effect resolution and keyword queries
+  - `events.py` — Game event bus and triggering
+  - `cost.py` — Cost calculation helpers
+  - `stack.py` — LIFO stack for plays
+  - `actions.py` — Action type definitions
+
+- **`state/`** — Game state (246 lines)
+  - `game_state.py` — Root state, turn/phase tracking
+  - `player_state.py` — Per-player state (hand, life, zones, equipment, mark)
+  - `combat_state.py` — Combat chain links and chain state
+  - `turn_counters.py` — Per-turn tracking (attacks played, damage dealt)
+
+- **`cards/`** — Card definitions (334 lines)
+  - `card.py` — CardDefinition (frozen, from CSV)
+  - `instance.py` — CardInstance (mutable per-game state)
+  - `card_db.py` — CardDatabase (4217 cards from FaB Cube CSV)
+
+- **`decks/`** — Deck management (207 lines)
+  - `deck_list.py` — DeckList structure
+  - `loader.py` — Parse deck lists from card database
+  - `validation.py` — Legendary/Specialization constraints
+
+- **`player/`** — Player interfaces (66 lines)
+  - `interface.py` — Abstract PlayerInterface
+  - `random_player.py` — Random decision-making player
+
 - **Analysis** (future) — Log parsing, line suggestions, deck optimization
+
+## Reference Docs
+
+| Doc | Purpose |
+|-----|---------|
+| `ref/comprehensive-rules.md` | Official FaB Comprehensive Rules (sections 1-9) |
+| `ref/talishar-engine-analysis.md` | Talishar PHP engine architecture and patterns |
+| `ref/talishar-card-definitions.md` | How Talishar defines card abilities |
+| `ref/fab-cube-dataset.md` | FaB Cube card dataset schema and fields |
+| `ref/elephant-method.md` | Elephant Method for sideboard-first deckbuilding |
+| `ref/decklist-cindra-blue.md` | Target deck: Blue Cindra ("What if Redline was good") |
+| `ref/decklist-arakni.md` | Target deck: Arakni Marionette (Calling Memphis 1st) |
+| `ref/decklist-cindra.md` | Reference deck: Red Cindra (Calling Brisbane) |
+| `ref/decklist-victor.md` | Reference deck: Victor Goldmane |
 
 ## Roadmap
 
