@@ -493,11 +493,11 @@ class Game:
         """
         player = self.state.players[player_index]
 
-        # Collect total Arcane Barrier value from equipment
-        total_barrier = 0
-        for eq in player.equipment.values():
-            if eq and Keyword.ARCANE_BARRIER in eq.definition.keywords:
-                total_barrier += eq.definition.keyword_value(Keyword.ARCANE_BARRIER)
+        # Collect total Arcane Barrier value from equipment (using modified keywords)
+        barrier_equipment = self.keyword_engine.get_equipment_with_keyword(
+            self.state, player, Keyword.ARCANE_BARRIER,
+        )
+        total_barrier = sum(value for _, _, value in barrier_equipment)
 
         if total_barrier <= 0:
             return damage
