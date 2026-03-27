@@ -80,6 +80,7 @@ class Game:
         self.events.register_handler(EventType.DEAL_DAMAGE, self._handle_damage)
         self.events.register_handler(EventType.GAIN_LIFE, self._handle_gain_life)
         self.events.register_handler(EventType.DRAW_CARD, self._handle_draw_card)
+        self.events.register_handler(EventType.HIT, self._handle_hit_mark_removal)
 
     def _handle_damage(self, event: GameEvent) -> None:
         """Apply damage to a player."""
@@ -100,6 +101,18 @@ class Game:
             target.life_total += event.amount
             target.turn_counters.life_gained += event.amount
             log.info(f"  Player {event.target_player} gains {event.amount} life (life: {target.life_total})")
+
+    def _handle_hit_mark_removal(self, event: GameEvent) -> None:
+        """Remove marked condition when hero is hit by opponent's source (rules 9.3.3)."""
+        if event.target_player is None:
+            return
+        target = self.state.players[event.target_player]
+        if target.is_marked and event.source is not None:
+            # Check that the source is controlled by an opponent
+            source_owner = event.source.owner_index
+            if source_owner != event.target_player:
+                target.is_marked = False
+                log.info(f"  Mark removed from Player {event.target_player} (hit by opponent)")
 
     def _handle_draw_card(self, event: GameEvent) -> None:
         """Draw a card for a player."""
@@ -514,8 +527,11 @@ class Game:
         if amount <= 0:
             return
 
+        # Check for Spellvoid on target's equipment (one-shot prevention)
+        remaining = self._apply_spellvoid(target_player_index, amount)
+
         # Check for Arcane Barrier on target's equipment
-        remaining = self._apply_arcane_barrier(target_player_index, amount)
+        remaining = self._apply_arcane_barrier(target_player_index, remaining)
 
         if remaining > 0:
             self.events.emit(GameEvent(
@@ -591,6 +607,66 @@ class Game:
 
         log.info(f"  Arcane Barrier: Player {player_index} prevents {prevent_amount} arcane damage")
         return damage - prevent_amount
+
+    def _apply_spellvoid(self, player_index: int, damage: int) -> int:
+        """Let the player use Spellvoid to prevent arcane damage.
+
+        Spellvoid N (8.3): 'If you would be dealt arcane damage, you may
+        destroy this to prevent N of that damage.'
+
+        Unlike Arcane Barrier, Spellvoid is one-shot: the equipment is destroyed.
+        Returns the remaining damage after prevention.
+        """
+        if damage <= 0:
+            return 0
+
+        player = self.state.players[player_index]
+
+        # Find equipment with Spellvoid
+        spellvoid_equipment: list[tuple[EquipmentSlot, CardInstance, int]] = []
+        for slot, eq in player.equipment.items():
+            if eq and Keyword.SPELLVOID in eq.definition.keywords:
+                sv_value = eq.definition.keyword_value(Keyword.SPELLVOID)
+                if sv_value > 0:
+                    spellvoid_equipment.append((slot, eq, sv_value))
+
+        if not spellvoid_equipment:
+            return damage
+
+        remaining = damage
+        for slot, eq, sv_value in spellvoid_equipment:
+            if remaining <= 0:
+                break
+
+            # Ask the player whether to use this Spellvoid
+            prevent_amount = min(sv_value, remaining)
+            options = [
+                ActionOption(
+                    action_id=f"spellvoid_{eq.instance_id}",
+                    description=f"Destroy {eq.name} to prevent {prevent_amount} arcane damage (Spellvoid {sv_value})",
+                    action_type=ActionType.ACTIVATE_ABILITY,
+                ),
+                self._pass_option(f"Don't use {eq.name}'s Spellvoid"),
+            ]
+
+            decision = Decision(
+                player_index=player_index,
+                decision_type=DecisionType.OPTIONAL_ABILITY,
+                prompt=f"Use Spellvoid on {eq.name} to prevent {prevent_amount} of {remaining} arcane damage?",
+                options=options,
+            )
+            response = self._ask(decision)
+
+            if response.first and response.first.startswith("spellvoid_"):
+                # Destroy the equipment and prevent damage
+                self._destroy_equipment(eq)
+                remaining -= prevent_amount
+                log.info(
+                    f"  Spellvoid {sv_value}: {eq.name} destroyed, "
+                    f"prevents {prevent_amount} arcane damage"
+                )
+
+        return remaining
 
     # --- Weapon Activation (rules 1.4.3) ---
 
@@ -896,6 +972,21 @@ class Game:
                     card_instance_id=card.instance_id,
                 ))
 
+        # Ambush (8.3): cards with Ambush in arsenal can defend
+        for card in player.arsenal:
+            if (
+                Keyword.AMBUSH in card.definition.keywords
+                and card.base_defense is not None
+            ):
+                color_str = card.definition.color_label
+                mod_def = self.effect_engine.get_modified_defense(self.state, card)
+                options.append(ActionOption(
+                    action_id=f"defend_{card.instance_id}",
+                    description=f"Defend with {card.name}{color_str} (defense={mod_def}, from arsenal)",
+                    action_type=ActionType.DEFEND_WITH,
+                    card_instance_id=card.instance_id,
+                ))
+
         # Equipment (public permanents) (7.3.2a) — not limited by Dominate
         for slot, eq in player.equipment.items():
             if eq and not eq.is_tapped and eq.base_defense is not None:
@@ -939,6 +1030,20 @@ class Game:
                         continue
                     player.hand.remove(card)
                     player.turn_counters.num_cards_defended_from_hand += 1
+                    hand_cards_defended += 1
+                    if card.definition.is_action:
+                        action_cards_defended += 1
+                elif card in player.arsenal:
+                    # Only Ambush cards can defend from arsenal
+                    if Keyword.AMBUSH not in card.definition.keywords:
+                        continue
+                    # Ambush: defending from arsenal counts as hand defense
+                    # for Dominate/Overpower purposes
+                    if has_dominate and hand_cards_defended >= 1:
+                        continue
+                    if has_overpower and card.definition.is_action and action_cards_defended >= 1:
+                        continue
+                    player.arsenal.remove(card)
                     hand_cards_defended += 1
                     if card.definition.is_action:
                         action_cards_defended += 1
@@ -1041,6 +1146,9 @@ class Game:
         link = self.state.combat_chain.active_link
         if link is None:
             return
+
+        # Piercing N (8.3): if defended by equipment, attack gets +N power
+        self._apply_piercing(link)
 
         damage = self.combat_mgr.calculate_damage(self.state, link)
         if damage > 0:
@@ -1211,6 +1319,46 @@ class Game:
                 return True
 
         return False
+
+    def _apply_piercing(self, link: ChainLink) -> None:
+        """Piercing N: if any defending card is equipment, attack gets +N power.
+
+        Implemented as a temporary continuous effect that lasts until end of combat.
+        Rules 8.3: 'If this is defended by an equipment, it gets +N{p}.'
+        """
+        if link.active_attack is None:
+            return
+        attack_keywords = self.effect_engine.get_modified_keywords(
+            self.state, link.active_attack
+        )
+        if Keyword.PIERCING not in attack_keywords:
+            return
+        piercing_value = link.active_attack.definition.keyword_value(Keyword.PIERCING)
+        if piercing_value <= 0:
+            return
+
+        # Check if any defending card is equipment
+        has_equipment_defender = any(
+            card.definition.is_equipment for card in link.defending_cards
+        )
+        if not has_equipment_defender:
+            return
+
+        from htc.engine.continuous import make_power_modifier
+
+        atk_id = link.active_attack.instance_id
+        effect = make_power_modifier(
+            piercing_value,
+            link.active_attack.owner_index,
+            source_instance_id=atk_id,
+            duration=EffectDuration.END_OF_COMBAT,
+            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+        )
+        self.effect_engine.add_continuous_effect(self.state, effect)
+        log.info(
+            f"  Piercing {piercing_value}: {link.active_attack.name} gets "
+            f"+{piercing_value} power (equipment defending)"
+        )
 
     def _apply_equipment_degradation(self) -> None:
         """Apply Battleworn, Blade Break, and Temper to equipment that defended."""
@@ -1423,6 +1571,128 @@ class Game:
                 event_type=EventType.DRAW_CARD,
                 target_player=player.index,
             ))
+
+    def _check_rupture_active(self, link: ChainLink) -> bool:
+        """Rupture (8.3): check if the current chain link qualifies for Rupture.
+
+        Rupture triggers if the attack is at chain link 4 or higher.
+        Returns True if Rupture bonus should apply. Per-card bonus effects
+        are Phase 5; this is the infrastructure check.
+        """
+        if link.active_attack is None:
+            return False
+        attack_keywords = self.effect_engine.get_modified_keywords(
+            self.state, link.active_attack
+        )
+        if Keyword.RUPTURE not in attack_keywords:
+            return False
+        return link.link_number >= 4
+
+    def _perform_opt(self, player_index: int, n: int) -> None:
+        """Opt N: look at the top N cards of your deck, put any on the bottom.
+
+        The player chooses which cards (if any) to move to the bottom of their
+        deck, in any order. Remaining cards stay on top in their original order.
+        """
+        player = self.state.players[player_index]
+        if not player.deck or n <= 0:
+            return
+
+        top_cards = player.deck[:n]
+        if not top_cards:
+            return
+
+        # Build options for each card the player can send to the bottom
+        options: list[ActionOption] = []
+        for card in top_cards:
+            options.append(ActionOption(
+                action_id=f"opt_bottom_{card.instance_id}",
+                description=f"Put {card.name}{card.definition.color_label} on the bottom",
+                action_type=ActionType.PASS,  # generic choice
+                card_instance_id=card.instance_id,
+            ))
+        options.append(self._pass_option("Keep all on top"))
+
+        decision = Decision(
+            player_index=player_index,
+            decision_type=DecisionType.CHOOSE_MODE,
+            prompt=f"Opt {n}: choose cards to put on the bottom of your deck",
+            options=options,
+            min_selections=1,
+            max_selections=len(options),
+        )
+        response = self._ask(decision)
+
+        # Move selected cards to bottom
+        cards_to_bottom: list[CardInstance] = []
+        for opt_id in response.selected_option_ids:
+            if opt_id == "pass":
+                continue
+            if opt_id.startswith("opt_bottom_"):
+                instance_id = int(opt_id.replace("opt_bottom_", ""))
+                card = next((c for c in top_cards if c.instance_id == instance_id), None)
+                if card:
+                    cards_to_bottom.append(card)
+
+        for card in cards_to_bottom:
+            player.deck.remove(card)
+            player.deck.append(card)
+
+        if cards_to_bottom:
+            names = ", ".join(c.name for c in cards_to_bottom)
+            log.info(f"  Opt {n}: Player {player_index} puts {len(cards_to_bottom)} card(s) on bottom")
+        else:
+            log.info(f"  Opt {n}: Player {player_index} keeps all on top")
+
+    def _perform_retrieve(self, player_index: int, card_filter=None) -> CardInstance | None:
+        """Retrieve: return a card from your graveyard to hand.
+
+        Infrastructure for the Retrieve keyword. Specific card effects (Phase 5)
+        will specify which cards are valid targets via card_filter.
+        If card_filter is None, any card in graveyard is a valid target.
+
+        Returns the retrieved card, or None if the player chose not to retrieve.
+        """
+        player = self.state.players[player_index]
+        if not player.graveyard:
+            return None
+
+        valid_targets = [
+            c for c in player.graveyard
+            if card_filter is None or card_filter(c)
+        ]
+        if not valid_targets:
+            return None
+
+        options: list[ActionOption] = []
+        for card in valid_targets:
+            options.append(ActionOption(
+                action_id=f"retrieve_{card.instance_id}",
+                description=f"Retrieve {card.name}{card.definition.color_label}",
+                action_type=ActionType.PASS,
+                card_instance_id=card.instance_id,
+            ))
+        options.append(self._pass_option("Don't retrieve"))
+
+        decision = Decision(
+            player_index=player_index,
+            decision_type=DecisionType.CHOOSE_TARGET,
+            prompt="Choose a card to retrieve from your graveyard",
+            options=options,
+        )
+        response = self._ask(decision)
+
+        if response.first and response.first.startswith("retrieve_"):
+            instance_id = int(response.first.replace("retrieve_", ""))
+            card = next((c for c in valid_targets if c.instance_id == instance_id), None)
+            if card:
+                player.graveyard.remove(card)
+                card.zone = Zone.HAND
+                player.hand.append(card)
+                log.info(f"  Retrieve: Player {player_index} returns {card.name} to hand")
+                return card
+
+        return None
 
     def _check_game_over(self) -> None:
         """Check if any player's life has reached 0.

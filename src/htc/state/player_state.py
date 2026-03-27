@@ -39,6 +39,9 @@ class PlayerState:
     # Per-turn tracking
     turn_counters: TurnCounters = field(default_factory=TurnCounters)
 
+    # Marked condition (rules 9.3): hero is marked until hit by opponent's source
+    is_marked: bool = False
+
     def get_zone_cards(self, zone: Zone) -> list[CardInstance]:
         """Get the list of cards in a given zone for this player."""
         match zone:
