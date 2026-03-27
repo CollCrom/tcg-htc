@@ -3,6 +3,10 @@ name = "htc"
 version = "0.1.0"
 description = "TCG Hyperbolic Time Chamber — Flesh and Blood game simulator"
 requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "ruff", "mypy"]
 
 [build-system]
 requires = ["setuptools>=68.0"]
@@ -10,6 +14,16 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
 
 [tool.pytest.ini_options]
 log_cli = true
