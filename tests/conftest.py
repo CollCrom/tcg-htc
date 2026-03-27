@@ -6,10 +6,13 @@ from htc.cards.card import CardDefinition
 from htc.cards.card_db import CardDatabase
 from htc.cards.instance import CardInstance
 from htc.decks.loader import parse_deck_list
+from htc.engine.action_builder import ActionBuilder
 from htc.engine.combat import CombatManager
+from htc.engine.cost_manager import CostManager
 from htc.engine.effects import EffectEngine
 from htc.engine.events import EventBus
 from htc.engine.game import Game, GameResult
+from htc.engine.keyword_engine import KeywordEngine
 from htc.engine.stack import StackManager
 from htc.enums import CardType, SubType, Zone
 from htc.player.random_player import RandomPlayer
@@ -152,6 +155,11 @@ def make_game_shell(
     game.events = EventBus()
     game.stack_mgr = StackManager()
     game.combat_mgr = CombatManager(game.effect_engine)
+    game.action_builder = ActionBuilder(game.effect_engine)
+    game.cost_manager = CostManager(game.effect_engine, lambda d: game._ask(d))
+    game.keyword_engine = KeywordEngine(
+        game.effect_engine, game.events, lambda d: game._ask(d),
+    )
     game._register_event_handlers()
     game.state.action_points = action_points or {0: 0, 1: 0}
     game.state.resource_points = resource_points or {0: 0, 1: 0}

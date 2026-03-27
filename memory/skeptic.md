@@ -33,6 +33,16 @@ Persistent learnings across sessions. Update this after each review.
   - 193 tests all passing (5 new tests added in fix commits).
   - **Note**: `weapon.definition.keyword_values` is shared by reference in proxy (mutable dict), but not mutated at runtime — acceptable for now.
 
+### Refactor: split-game-class — Game.py Refactor (2026-03-26)
+- **Round 1 verdict: APPROVE** — Pure refactor, no behavior changes detected.
+- Extracted 3 new modules: ActionBuilder, KeywordEngine, CostManager.
+- All 188 tests pass. No logic changes — code is 1:1 with main branch.
+- **Minor**: Dead import in keyword_engine.py line 158 (`from htc.engine.combat import CombatManager`) + stale comment block (lines 159-163). Harmless.
+- **Minor**: Spellvoid in keyword_engine.py still reads `eq.definition.keywords` directly (line 75) — pre-existing, not introduced by this refactor.
+- Phantasm extraction splits event emission (keyword_engine) from chain close (game.py) correctly — same execution order preserved.
+- Weapon activation cost inlined in ActionBuilder._can_activate_weapon matches Game._weapon_activation_cost exactly.
+- conftest.py make_game_shell correctly wires all 3 new managers with proper lambda closures.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
