@@ -14,12 +14,15 @@ How agents operate on TCG Hyperbolic Time Chamber. For architecture, see `AGENTS
 
 ## Builder / Skeptic Handoff
 
-The core workflow is: **Builder builds, Skeptic reviews.**
+The core workflow is: **Builder builds, Orchestrator gates, Skeptic reviews.**
 
 - Builder implements engine features on a feature branch
-- Before creating a PR, the Skeptic reviews all proposed changes for rules correctness
+- **Builder must NOT create PRs.** Builder implements, runs tests, and stops.
+- Orchestrator spawns the Skeptic to review all proposed changes for rules correctness
 - Skeptic outputs a structured review (correct / issues / missing tests / ambiguous) with a verdict (approve or request changes)
-- Critical issues block the PR — Builder fixes and Skeptic re-reviews
+- Critical issues block the PR — Orchestrator sends Builder back to fix, then re-runs Skeptic
+- Loop continues until Skeptic returns APPROVE
+- **Only the Orchestrator creates PRs**, and only after the Skeptic has approved
 - PR description includes skeptic status (e.g., "Skeptic: CLEAN after N rounds")
 
 ## Communication
