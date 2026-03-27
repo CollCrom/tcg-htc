@@ -74,7 +74,7 @@ class KeywordEngine:
                 continue
             modified_kws = self.effect_engine.get_modified_keywords(state, eq)
             if keyword in modified_kws:
-                value = eq.definition.keyword_value(keyword)
+                value = self.effect_engine.get_keyword_value(state, eq, keyword)
                 if value > 0:
                     result.append((slot, eq, value))
         return result
@@ -196,7 +196,7 @@ class KeywordEngine:
         )
         if Keyword.PIERCING not in attack_keywords:
             return
-        piercing_value = link.active_attack.definition.keyword_value(Keyword.PIERCING)
+        piercing_value = self.effect_engine.get_keyword_value(state, link.active_attack, Keyword.PIERCING)
         if piercing_value <= 0:
             return
 

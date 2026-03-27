@@ -82,6 +82,17 @@ class EffectEngine:
         active = self._active_effects(state)
         return self._resolver.resolve_keywords(active, card, state, base)
 
+    def get_keyword_value(
+        self, state: GameState, card: CardInstance, keyword: Keyword
+    ) -> int:
+        """Get the effective numeric value for a keyword (e.g. Arcane Barrier 2).
+
+        Currently returns the base value from the card definition. When
+        continuous effects that modify keyword values are added, this method
+        will incorporate them.
+        """
+        return card.definition.keyword_value(keyword)
+
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
