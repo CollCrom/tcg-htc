@@ -3,20 +3,14 @@
 Retrieve: Return a card from your graveyard to hand.
 This tests the generic infrastructure; specific card restrictions are Phase 5.
 """
-from htc.engine.actions import PlayerResponse
 from htc.enums import Zone
-from tests.conftest import make_card, make_game_shell
+from tests.conftest import make_card, make_game_shell, make_mock_ask
 
 
 def _mock_retrieve_ask(retrieve_id: int | None):
     """Mock that selects a specific card to retrieve, or passes."""
-    def _ask(decision):
-        if decision.prompt and "retrieve" in decision.prompt.lower():
-            if retrieve_id is not None:
-                return PlayerResponse(selected_option_ids=[f"retrieve_{retrieve_id}"])
-            return PlayerResponse(selected_option_ids=["pass"])
-        return PlayerResponse(selected_option_ids=["pass"])
-    return _ask
+    ids = [f"retrieve_{retrieve_id}"] if retrieve_id is not None else []
+    return make_mock_ask({"retrieve": ids})
 
 
 def test_retrieve_returns_card_to_hand():

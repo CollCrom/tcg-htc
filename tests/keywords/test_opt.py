@@ -3,21 +3,14 @@
 Opt N: Look at the top N cards of your deck, you may put any of them
 on the bottom in any order.
 """
-from htc.engine.actions import PlayerResponse
 from htc.enums import Zone
-from tests.conftest import make_card, make_game_shell
+from tests.conftest import make_card, make_game_shell, make_mock_ask
 
 
 def _mock_opt_ask(bottom_ids: list[int]):
     """Mock that selects specific cards to put on bottom."""
-    def _ask(decision):
-        if decision.prompt and "Opt" in decision.prompt:
-            ids = [f"opt_bottom_{iid}" for iid in bottom_ids]
-            if not ids:
-                return PlayerResponse(selected_option_ids=["pass"])
-            return PlayerResponse(selected_option_ids=ids)
-        return PlayerResponse(selected_option_ids=["pass"])
-    return _ask
+    ids = [f"opt_bottom_{iid}" for iid in bottom_ids]
+    return make_mock_ask({"Opt": ids})
 
 
 def test_opt_puts_cards_on_bottom():

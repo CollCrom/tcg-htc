@@ -2,20 +2,7 @@
 
 from htc.engine.actions import PlayerResponse
 from htc.enums import EquipmentSlot, Keyword, SubType, Zone
-from tests.conftest import make_card, make_equipment, make_game_shell
-
-
-def _mock_ask(first_response: PlayerResponse):
-    """Return first_response once, then always pass."""
-    called = [False]
-
-    def _ask(decision):
-        if not called[0]:
-            called[0] = True
-            return first_response
-        return PlayerResponse(selected_option_ids=["pass"])
-
-    return _ask
+from tests.conftest import make_card, make_equipment, make_game_shell, make_mock_ask_once
 
 
 def test_overpower_limits_action_card_defense():
@@ -32,7 +19,7 @@ def test_overpower_limits_action_card_defense():
     card_c = make_card(instance_id=12, name="Card C", defense=2, owner_index=1, zone=Zone.HAND)
     state.players[1].hand = [card_a, card_b, card_c]
 
-    game._ask = _mock_ask(PlayerResponse(selected_option_ids=[
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
         f"defend_{card_a.instance_id}",
         f"defend_{card_b.instance_id}",
         f"defend_{card_c.instance_id}",
@@ -60,7 +47,7 @@ def test_overpower_does_not_limit_equipment():
     eq = make_equipment(instance_id=50, name="Chest Plate", defense=2, subtype=SubType.CHEST)
     state.players[1].equipment[EquipmentSlot.CHEST] = eq
 
-    game._ask = _mock_ask(PlayerResponse(selected_option_ids=[
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
         f"defend_{hand_card.instance_id}",
         f"defend_{eq.instance_id}",
     ]))
@@ -84,7 +71,7 @@ def test_no_overpower_allows_multiple_action_cards():
     card_b = make_card(instance_id=11, name="Card B", defense=3, owner_index=1, zone=Zone.HAND)
     state.players[1].hand = [card_a, card_b]
 
-    game._ask = _mock_ask(PlayerResponse(selected_option_ids=[
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
         f"defend_{card_a.instance_id}",
         f"defend_{card_b.instance_id}",
     ]))

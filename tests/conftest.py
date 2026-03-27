@@ -1,12 +1,16 @@
 """Shared test fixtures and helpers."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Callable
 
 from htc.cards.card import CardDefinition
 from htc.cards.card_db import CardDatabase
 from htc.cards.instance import CardInstance
 from htc.decks.loader import parse_deck_list
 from htc.engine.action_builder import ActionBuilder
+from htc.engine.actions import PlayerResponse
 from htc.engine.combat import CombatManager
 from htc.engine.cost_manager import CostManager
 from htc.engine.effects import EffectEngine
@@ -263,3 +267,49 @@ def make_game_shell(
     game.state.resource_points = resource_points or {0: 0, 1: 0}
     game.state.turn_player_index = 0
     return game
+
+
+# ---------------------------------------------------------------------------
+# Mock ask callback factories
+# ---------------------------------------------------------------------------
+
+
+def make_mock_ask(
+    prompt_responses: dict[str, list[str]],
+) -> Callable:
+    """Create a mock ask callback that maps prompt keywords to option IDs.
+
+    *prompt_responses* maps a substring to look for in ``decision.prompt``
+    to a list of ``selected_option_ids`` to return when that substring is
+    found.  An empty list means return ``["pass"]``.  If no prompt keyword
+    matches, ``["pass"]`` is returned.
+
+    Example::
+
+        ask = make_mock_ask({"Opt": ["opt_bottom_1", "opt_bottom_2"]})
+    """
+    def _ask(decision):
+        if decision.prompt:
+            for keyword, option_ids in prompt_responses.items():
+                if keyword in decision.prompt:
+                    ids = option_ids if option_ids else ["pass"]
+                    return PlayerResponse(selected_option_ids=ids)
+        return PlayerResponse(selected_option_ids=["pass"])
+    return _ask
+
+
+def make_mock_ask_once(first_response: PlayerResponse) -> Callable:
+    """Create a mock ask callback that returns *first_response* once, then always passes.
+
+    Useful for tests that need a specific defend or action response on the
+    first decision, then want all subsequent decisions to pass.
+    """
+    called = [False]
+
+    def _ask(decision):
+        if not called[0]:
+            called[0] = True
+            return first_response
+        return PlayerResponse(selected_option_ids=["pass"])
+
+    return _ask
