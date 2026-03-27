@@ -155,12 +155,7 @@ class KeywordEngine:
                     card=link.active_attack,
                     target_player=link.active_attack.owner_index,
                 ))
-                from htc.engine.combat import CombatManager
-                # Use a local CombatManager-style close — but we need the
-                # combat_mgr reference. Instead, we call close_chain on
-                # the state directly via the combat manager pattern.
-                # The caller (Game) should handle chain closing after this
-                # returns True.
+                # Caller (Game) handles chain closing after this returns True.
                 return True
 
         return False
