@@ -3,40 +3,9 @@
 Spellvoid N: If you would be dealt arcane damage, you may destroy this
 to prevent N of that damage.
 """
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
 from htc.engine.actions import ActionOption, PlayerResponse
-from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
-from tests.conftest import make_card, make_game_shell
-
-
-def _make_spellvoid_equipment(
-    instance_id: int = 50,
-    spellvoid_value: int = 2,
-    name: str = "Nullrune Hood",
-) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"sv-{instance_id}",
-        name=name,
-        color=None,
-        pitch=None,
-        cost=0,
-        power=None,
-        defense=1,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.EQUIPMENT}),
-        subtypes=frozenset({SubType.HEAD}),
-        supertypes=frozenset(),
-        keywords=frozenset({Keyword.SPELLVOID}),
-        functional_text="",
-        type_text="",
-        keyword_values={Keyword.SPELLVOID: spellvoid_value},
-    )
-    return CardInstance(
-        instance_id=instance_id, definition=defn, owner_index=1, zone=Zone.HEAD,
-    )
+from htc.enums import EquipmentSlot, Keyword, SubType, Zone
+from tests.conftest import make_card, make_equipment, make_game_shell
 
 
 def _mock_spellvoid_ask(use_spellvoid: bool = True):
@@ -57,7 +26,11 @@ def test_spellvoid_prevents_arcane_damage():
     game = make_game_shell()
     state = game.state
 
-    eq = _make_spellvoid_equipment(spellvoid_value=3)
+    eq = make_equipment(
+        name="Nullrune Hood", defense=1, subtype=SubType.HEAD,
+        keywords=frozenset({Keyword.SPELLVOID}),
+        keyword_values={Keyword.SPELLVOID: 3},
+    )
     state.players[1].equipment[EquipmentSlot.HEAD] = eq
 
     game._ask = _mock_spellvoid_ask(use_spellvoid=True)
@@ -77,7 +50,11 @@ def test_spellvoid_partial_prevention():
     game = make_game_shell()
     state = game.state
 
-    eq = _make_spellvoid_equipment(spellvoid_value=2)
+    eq = make_equipment(
+        name="Nullrune Hood", defense=1, subtype=SubType.HEAD,
+        keywords=frozenset({Keyword.SPELLVOID}),
+        keyword_values={Keyword.SPELLVOID: 2},
+    )
     state.players[1].equipment[EquipmentSlot.HEAD] = eq
 
     game._ask = _mock_spellvoid_ask(use_spellvoid=True)
@@ -94,7 +71,11 @@ def test_spellvoid_declined():
     game = make_game_shell()
     state = game.state
 
-    eq = _make_spellvoid_equipment(spellvoid_value=3)
+    eq = make_equipment(
+        name="Nullrune Hood", defense=1, subtype=SubType.HEAD,
+        keywords=frozenset({Keyword.SPELLVOID}),
+        keyword_values={Keyword.SPELLVOID: 3},
+    )
     state.players[1].equipment[EquipmentSlot.HEAD] = eq
 
     game._ask = _mock_spellvoid_ask(use_spellvoid=False)
@@ -121,7 +102,11 @@ def test_spellvoid_zero_damage():
     game = make_game_shell()
     state = game.state
 
-    eq = _make_spellvoid_equipment(spellvoid_value=3)
+    eq = make_equipment(
+        name="Nullrune Hood", defense=1, subtype=SubType.HEAD,
+        keywords=frozenset({Keyword.SPELLVOID}),
+        keyword_values={Keyword.SPELLVOID: 3},
+    )
     state.players[1].equipment[EquipmentSlot.HEAD] = eq
 
     remaining = game._apply_spellvoid(1, 0)

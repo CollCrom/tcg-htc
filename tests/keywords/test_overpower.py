@@ -1,8 +1,8 @@
 """Tests for Overpower keyword (8.3.9): limits defense to 1 action card from hand."""
 
 from htc.engine.actions import PlayerResponse
-from htc.enums import Keyword, Zone
-from tests.conftest import make_card, make_game_shell
+from htc.enums import EquipmentSlot, Keyword, SubType, Zone
+from tests.conftest import make_card, make_equipment, make_game_shell
 
 
 def _mock_ask(first_response: PlayerResponse):
@@ -50,10 +50,6 @@ def test_overpower_does_not_limit_equipment():
     game = make_game_shell()
     state = game.state
 
-    from htc.cards.card import CardDefinition
-    from htc.cards.instance import CardInstance
-    from htc.enums import CardType, EquipmentSlot, SubType
-
     attack = make_card(instance_id=1, power=6, keywords=frozenset({Keyword.OVERPOWER}))
     game.combat_mgr.open_chain(state)
     link = game.combat_mgr.add_chain_link(state, attack, 1)
@@ -61,14 +57,7 @@ def test_overpower_does_not_limit_equipment():
     hand_card = make_card(instance_id=10, name="Hand Card", defense=3, owner_index=1, zone=Zone.HAND)
     state.players[1].hand = [hand_card]
 
-    eq_def = CardDefinition(
-        unique_id="eq-1", name="Chest Plate", color=None, pitch=None,
-        cost=0, power=None, defense=2, health=None, intellect=None,
-        arcane=None, types=frozenset({CardType.EQUIPMENT}),
-        subtypes=frozenset({SubType.CHEST}), supertypes=frozenset(),
-        keywords=frozenset(), functional_text="", type_text="",
-    )
-    eq = CardInstance(instance_id=50, definition=eq_def, owner_index=1, zone=Zone.CHEST)
+    eq = make_equipment(instance_id=50, name="Chest Plate", defense=2, subtype=SubType.CHEST)
     state.players[1].equipment[EquipmentSlot.CHEST] = eq
 
     game._ask = _mock_ask(PlayerResponse(selected_option_ids=[

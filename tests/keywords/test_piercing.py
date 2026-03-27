@@ -4,9 +4,8 @@ Piercing N: If this is defended by an equipment, it gets +N power.
 """
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.game import Game
-from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
-from tests.conftest import make_card, make_game_shell
+from htc.enums import CardType, Keyword, SubType, Zone
+from tests.conftest import make_card, make_equipment, make_game_shell
 
 
 def _make_piercing_attack(
@@ -36,37 +35,11 @@ def _make_piercing_attack(
     )
 
 
-def _make_equipment_defender(
-    instance_id: int = 50, defense: int = 2, name: str = "Test Shield"
-) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"eq-{instance_id}",
-        name=name,
-        color=None,
-        pitch=None,
-        cost=0,
-        power=None,
-        defense=defense,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.EQUIPMENT}),
-        subtypes=frozenset({SubType.ARMS}),
-        supertypes=frozenset(),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id, definition=defn, owner_index=1, zone=Zone.COMBAT_CHAIN,
-    )
-
-
 def test_piercing_adds_power_vs_equipment():
     """Piercing N adds +N power when defended by equipment."""
     game = make_game_shell()
     attack = _make_piercing_attack(power=5, piercing=1)
-    equipment = _make_equipment_defender(defense=2)
+    equipment = make_equipment(defense=2, subtype=SubType.ARMS, zone=Zone.COMBAT_CHAIN)
 
     game.combat_mgr.open_chain(game.state)
     link = game.combat_mgr.add_chain_link(game.state, attack, 1)
@@ -100,7 +73,7 @@ def test_piercing_higher_value():
     """Piercing 3 adds +3 power when defended by equipment."""
     game = make_game_shell()
     attack = _make_piercing_attack(power=4, piercing=3)
-    equipment = _make_equipment_defender(defense=2)
+    equipment = make_equipment(defense=2, subtype=SubType.ARMS, zone=Zone.COMBAT_CHAIN)
 
     game.combat_mgr.open_chain(game.state)
     link = game.combat_mgr.add_chain_link(game.state, attack, 1)
@@ -117,7 +90,7 @@ def test_piercing_with_mixed_defenders():
     game = make_game_shell()
     attack = _make_piercing_attack(power=5, piercing=2)
     hand_card = make_card(instance_id=10, defense=3, owner_index=1, zone=Zone.COMBAT_CHAIN)
-    equipment = _make_equipment_defender(defense=2)
+    equipment = make_equipment(defense=2, subtype=SubType.ARMS, zone=Zone.COMBAT_CHAIN)
 
     game.combat_mgr.open_chain(game.state)
     link = game.combat_mgr.add_chain_link(game.state, attack, 1)
@@ -134,7 +107,7 @@ def test_no_piercing_no_bonus():
     """Attack without Piercing keyword is unaffected."""
     game = make_game_shell()
     attack = make_card(instance_id=1, power=5, zone=Zone.COMBAT_CHAIN)
-    equipment = _make_equipment_defender(defense=2)
+    equipment = make_equipment(defense=2, subtype=SubType.ARMS, zone=Zone.COMBAT_CHAIN)
 
     game.combat_mgr.open_chain(game.state)
     link = game.combat_mgr.add_chain_link(game.state, attack, 1)

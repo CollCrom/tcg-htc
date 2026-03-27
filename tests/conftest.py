@@ -14,7 +14,7 @@ from htc.engine.events import EventBus
 from htc.engine.game import Game, GameResult
 from htc.engine.keyword_engine import KeywordEngine
 from htc.engine.stack import StackManager
-from htc.enums import CardType, SubType, Zone
+from htc.enums import CardType, EquipmentSlot, SubType, Zone
 from htc.player.random_player import RandomPlayer
 from htc.state.game_state import GameState
 from htc.state.player_state import PlayerState
@@ -129,6 +129,104 @@ def make_pitch_card(
         definition=defn,
         owner_index=owner_index,
         zone=Zone.HAND,
+    )
+
+
+# Maps equipment subtypes to their canonical zones
+_SLOT_ZONE: dict[SubType, Zone] = {
+    SubType.HEAD: Zone.HEAD,
+    SubType.CHEST: Zone.CHEST,
+    SubType.ARMS: Zone.ARMS,
+    SubType.LEGS: Zone.LEGS,
+}
+
+
+def make_equipment(
+    instance_id: int = 50,
+    name: str = "Test Equipment",
+    *,
+    defense: int = 2,
+    subtype: SubType = SubType.CHEST,
+    keywords: frozenset = frozenset(),
+    keyword_values: dict | None = None,
+    owner_index: int = 1,
+    zone: Zone | None = None,
+) -> CardInstance:
+    """Create an equipment CardInstance with sensible defaults for testing.
+
+    If *zone* is not specified, it is inferred from *subtype* (e.g.
+    SubType.HEAD → Zone.HEAD).  Pass *zone* explicitly to override
+    (e.g. Zone.COMBAT_CHAIN for defending equipment).
+    """
+    if zone is None:
+        zone = _SLOT_ZONE.get(subtype, Zone.CHEST)
+    defn = CardDefinition(
+        unique_id=f"eq-{instance_id}",
+        name=name,
+        color=None,
+        pitch=None,
+        cost=0,
+        power=None,
+        defense=defense,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.EQUIPMENT}),
+        subtypes=frozenset({subtype}),
+        supertypes=frozenset(),
+        keywords=keywords,
+        functional_text="",
+        type_text="",
+        keyword_values=keyword_values or {},
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=zone,
+    )
+
+
+def make_weapon(
+    instance_id: int = 100,
+    name: str = "Test Staff",
+    *,
+    power: int | None = None,
+    arcane: int | None = None,
+    cost: int | None = None,
+    subtypes: frozenset | None = None,
+    keywords: frozenset = frozenset(),
+    functional_text: str = "",
+    type_text: str = "",
+    owner_index: int = 0,
+    zone: Zone = Zone.WEAPON_1,
+) -> CardInstance:
+    """Create a weapon CardInstance with sensible defaults for testing."""
+    if subtypes is None:
+        subtypes = frozenset({SubType.STAFF, SubType.TWO_HAND})
+    defn = CardDefinition(
+        unique_id=f"weapon-{instance_id}",
+        name=name,
+        color=None,
+        pitch=None,
+        cost=cost,
+        power=power,
+        defense=None,
+        health=None,
+        intellect=None,
+        arcane=arcane,
+        types=frozenset({CardType.WEAPON}),
+        subtypes=subtypes,
+        supertypes=frozenset(),
+        keywords=keywords,
+        functional_text=functional_text,
+        type_text=type_text,
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=zone,
     )
 
 
