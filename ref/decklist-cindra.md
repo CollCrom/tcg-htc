@@ -1,4 +1,4 @@
-# Cindra, Dracai of Retribution — Calling Brisbane
+# Cindra, Dracai of Retribution — Calling Brisbane (Red Cindra)
 
 **Source:** https://fabrary.net/decks/01KJM6T95H0W2XCHQTBT7VYT5R
 
