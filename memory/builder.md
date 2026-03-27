@@ -64,3 +64,11 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 **Counters**: modify properties of the object they're on. Diametrically opposing counters both remain (no cancellation).
 
 **Continuous effects staging**: 8 stages for applying effects (copy → controller → name/color/text → types → supertypes → abilities → base numeric → numeric values). Timestamp order within stage.
+
+## Pre-Phase 5 Audit (2026-03-26)
+
+- **All keyword reads must go through EffectEngine** — never read `card.definition.keywords` or `card.definition.keyword_value()` directly in game logic. Use `effect_engine.get_modified_keywords()` and `effect_engine.get_keyword_value()`.
+- **Go Again is purely dynamic at resolution** — removed early snapshots from `ChainLink` creation and `_begin_attack()`. Resolution step now uses effect engine exclusively. `ChainLink.has_go_again` field still exists (default False) but is unused for attacks; kept for potential future non-attack chain entries.
+- **Weapon proxy inherits modified keywords** — `_create_attack_proxy()` now queries the effect engine for the weapon's modified keywords/values instead of copying raw definition data.
+- **`EffectEngine.get_keyword_value()`** — new method added. Currently delegates to `card.definition.keyword_value()` but provides the hook point for future continuous effects that modify keyword N values (e.g. "your Arcane Barrier is increased by 1").
+- **`_activate_attack_weapon` and `_activate_arcane_weapon` still use `weapon.definition.has_go_again`** for the stack layer — these are fine because attack go-again is resolved dynamically at resolution, and arcane weapons don't go through combat chain. But if we add effects that grant/remove go again from weapons, these would need updating too.

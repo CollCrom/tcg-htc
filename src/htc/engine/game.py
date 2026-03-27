@@ -623,7 +623,18 @@ class Game:
         self._deal_arcane_damage(weapon, target_index, arcane_damage)
 
     def _create_attack_proxy(self, weapon: CardInstance, owner_index: int) -> CardInstance:
-        """Create a transient attack card representing a weapon attack."""
+        """Create a transient attack card representing a weapon attack.
+
+        Uses modified keywords/values from the effect engine so that any
+        continuous effects on the weapon are inherited by the proxy.
+        """
+        modified_keywords = self.effect_engine.get_modified_keywords(self.state, weapon)
+        # Build keyword_values dict for modified keywords using effect-engine-aware path
+        modified_kw_values = {
+            kw: self.effect_engine.get_keyword_value(self.state, weapon, kw)
+            for kw in modified_keywords
+            if self.effect_engine.get_keyword_value(self.state, weapon, kw) > 0
+        }
         proxy_def = CardDefinition(
             unique_id=f"proxy-{weapon.definition.unique_id}",
             name=f"{weapon.name} (attack)",
@@ -638,10 +649,10 @@ class Game:
             types=frozenset({CardType.ACTION}),
             subtypes=frozenset({SubType.ATTACK}),
             supertypes=weapon.definition.supertypes,
-            keywords=weapon.definition.keywords,
+            keywords=modified_keywords,
             functional_text="",
             type_text="Weapon attack proxy",
-            keyword_values=weapon.definition.keyword_values,
+            keyword_values=modified_kw_values,
         )
         proxy = CardInstance(
             instance_id=self.state.next_instance_id(),
@@ -757,7 +768,6 @@ class Game:
         """Move an attack from the stack to the combat chain as a new chain link."""
         defender_index = 1 - attacker_index
         link = self.combat_mgr.add_chain_link(self.state, attack_card, defender_index)
-        link.has_go_again = has_go_again
 
         # If this is a weapon proxy, set the weapon as attack_source
         if attack_card.is_proxy and attack_card.proxy_source_id is not None:
@@ -813,8 +823,9 @@ class Game:
 
         # Ambush (8.3): cards with Ambush in arsenal can defend
         for card in player.arsenal:
+            card_keywords = self.effect_engine.get_modified_keywords(self.state, card)
             if (
-                Keyword.AMBUSH in card.definition.keywords
+                Keyword.AMBUSH in card_keywords
                 and card.base_defense is not None
             ):
                 mod_def = self.effect_engine.get_modified_defense(self.state, card)
@@ -868,7 +879,8 @@ class Game:
                         action_cards_defended += 1
                 elif card in player.arsenal:
                     # Only Ambush cards can defend from arsenal
-                    if Keyword.AMBUSH not in card.definition.keywords:
+                    card_kws = self.effect_engine.get_modified_keywords(self.state, card)
+                    if Keyword.AMBUSH not in card_kws:
                         continue
                     # Ambush: defending from arsenal counts as hand defense
                     # for Dominate/Overpower purposes
@@ -975,8 +987,8 @@ class Game:
         attacker_index = 1 - link.attack_target_index
 
         # 7.6.2: If attack has go again at resolution time, controller gains 1 AP
-        # Check modified keywords dynamically (effects may have granted/removed go again)
-        has_go_again = link.has_go_again
+        # Always use effect engine for dynamic keyword check (effects may grant/remove go again)
+        has_go_again = False
         if link.active_attack:
             attack_keywords = self.effect_engine.get_modified_keywords(self.state, link.active_attack)
             has_go_again = Keyword.GO_AGAIN in attack_keywords

@@ -31,7 +31,6 @@ class CombatManager:
             link_number=state.combat_chain.num_chain_links + 1,
             active_attack=attack_card,
             attack_target_index=attack_target_index,
-            has_go_again=attack_card.definition.has_go_again,
         )
         attack_card.zone = Zone.COMBAT_CHAIN
         state.combat_chain.chain_links.append(link)
