@@ -806,13 +806,9 @@ class Game:
         # Cards from hand with defense value (7.3.2a)
         for card in player.hand:
             if card.base_defense is not None and not card.definition.is_defense_reaction:
-                color_str = card.definition.color_label
                 mod_def = self.effect_engine.get_modified_defense(self.state, card)
-                options.append(ActionOption(
-                    action_id=f"defend_{card.instance_id}",
-                    description=f"Defend with {card.name}{color_str} (defense={mod_def})",
-                    action_type=ActionType.DEFEND_WITH,
-                    card_instance_id=card.instance_id,
+                options.append(ActionOption.defend_with(
+                    card.instance_id, f"{card.name}{card.definition.color_label}", mod_def,
                 ))
 
         # Ambush (8.3): cards with Ambush in arsenal can defend
@@ -821,24 +817,18 @@ class Game:
                 Keyword.AMBUSH in card.definition.keywords
                 and card.base_defense is not None
             ):
-                color_str = card.definition.color_label
                 mod_def = self.effect_engine.get_modified_defense(self.state, card)
-                options.append(ActionOption(
-                    action_id=f"defend_{card.instance_id}",
-                    description=f"Defend with {card.name}{color_str} (defense={mod_def}, from arsenal)",
-                    action_type=ActionType.DEFEND_WITH,
-                    card_instance_id=card.instance_id,
+                options.append(ActionOption.defend_with(
+                    card.instance_id, f"{card.name}{card.definition.color_label}", mod_def,
+                    extra="from arsenal",
                 ))
 
         # Equipment (public permanents) (7.3.2a) — not limited by Dominate
         for slot, eq in player.equipment.items():
             if eq and not eq.is_tapped and eq.base_defense is not None:
                 mod_def = self.effect_engine.get_modified_defense(self.state, eq)
-                options.append(ActionOption(
-                    action_id=f"defend_{eq.instance_id}",
-                    description=f"Defend with {eq.name} (defense={mod_def})",
-                    action_type=ActionType.DEFEND_WITH,
-                    card_instance_id=eq.instance_id,
+                options.append(ActionOption.defend_with(
+                    eq.instance_id, eq.name, mod_def,
                 ))
 
         # Always can pass
