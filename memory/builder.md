@@ -19,6 +19,21 @@ Persistent learnings across sessions. Update this as you go.
 - **Equipment defending is simplified** — currently equipment defends but doesn't return to its zone after combat (it stays on the chain then gets skipped during cleanup). Needs proper handling: equipment returns to its slot, non-equipment goes to graveyard.
 - **Draw from deck uses `pop(0)`** — this is O(n). For production, consider `collections.deque` or reversing the deck so top = last element.
 
+## Phase 4 Keyword Implementation Status (2026-03-26)
+
+All 11 keywords for Cindra vs Arakni matchup implemented:
+- **Mark** — `is_marked` on PlayerState, auto-removed on HIT by opponent (rules 9.3)
+- **Stealth** — No engine rules meaning (keyword tag only, per rules 8.3)
+- **Piercing N** — +N power when defended by equipment, via continuous effect
+- **Ambush** — Arsenal cards with Ambush appear in defender options
+- **Rupture** — Infrastructure check: `_check_rupture_active()` returns True at chain link >= 4
+- **Spellvoid N** — One-shot arcane prevention, destroys equipment (before Arcane Barrier in pipeline)
+- **Opt N** — `_perform_opt()` utility: look at top N, put any on bottom
+- **Retrieve** — `_perform_retrieve()` utility: return card from graveyard with optional filter
+- **Contract** — Keyword tag only (hero ability trigger is Phase 5)
+- **Legendary** — Deck validation: max 1 copy (`decks/validation.py`)
+- **Specialization** — Deck validation: hero name check heuristic (full parsing is Phase 5)
+
 ## Domain Notes
 
 ### FaB Rules — Key Engine Concepts (from comprehensive rules, 2026-03-19)
