@@ -1,8 +1,80 @@
 """Tests for Overpower keyword (8.3.9): limits defense to 1 action card from hand."""
 
+from htc.cards.card import CardDefinition
+from htc.cards.instance import CardInstance
 from htc.engine.actions import PlayerResponse
-from htc.enums import EquipmentSlot, Keyword, SubType, Zone
+from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
 from tests.conftest import make_card, make_equipment, make_game_shell, make_mock_ask_once
+
+
+def _make_defense_reaction(
+    instance_id: int,
+    name: str = "Defense Reaction",
+    *,
+    defense: int = 3,
+    cost: int = 0,
+    owner_index: int = 1,
+) -> CardInstance:
+    """Create a defense reaction card for testing."""
+    defn = CardDefinition(
+        unique_id=f"dr-{instance_id}",
+        name=name,
+        color=None,
+        pitch=None,
+        cost=cost,
+        power=None,
+        defense=defense,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.DEFENSE_REACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset(),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.HAND,
+    )
+
+
+def _make_attack_reaction(
+    instance_id: int,
+    name: str = "Attack Reaction",
+    *,
+    power: int = 3,
+    cost: int = 0,
+    owner_index: int = 0,
+) -> CardInstance:
+    """Create an attack reaction card for testing."""
+    defn = CardDefinition(
+        unique_id=f"ar-{instance_id}",
+        name=name,
+        color=None,
+        pitch=None,
+        cost=cost,
+        power=power,
+        defense=None,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ATTACK_REACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset(),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.HAND,
+    )
 
 
 def test_overpower_limits_action_card_defense():
@@ -79,3 +151,76 @@ def test_no_overpower_allows_multiple_action_cards():
     game._defend_step()
 
     assert len(link.defending_cards) == 2
+
+
+def test_overpower_allows_multiple_defense_reactions():
+    """With Overpower, defender can still play 2+ defense reactions during reaction step.
+
+    Overpower only restricts action cards from hand during the defend step (7.3).
+    Defense reactions played during the reaction step (7.4) go through the stack
+    and are not subject to the Overpower limit.
+    """
+    game = make_game_shell()
+    state = game.state
+
+    attack = make_card(instance_id=1, power=8, keywords=frozenset({Keyword.OVERPOWER}))
+    game.combat_mgr.open_chain(state)
+    link = game.combat_mgr.add_chain_link(state, attack, 1)
+
+    # Two defense reactions in defender's hand (player 1)
+    dr_a = _make_defense_reaction(instance_id=20, name="DR Alpha", defense=2)
+    dr_b = _make_defense_reaction(instance_id=21, name="DR Beta", defense=3)
+    state.players[1].hand = [dr_a, dr_b]
+
+    # Mock: player 0 (attacker/turn player) always passes.
+    # Player 1 (defender) plays each defense reaction one at a time, then passes.
+    play_queue = [f"play_{dr_a.instance_id}", f"play_{dr_b.instance_id}"]
+
+    def _ask(decision):
+        if decision.player_index == 1 and play_queue:
+            action_id = play_queue.pop(0)
+            return PlayerResponse(selected_option_ids=[action_id])
+        return PlayerResponse(selected_option_ids=["pass"])
+
+    game._ask = _ask
+
+    game._reaction_step()
+
+    # Both defense reactions should have been added as defending cards
+    assert len(link.defending_cards) == 2
+    assert dr_a in link.defending_cards
+    assert dr_b in link.defending_cards
+
+
+def test_overpower_allows_attack_reactions():
+    """With Overpower, attack reactions should still be playable during reaction step.
+
+    Overpower restricts action card defense from hand, not reactions of any kind.
+    """
+    game = make_game_shell()
+    state = game.state
+
+    attack = make_card(instance_id=1, power=8, keywords=frozenset({Keyword.OVERPOWER}))
+    game.combat_mgr.open_chain(state)
+    link = game.combat_mgr.add_chain_link(state, attack, 1)
+
+    # Attack reaction in attacker's hand (player 0, the turn player)
+    ar = _make_attack_reaction(instance_id=30, name="Pummel", power=3, owner_index=0)
+    state.players[0].hand = [ar]
+
+    # Mock: player 0 (attacker/turn player) plays the attack reaction, then passes.
+    # Player 1 (defender) always passes.
+    played = [False]
+
+    def _ask(decision):
+        if decision.player_index == 0 and not played[0]:
+            played[0] = True
+            return PlayerResponse(selected_option_ids=[f"play_{ar.instance_id}"])
+        return PlayerResponse(selected_option_ids=["pass"])
+
+    game._ask = _ask
+
+    game._reaction_step()
+
+    # The attack reaction should have been played (removed from hand, resolved on stack)
+    assert ar not in state.players[0].hand
