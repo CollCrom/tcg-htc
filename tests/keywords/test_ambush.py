@@ -6,7 +6,7 @@ from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
 from htc.engine.actions import PlayerResponse
 from htc.enums import CardType, Keyword, SubType, Zone
-from tests.conftest import make_card, make_game_shell
+from tests.conftest import make_card, make_game_shell, make_mock_ask_once
 
 
 def _make_ambush_card(
@@ -35,19 +35,6 @@ def _make_ambush_card(
     )
 
 
-def _mock_ask(first_response: PlayerResponse):
-    """Return first_response once, then always pass."""
-    called = [False]
-
-    def _ask(decision):
-        if not called[0]:
-            called[0] = True
-            return first_response
-        return PlayerResponse(selected_option_ids=["pass"])
-
-    return _ask
-
-
 def test_ambush_card_in_arsenal_can_defend():
     """Card with Ambush in arsenal should appear in defender options and work."""
     game = make_game_shell()
@@ -61,7 +48,7 @@ def test_ambush_card_in_arsenal_can_defend():
     state.players[1].arsenal = [ambush_card]
     state.players[1].hand = []
 
-    game._ask = _mock_ask(PlayerResponse(selected_option_ids=[
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
         f"defend_{ambush_card.instance_id}",
     ]))
 
@@ -85,7 +72,7 @@ def test_non_ambush_arsenal_cannot_defend():
     state.players[1].arsenal = [normal_card]
     state.players[1].hand = []
 
-    game._ask = _mock_ask(PlayerResponse(selected_option_ids=[
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
         f"defend_{normal_card.instance_id}",
     ]))
 
@@ -111,7 +98,7 @@ def test_ambush_with_hand_cards():
     state.players[1].hand = [hand_card]
     state.players[1].arsenal = [ambush_card]
 
-    game._ask = _mock_ask(PlayerResponse(selected_option_ids=[
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
         f"defend_{hand_card.instance_id}",
         f"defend_{ambush_card.instance_id}",
     ]))

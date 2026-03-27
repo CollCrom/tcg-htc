@@ -5,7 +5,7 @@ from htc.cards.instance import CardInstance
 from htc.engine.actions import PlayerResponse
 from htc.engine.game import Game
 from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
-from tests.conftest import make_game_shell, make_pitch_card
+from tests.conftest import make_equipment, make_game_shell, make_pitch_card, make_weapon
 
 
 def _make_arcane_weapon(
@@ -17,29 +17,10 @@ def _make_arcane_weapon(
     keywords: frozenset = frozenset(),
     owner_index: int = 0,
 ) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"staff-{instance_id}",
-        name=name,
-        color=None,
-        pitch=None,
-        cost=cost,
-        power=None,
-        defense=None,
-        health=None,
-        intellect=None,
-        arcane=arcane,
-        types=frozenset({CardType.WEAPON}),
-        subtypes=frozenset({SubType.STAFF, SubType.TWO_HAND}),
-        supertypes=frozenset(),
-        keywords=keywords,
-        functional_text=functional_text,
-        type_text="Weapon - Staff",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.WEAPON_1,
+    return make_weapon(
+        instance_id=instance_id, name=name, arcane=arcane, cost=cost,
+        functional_text=functional_text, type_text="Weapon - Staff",
+        keywords=keywords, owner_index=owner_index,
     )
 
 
@@ -49,30 +30,11 @@ def _make_arcane_barrier_equipment(
     barrier_value: int = 2,
     owner_index: int = 1,
 ) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"ab-{instance_id}",
-        name=name,
-        color=None,
-        pitch=None,
-        cost=0,
-        power=None,
-        defense=0,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.EQUIPMENT}),
-        subtypes=frozenset({SubType.CHEST}),
-        supertypes=frozenset(),
+    return make_equipment(
+        instance_id=instance_id, name=name, defense=0,
+        subtype=SubType.CHEST, owner_index=owner_index,
         keywords=frozenset({Keyword.ARCANE_BARRIER}),
-        functional_text="",
-        type_text="",
         keyword_values={Keyword.ARCANE_BARRIER: barrier_value},
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.CHEST,
     )
 
 

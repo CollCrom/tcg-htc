@@ -1,15 +1,8 @@
 """Tests for weapon attack activation (rules 1.4.3)."""
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.enums import CardType, Keyword, SubType, Zone
+from htc.enums import Keyword, SubType, Zone
 from htc.state.turn_counters import TurnCounters
-from tests.conftest import make_game_shell, make_pitch_card
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from tests.conftest import make_game_shell, make_pitch_card, make_weapon
 
 
 def _make_weapon(
@@ -19,30 +12,13 @@ def _make_weapon(
     cost: int = 0,
     owner_index: int = 0,
     keywords: frozenset = frozenset(),
-) -> CardInstance:
-    defn = CardDefinition(
-        unique_id=f"weapon-{instance_id}",
-        name=name,
-        color=None,
-        pitch=None,
-        cost=cost,
-        power=power,
-        defense=None,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.WEAPON}),
+):
+    return make_weapon(
+        instance_id=instance_id, name=name, power=power, cost=cost,
         subtypes=frozenset({SubType.DAGGER, SubType.ONE_HAND}),
-        supertypes=frozenset(),
-        keywords=keywords,
+        keywords=keywords, owner_index=owner_index,
         functional_text="Once per Turn Action -- Attack",
         type_text="Weapon - Dagger",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.WEAPON_1,
     )
 
 

@@ -8,7 +8,7 @@ from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
 from htc.engine.game import Game
 from htc.enums import CardType, Keyword, SubType, SuperType, Zone
-from tests.conftest import make_card, make_game_shell
+from tests.conftest import make_card, make_equipment, make_game_shell
 
 
 def _make_phantasm_attack(instance_id: int = 1, power: int = 5) -> CardInstance:
@@ -202,14 +202,10 @@ def test_phantasm_equipment_does_not_trigger():
     game = make_game_shell()
     attack = _make_phantasm_attack()
 
-    eq_def = CardDefinition(
-        unique_id="eq-1", name="Big Shield", color=None, pitch=None,
-        cost=0, power=None, defense=6, health=None, intellect=None,
-        arcane=None, types=frozenset({CardType.EQUIPMENT}),
-        subtypes=frozenset({SubType.ARMS}), supertypes=frozenset(),
-        keywords=frozenset(), functional_text="", type_text="",
+    eq = make_equipment(
+        instance_id=50, name="Big Shield", defense=6,
+        subtype=SubType.ARMS, zone=Zone.COMBAT_CHAIN,
     )
-    eq = CardInstance(instance_id=50, definition=eq_def, owner_index=1, zone=Zone.COMBAT_CHAIN)
     _setup_combat(game, attack, [eq])
 
     result = game._check_phantasm()
