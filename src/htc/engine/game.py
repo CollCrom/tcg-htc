@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from random import Random
 
@@ -492,11 +493,11 @@ class Game:
         """
         player = self.state.players[player_index]
 
-        # Collect total Arcane Barrier value from equipment
-        total_barrier = 0
-        for eq in player.equipment.values():
-            if eq and Keyword.ARCANE_BARRIER in eq.definition.keywords:
-                total_barrier += eq.definition.keyword_value(Keyword.ARCANE_BARRIER)
+        # Collect total Arcane Barrier value from equipment (using modified keywords)
+        barrier_equipment = self.keyword_engine.get_equipment_with_keyword(
+            self.state, player, Keyword.ARCANE_BARRIER,
+        )
+        total_barrier = sum(value for _, _, value in barrier_equipment)
 
         if total_barrier <= 0:
             return damage
@@ -780,32 +781,9 @@ class Game:
         # 7.2.4: "attack" event occurs — TODO: triggered effects
 
         # 7.2.5: Turn player gets priority
-        safety = 0
-        consecutive_passes = 0
-        priority_player = self.state.turn_player_index
-
-        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
-            safety += 1
-
-            if not self.stack_mgr.is_empty(self.state):
-                self._resolve_stack()
-                consecutive_passes = 0
-                priority_player = self.state.turn_player_index
-                continue
-
-            decision = self._build_combat_priority_decision(priority_player, allow_actions=False)
-            response = self._ask(decision)
-            action_id = response.first
-
-            if action_id is None or action_id == "pass":
-                consecutive_passes += 1
-                if consecutive_passes >= 2:
-                    break
-                priority_player = 1 - priority_player
-                continue
-
-            consecutive_passes = 0
-            self._execute_action(priority_player, action_id)
+        self._run_priority_loop(
+            lambda pp: self._build_combat_priority_decision(pp, allow_actions=False),
+        )
 
     def _defend_step(self) -> None:
         """Defend Step (7.3): Defender declares defending cards."""
@@ -828,13 +806,9 @@ class Game:
         # Cards from hand with defense value (7.3.2a)
         for card in player.hand:
             if card.base_defense is not None and not card.definition.is_defense_reaction:
-                color_str = card.definition.color_label
                 mod_def = self.effect_engine.get_modified_defense(self.state, card)
-                options.append(ActionOption(
-                    action_id=f"defend_{card.instance_id}",
-                    description=f"Defend with {card.name}{color_str} (defense={mod_def})",
-                    action_type=ActionType.DEFEND_WITH,
-                    card_instance_id=card.instance_id,
+                options.append(ActionOption.defend_with(
+                    card.instance_id, f"{card.name}{card.definition.color_label}", mod_def,
                 ))
 
         # Ambush (8.3): cards with Ambush in arsenal can defend
@@ -843,24 +817,18 @@ class Game:
                 Keyword.AMBUSH in card.definition.keywords
                 and card.base_defense is not None
             ):
-                color_str = card.definition.color_label
                 mod_def = self.effect_engine.get_modified_defense(self.state, card)
-                options.append(ActionOption(
-                    action_id=f"defend_{card.instance_id}",
-                    description=f"Defend with {card.name}{color_str} (defense={mod_def}, from arsenal)",
-                    action_type=ActionType.DEFEND_WITH,
-                    card_instance_id=card.instance_id,
+                options.append(ActionOption.defend_with(
+                    card.instance_id, f"{card.name}{card.definition.color_label}", mod_def,
+                    extra="from arsenal",
                 ))
 
         # Equipment (public permanents) (7.3.2a) — not limited by Dominate
         for slot, eq in player.equipment.items():
             if eq and not eq.is_tapped and eq.base_defense is not None:
                 mod_def = self.effect_engine.get_modified_defense(self.state, eq)
-                options.append(ActionOption(
-                    action_id=f"defend_{eq.instance_id}",
-                    description=f"Defend with {eq.name} (defense={mod_def})",
-                    action_type=ActionType.DEFEND_WITH,
-                    card_instance_id=eq.instance_id,
+                options.append(ActionOption.defend_with(
+                    eq.instance_id, eq.name, mod_def,
                 ))
 
         # Always can pass
@@ -935,34 +903,11 @@ class Game:
         attacker_index = 1 - link.attack_target_index
         defender_index = link.attack_target_index
 
-        safety = 0
-        consecutive_passes = 0
-        priority_player = self.state.turn_player_index
-
-        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
-            safety += 1
-
-            if not self.stack_mgr.is_empty(self.state):
-                self._resolve_stack()
-                consecutive_passes = 0
-                priority_player = self.state.turn_player_index
-                self._check_game_over()
-                continue
-
-            # Priority alternates between players (7.4.2)
-            decision = self._build_reaction_decision(priority_player, attacker_index, defender_index)
-            response = self._ask(decision)
-            action_id = response.first
-
-            if action_id is None or action_id == "pass":
-                consecutive_passes += 1
-                if consecutive_passes >= 2:
-                    break
-                priority_player = 1 - priority_player
-                continue
-
-            consecutive_passes = 0
-            self._execute_action(priority_player, action_id)
+        # Priority alternates between players (7.4.2)
+        self._run_priority_loop(
+            lambda pp: self._build_reaction_decision(pp, attacker_index, defender_index),
+            check_game_over_after_resolve=True,
+        )
 
     def _build_reaction_decision(
         self, priority_player: int, attacker_index: int, defender_index: int
@@ -1038,47 +983,22 @@ class Game:
         if has_go_again:
             self.state.action_points[attacker_index] += 1
 
+        def _check_attack_on_stack() -> object:
+            """If an attack is on top of the stack, signal chain continuation."""
+            if self.stack_mgr.is_empty(self.state):
+                return None
+            top = self.stack_mgr.top(self.state)
+            if top and top.card and top.card.definition.is_attack:
+                return self._BREAK_TRUE
+            return None  # fall through to default resolve behaviour
+
         # 7.6.3: Turn player gets priority
         # 7.6.3a: Turn player may play another attack during Resolution Step
-        safety = 0
-        consecutive_passes = 0
-        priority_player = self.state.turn_player_index
-
-        while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
-            safety += 1
-
-            if not self.stack_mgr.is_empty(self.state):
-                top = self.stack_mgr.top(self.state)
-                if top and top.card and top.card.definition.is_attack:
-                    # New attack on stack — return True to loop back to combat steps
-                    return True
-                self._resolve_stack()
-                consecutive_passes = 0
-                priority_player = self.state.turn_player_index
-                continue
-
-            decision = self._build_resolution_decision(priority_player)
-            response = self._ask(decision)
-            action_id = response.first
-
-            if action_id is None or action_id == "pass":
-                consecutive_passes += 1
-                if consecutive_passes >= 2:
-                    # 7.6.4: both pass — move to Close Step
-                    return False
-                priority_player = 1 - priority_player
-                continue
-
-            consecutive_passes = 0
-            self._execute_action(priority_player, action_id)
-
-            # Check if an attack was just put on the stack
-            if not self.stack_mgr.is_empty(self.state):
-                top = self.stack_mgr.top(self.state)
-                if top and top.card and top.card.definition.is_attack:
-                    return True
-
-        return False
+        return self._run_priority_loop(
+            lambda pp: self._build_resolution_decision(pp),
+            on_stack_not_empty=_check_attack_on_stack,
+            on_action_executed=_check_attack_on_stack,
+        )
 
     def _build_resolution_decision(self, player_index: int) -> Decision:
         """Build decision for resolution step — can play attacks (if turn player)
@@ -1138,8 +1058,43 @@ class Game:
             self.state, player_index, allow_actions=allow_actions,
         )
 
-    def _priority_loop_until_pass(self, allow_actions: bool = False) -> None:
-        """Run a priority loop until both players pass with empty stack."""
+    # --- Shared Priority Loop ---
+
+    _BREAK = object()       # sentinel: break out of loop, return False
+    _BREAK_TRUE = object()  # sentinel: break out of loop, return True
+    _CONTINUE = object()    # sentinel: skip to next iteration
+
+    def _run_priority_loop(
+        self,
+        decision_builder: Callable[[int], Decision],
+        *,
+        check_game_over_after_resolve: bool = False,
+        on_stack_not_empty: Callable[[], object] | None = None,
+        on_action_executed: Callable[[], object] | None = None,
+    ) -> bool:
+        """Generic priority loop shared by all combat steps and sub-phases.
+
+        Parameters
+        ----------
+        decision_builder:
+            Called with the current priority player index; must return a Decision.
+        check_game_over_after_resolve:
+            If True, call _check_game_over() after each stack resolution.
+        on_stack_not_empty:
+            Optional hook called when the stack is non-empty *instead* of the
+            default resolve-and-reset behaviour.  Return one of the sentinels
+            ``_BREAK``, ``_BREAK_TRUE``, or ``_CONTINUE`` to control the loop,
+            or ``None`` to fall through to the default behaviour.
+        on_action_executed:
+            Optional hook called after an action is executed.  Return
+            ``_BREAK_TRUE`` to exit the loop returning True, or ``None``
+            to continue normally.
+
+        Returns
+        -------
+        bool
+            True only when a hook requests early exit via ``_BREAK_TRUE``.
+        """
         safety = 0
         consecutive_passes = 0
         priority_player = self.state.turn_player_index
@@ -1147,26 +1102,54 @@ class Game:
         while not self.state.game_over and safety < MAX_PRIORITY_PASSES:
             safety += 1
 
+            # --- Stack resolution ---
             if not self.stack_mgr.is_empty(self.state):
+                if on_stack_not_empty is not None:
+                    signal = on_stack_not_empty()
+                    if signal is self._BREAK:
+                        return False
+                    if signal is self._BREAK_TRUE:
+                        return True
+                    if signal is self._CONTINUE:
+                        continue
+                    # None → fall through to default behaviour
+
                 self._resolve_stack()
                 consecutive_passes = 0
                 priority_player = self.state.turn_player_index
-                self._check_game_over()
+                if check_game_over_after_resolve:
+                    self._check_game_over()
                 continue
 
-            decision = self._build_combat_priority_decision(priority_player, allow_actions=allow_actions)
+            # --- Decision ---
+            decision = decision_builder(priority_player)
             response = self._ask(decision)
             action_id = response.first
 
             if action_id is None or action_id == "pass":
                 consecutive_passes += 1
                 if consecutive_passes >= 2:
-                    break
+                    return False
                 priority_player = 1 - priority_player
                 continue
 
             consecutive_passes = 0
             self._execute_action(priority_player, action_id)
+
+            # --- Post-action hook ---
+            if on_action_executed is not None:
+                signal = on_action_executed()
+                if signal is self._BREAK_TRUE:
+                    return True
+
+        return False
+
+    def _priority_loop_until_pass(self, allow_actions: bool = False) -> None:
+        """Run a priority loop until both players pass with empty stack."""
+        self._run_priority_loop(
+            lambda pp: self._build_combat_priority_decision(pp, allow_actions=allow_actions),
+            check_game_over_after_resolve=True,
+        )
 
     # --- End Phase ---
 

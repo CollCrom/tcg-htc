@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from htc.engine.events import EventBus
     from htc.state.combat_state import ChainLink
     from htc.state.game_state import GameState
+    from htc.state.player_state import PlayerState
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,31 @@ class KeywordEngine:
         self.events = events
         self._ask = ask_fn
 
+    # --- Equipment helpers ---
+
+    def get_equipment_with_keyword(
+        self,
+        state: GameState,
+        player: PlayerState,
+        keyword: Keyword,
+    ) -> list[tuple[EquipmentSlot, CardInstance, int]]:
+        """Collect equipped items that have the given keyword (using modified keywords).
+
+        Returns a list of (slot, equipment_card, keyword_value) tuples for
+        each equipment piece whose *modified* keywords include ``keyword``
+        and whose keyword value is > 0.
+        """
+        result: list[tuple[EquipmentSlot, CardInstance, int]] = []
+        for slot, eq in player.equipment.items():
+            if eq is None:
+                continue
+            modified_kws = self.effect_engine.get_modified_keywords(state, eq)
+            if keyword in modified_kws:
+                value = eq.definition.keyword_value(keyword)
+                if value > 0:
+                    result.append((slot, eq, value))
+        return result
+
     # --- Spellvoid ---
 
     def apply_spellvoid(self, state: GameState, player_index: int, damage: int) -> int:
@@ -69,13 +95,8 @@ class KeywordEngine:
 
         player = state.players[player_index]
 
-        # Find equipment with Spellvoid
-        spellvoid_equipment: list[tuple[EquipmentSlot, CardInstance, int]] = []
-        for slot, eq in player.equipment.items():
-            if eq and Keyword.SPELLVOID in eq.definition.keywords:
-                sv_value = eq.definition.keyword_value(Keyword.SPELLVOID)
-                if sv_value > 0:
-                    spellvoid_equipment.append((slot, eq, sv_value))
+        # Find equipment with Spellvoid (using modified keywords)
+        spellvoid_equipment = self.get_equipment_with_keyword(state, player, Keyword.SPELLVOID)
 
         if not spellvoid_equipment:
             return damage

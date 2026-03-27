@@ -14,6 +14,45 @@ class ActionOption:
     action_type: ActionType
     card_instance_id: int | None = None
 
+    # --- Factory methods ---
+
+    @staticmethod
+    def play_card(card_instance_id: int, name: str, color_label: str, suffix: str = "") -> ActionOption:
+        """Create a 'play card' option.  *suffix* is appended in parentheses when non-empty."""
+        desc = f"Play {name}{color_label}"
+        if suffix:
+            desc += f" ({suffix})"
+        return ActionOption(
+            action_id=f"play_{card_instance_id}",
+            description=desc,
+            action_type=ActionType.PLAY_CARD,
+            card_instance_id=card_instance_id,
+        )
+
+    @staticmethod
+    def defend_with(card_instance_id: int, name: str, defense: int, *, extra: str = "") -> ActionOption:
+        """Create a 'defend with card' option."""
+        desc = f"Defend with {name} (defense={defense}"
+        if extra:
+            desc += f", {extra}"
+        desc += ")"
+        return ActionOption(
+            action_id=f"defend_{card_instance_id}",
+            description=desc,
+            action_type=ActionType.DEFEND_WITH,
+            card_instance_id=card_instance_id,
+        )
+
+    @staticmethod
+    def activate(card_instance_id: int, description: str) -> ActionOption:
+        """Create an 'activate ability' option for a weapon or equipment."""
+        return ActionOption(
+            action_id=f"activate_{card_instance_id}",
+            description=description,
+            action_type=ActionType.ACTIVATE_ABILITY,
+            card_instance_id=card_instance_id,
+        )
+
 
 @dataclass
 class Decision:

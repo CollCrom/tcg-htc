@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from htc.cards.instance import CardInstance
 from htc.engine.actions import ActionOption, Decision
 from htc.engine.cost import can_pay_action_cost, can_pay_resource_cost
-from htc.enums import ActionType, CardType, DecisionType, Keyword
+from htc.enums import ActionType, CardType, DecisionType
 
 if TYPE_CHECKING:
     from htc.engine.effects import EffectEngine
@@ -44,12 +44,8 @@ class ActionBuilder:
             # Can play action cards from hand and arsenal (7.0.1a: only when chain is closed)
             for card in player.hand + player.arsenal:
                 if self.can_play_card(state, player_index, card):
-                    color_str = card.definition.color_label
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str}",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label,
                     ))
 
             # Weapon activations (1.4.3): untapped weapons
@@ -59,12 +55,7 @@ class ActionBuilder:
                         desc = f"Activate {weapon.name} (arcane={weapon.definition.arcane})"
                     else:
                         desc = f"Attack with {weapon.name} (power={weapon.base_power or 0})"
-                    options.append(ActionOption(
-                        action_id=f"activate_{weapon.instance_id}",
-                        description=desc,
-                        action_type=ActionType.ACTIVATE_ABILITY,
-                        card_instance_id=weapon.instance_id,
-                    ))
+                    options.append(ActionOption.activate(weapon.instance_id, desc))
 
         # Instants can be played when you have priority
         self.add_instant_options(options, state, player_index)
@@ -85,11 +76,8 @@ class ActionBuilder:
         for card in player.hand:
             if card.definition.is_instant and self.can_play_instant(state, player_index, card):
                 if not any(o.card_instance_id == card.instance_id for o in options):
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{card.definition.color_label} (instant)",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label, suffix="instant",
                     ))
 
     def build_combat_priority_decision(
@@ -102,12 +90,8 @@ class ActionBuilder:
         if allow_actions:
             for card in player.hand + player.arsenal:
                 if self.can_play_card(state, player_index, card):
-                    color_str = card.definition.color_label
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str}",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label,
                     ))
 
         # Instants
@@ -137,23 +121,17 @@ class ActionBuilder:
             # Attack reactions: only attacker can play (7.4.2a)
             if card.definition.is_attack_reaction and priority_player == attacker_index:
                 if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
-                    color_str = card.definition.color_label
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str} (attack reaction)",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label,
+                        suffix="attack reaction",
                     ))
 
             # Defense reactions: only defender can play (7.4.2b)
             if card.definition.is_defense_reaction and priority_player == defender_index:
                 if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
-                    color_str = card.definition.color_label
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str} (defense reaction)",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label,
+                        suffix="defense reaction",
                     ))
 
         # Instants: either player can play
@@ -180,12 +158,8 @@ class ActionBuilder:
             # Can play attack cards to continue the chain (7.6.3a)
             for card in player.hand + player.arsenal:
                 if card.definition.is_attack and self.can_play_card(state, player_index, card):
-                    color_str = card.definition.color_label
-                    options.append(ActionOption(
-                        action_id=f"play_{card.instance_id}",
-                        description=f"Play {card.name}{color_str}",
-                        action_type=ActionType.PLAY_CARD,
-                        card_instance_id=card.instance_id,
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label,
                     ))
 
         # Instants for any player
