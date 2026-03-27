@@ -14,6 +14,25 @@ Persistent learnings across sessions. Update this after each review.
 - Any new zone transition — does it clean up all references (equipment slots, combat chain, stack)?
 - Any new damage event — does it set the source correctly for counter tracking?
 
+## Review History
+
+### PR #27 — Phase 4 Remaining Keywords (2026-03-26)
+- **Round 1 verdict: REQUEST CHANGES** (1 critical, 3 minor issues)
+- **Critical**: Ambush + Dominate interaction — Ambush cards from arsenal incorrectly blocked by Dominate. Dominate restricts cards "from hand" only; arsenal is a different zone.
+- **Minor**: Spellvoid and Ambush read `card.definition.keywords` directly instead of using effect engine (recurring pattern).
+- **Minor**: Piercing reads N value from `definition.keyword_value()` instead of effect engine (won't matter until effects can modify keyword values, but breaks the pattern).
+- **Minor**: `_check_rupture_active()` is infrastructure-only but not wired into any game flow yet — no way to verify it actually triggers during a real game turn.
+- Good test coverage overall (55 tests). Opt, Retrieve, Mark, Spellvoid, Piercing, and deck validation tests are solid.
+- **Round 2 verdict: APPROVE** — All fixes verified correct.
+  - Ambush+Dominate: Arsenal cards now correctly bypass Dominate/Overpower restrictions (separate `elif` branch). Tests cover both interactions.
+  - All `definition.keywords` bypasses in game.py eliminated (0 remaining). Only reference is in effect_engine itself (correct).
+  - Piercing uses `effect_engine.get_keyword_value()` throughout.
+  - Arcane Barrier uses `effect_engine.get_modified_keywords()` and `get_keyword_value()`.
+  - Weapon proxy keywords now routed through effect engine.
+  - Spellvoid fires before Arcane Barrier with stacking test.
+  - 193 tests all passing (5 new tests added in fix commits).
+  - **Note**: `weapon.definition.keyword_values` is shared by reference in proxy (mutable dict), but not mutated at runtime — acceptable for now.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
