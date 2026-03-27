@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from random import Random
 
 from htc.cards.card import CardDefinition
@@ -29,13 +29,12 @@ from htc.enums import (
     Keyword,
     Phase,
     SubType,
-    SuperType,
     Zone,
 )
 from htc.engine.events import EventBus, EventType, GameEvent
 from htc.player.interface import PlayerInterface
 from htc.state.combat_state import ChainLink
-from htc.state.game_state import GameState, Layer
+from htc.state.game_state import GameState
 from htc.state.player_state import PlayerState
 
 log = logging.getLogger(__name__)
