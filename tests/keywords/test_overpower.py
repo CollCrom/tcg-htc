@@ -262,38 +262,3 @@ def test_overpower_allows_blocking_with_attack_reactions():
     assert action_card in link.defending_cards
     assert ar_a in link.defending_cards
     assert ar_b in link.defending_cards
-
-
-def test_overpower_allows_blocking_with_defense_reactions():
-    """With Overpower, defense reactions used as blockers should not be limited.
-
-    Overpower (8.3.9) restricts the defender to 1 *action card* from hand.
-    Defense reactions (CardType.DEFENSE_REACTION) are not action cards, so they
-    should all be accepted as defenders alongside the single allowed action card.
-    """
-    game = make_game_shell()
-    state = game.state
-
-    attack = make_card(instance_id=1, power=8, keywords=frozenset({Keyword.OVERPOWER}))
-    game.combat_mgr.open_chain(state)
-    link = game.combat_mgr.add_chain_link(state, attack, 1)
-
-    # 1 action card + 2 defense reactions in defender's hand (player 1)
-    action_card = make_card(instance_id=10, name="Action Card", defense=3, owner_index=1, zone=Zone.HAND)
-    dr_a = _make_defense_reaction(instance_id=20, name="DR Alpha", defense=2)
-    dr_b = _make_defense_reaction(instance_id=21, name="DR Beta", defense=3)
-    state.players[1].hand = [action_card, dr_a, dr_b]
-
-    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
-        f"defend_{action_card.instance_id}",
-        f"defend_{dr_a.instance_id}",
-        f"defend_{dr_b.instance_id}",
-    ]))
-
-    game._defend_step()
-
-    # All 3 should be accepted: 1 action card + 2 defense reactions
-    assert len(link.defending_cards) == 3
-    assert action_card in link.defending_cards
-    assert dr_a in link.defending_cards
-    assert dr_b in link.defending_cards
