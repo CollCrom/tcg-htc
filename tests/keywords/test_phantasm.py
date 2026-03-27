@@ -6,6 +6,7 @@ destroy the Phantasm attack.
 
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
+from htc.engine.continuous import make_power_modifier
 from htc.engine.game import Game
 from htc.enums import CardType, Keyword, SubType, SuperType, Zone
 from tests.conftest import make_card, make_equipment, make_game_shell
@@ -211,3 +212,57 @@ def test_phantasm_equipment_does_not_trigger():
     result = game._check_phantasm()
 
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Phantasm uses modified power (continuous effects)
+# ---------------------------------------------------------------------------
+
+
+def test_phantasm_not_triggered_when_power_reduced_below_6():
+    """Defender has 7 base power, but a continuous effect reduces it below 6.
+
+    Phantasm checks get_modified_power(), so the -2 modifier should bring the
+    effective power to 5, and Phantasm should NOT trigger.
+    """
+    game = make_game_shell()
+    attack = _make_phantasm_attack()
+    defender = _make_defender(power=7)
+    _setup_combat(game, attack, [defender])
+
+    # Add a continuous effect that reduces power by 2 (7 - 2 = 5, below 6)
+    effect = make_power_modifier(-2, controller_index=0)
+    game.effect_engine.add_continuous_effect(game.state, effect)
+
+    # Sanity check: modified power should be 5
+    assert game.effect_engine.get_modified_power(game.state, defender) == 5
+
+    result = game._check_phantasm()
+
+    assert result is False
+    assert game.state.combat_chain.is_open is True
+
+
+def test_phantasm_triggered_when_power_boosted_to_6():
+    """Defender has 5 base power, but a continuous effect boosts it to 6+.
+
+    Phantasm checks get_modified_power(), so the +1 modifier should bring the
+    effective power to 6, and Phantasm SHOULD trigger.
+    """
+    game = make_game_shell()
+    attack = _make_phantasm_attack()
+    defender = _make_defender(power=5)
+    _setup_combat(game, attack, [defender])
+
+    # Add a continuous effect that boosts power by 1 (5 + 1 = 6, meets threshold)
+    effect = make_power_modifier(1, controller_index=0)
+    game.effect_engine.add_continuous_effect(game.state, effect)
+
+    # Sanity check: modified power should be 6
+    assert game.effect_engine.get_modified_power(game.state, defender) == 6
+
+    result = game._check_phantasm()
+
+    assert result is True
+    assert attack.zone == Zone.GRAVEYARD
+    assert game.state.combat_chain.is_open is False
