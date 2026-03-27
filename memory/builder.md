@@ -72,3 +72,17 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Weapon proxy inherits modified keywords** — `_create_attack_proxy()` now queries the effect engine for the weapon's modified keywords/values instead of copying raw definition data.
 - **`EffectEngine.get_keyword_value()`** — new method added. Currently delegates to `card.definition.keyword_value()` but provides the hook point for future continuous effects that modify keyword N values (e.g. "your Arcane Barrier is increased by 1").
 - **`_activate_attack_weapon` and `_activate_arcane_weapon` still use `weapon.definition.has_go_again`** for the stack layer — these are fine because attack go-again is resolved dynamically at resolution, and arcane weapons don't go through combat chain. But if we add effects that grant/remove go again from weapons, these would need updating too.
+
+## Phase 5.1 — Ability Registry (2026-03-26)
+
+- **AbilityRegistry** — `src/htc/engine/abilities.py`. Maps (timing, card_name) → handler. Timings: on_play, on_attack, on_hit, attack_reaction_effect, defense_reaction_effect. Lookup by NAME so color variants share handlers. Returns None for unregistered cards (graceful degradation).
+- **AbilityContext** bundles state, source_card, controller_index, chain_link, effect_engine, events, ask, keyword_engine, combat_mgr. Handlers only need this one arg.
+- **Generic abilities** in `src/htc/cards/abilities/generic.py`:
+  - Ancestral Empowerment: +1 power to Ninja attack action + draw a card
+  - Razor Reflex: modal — mode 1 (dagger/sword weapon +N power) or mode 2 (attack action cost<=1 gets +N power and go again). Note: real card says "when this hits, it gets go again" but we grant immediately (TODO: proper on_hit trigger).
+  - Fate Foreseen: Opt 1 via keyword_engine.perform_opt
+  - Sink Below: optional put card from hand on bottom of deck, if you do draw a card
+  - Shelter from the Storm: deferred (requires damage prevention layer)
+- **Game integration** — `_apply_card_ability()` helper builds AbilityContext and dispatches. Attack reactions apply effects before graveyard. Defense reactions apply effects after being added as defenders.
+- **TurnCounters field** is `num_cards_drawn`, not `cards_drawn` — easy to get wrong.
+- **Razor Reflex** in CSV is NOT "+2 power or go again" as commonly assumed — it's a Ninja-flavored modal card targeting dagger/sword weapons OR low-cost attack actions. Always read functional_text from CSV.
