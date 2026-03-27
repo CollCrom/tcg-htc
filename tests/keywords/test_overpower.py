@@ -192,10 +192,12 @@ def test_overpower_allows_multiple_defense_reactions():
     assert dr_b in link.defending_cards
 
 
-def test_overpower_allows_attack_reactions():
-    """With Overpower, attack reactions should still be playable during reaction step.
+def test_overpower_allows_blocking_with_attack_reactions():
+    """With Overpower, attack reactions in hand should not be limited by the action card cap.
 
-    Overpower restricts action card defense from hand, not reactions of any kind.
+    Overpower (8.3.9) restricts the defender to 1 *action card* from hand.
+    Attack reactions (CardType.ATTACK_REACTION) are not action cards, so they
+    should all be accepted as defenders alongside the single allowed action card.
     """
     game = make_game_shell()
     state = game.state
@@ -204,23 +206,94 @@ def test_overpower_allows_attack_reactions():
     game.combat_mgr.open_chain(state)
     link = game.combat_mgr.add_chain_link(state, attack, 1)
 
-    # Attack reaction in attacker's hand (player 0, the turn player)
-    ar = _make_attack_reaction(instance_id=30, name="Pummel", power=3, owner_index=0)
-    state.players[0].hand = [ar]
+    # 1 action card + 2 attack reactions in defender's hand (player 1)
+    action_card = make_card(instance_id=10, name="Action Card", defense=3, owner_index=1, zone=Zone.HAND)
+    ar_a = _make_attack_reaction(instance_id=20, name="AR Alpha", power=3, owner_index=1)
+    ar_a.definition = CardDefinition(
+        unique_id="ar-20",
+        name="AR Alpha",
+        color=None,
+        pitch=None,
+        cost=0,
+        power=3,
+        defense=2,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ATTACK_REACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset(),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    ar_b = _make_attack_reaction(instance_id=21, name="AR Beta", power=3, owner_index=1)
+    ar_b.definition = CardDefinition(
+        unique_id="ar-21",
+        name="AR Beta",
+        color=None,
+        pitch=None,
+        cost=0,
+        power=3,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ATTACK_REACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset(),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    state.players[1].hand = [action_card, ar_a, ar_b]
 
-    # Mock: player 0 (attacker/turn player) plays the attack reaction, then passes.
-    # Player 1 (defender) always passes.
-    played = [False]
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
+        f"defend_{action_card.instance_id}",
+        f"defend_{ar_a.instance_id}",
+        f"defend_{ar_b.instance_id}",
+    ]))
 
-    def _ask(decision):
-        if decision.player_index == 0 and not played[0]:
-            played[0] = True
-            return PlayerResponse(selected_option_ids=[f"play_{ar.instance_id}"])
-        return PlayerResponse(selected_option_ids=["pass"])
+    game._defend_step()
 
-    game._ask = _ask
+    # All 3 cards should be accepted: 1 action card (at the Overpower limit)
+    # plus 2 attack reactions (not subject to Overpower's action card cap)
+    assert len(link.defending_cards) == 3
+    assert action_card in link.defending_cards
+    assert ar_a in link.defending_cards
+    assert ar_b in link.defending_cards
 
-    game._reaction_step()
 
-    # The attack reaction should have been played (removed from hand, resolved on stack)
-    assert ar not in state.players[0].hand
+def test_overpower_allows_blocking_with_defense_reactions():
+    """With Overpower, defense reactions used as blockers should not be limited.
+
+    Overpower (8.3.9) restricts the defender to 1 *action card* from hand.
+    Defense reactions (CardType.DEFENSE_REACTION) are not action cards, so they
+    should all be accepted as defenders alongside the single allowed action card.
+    """
+    game = make_game_shell()
+    state = game.state
+
+    attack = make_card(instance_id=1, power=8, keywords=frozenset({Keyword.OVERPOWER}))
+    game.combat_mgr.open_chain(state)
+    link = game.combat_mgr.add_chain_link(state, attack, 1)
+
+    # 1 action card + 2 defense reactions in defender's hand (player 1)
+    action_card = make_card(instance_id=10, name="Action Card", defense=3, owner_index=1, zone=Zone.HAND)
+    dr_a = _make_defense_reaction(instance_id=20, name="DR Alpha", defense=2)
+    dr_b = _make_defense_reaction(instance_id=21, name="DR Beta", defense=3)
+    state.players[1].hand = [action_card, dr_a, dr_b]
+
+    game._ask = make_mock_ask_once(PlayerResponse(selected_option_ids=[
+        f"defend_{action_card.instance_id}",
+        f"defend_{dr_a.instance_id}",
+        f"defend_{dr_b.instance_id}",
+    ]))
+
+    game._defend_step()
+
+    # All 3 should be accepted: 1 action card + 2 defense reactions
+    assert len(link.defending_cards) == 3
+    assert action_card in link.defending_cards
+    assert dr_a in link.defending_cards
+    assert dr_b in link.defending_cards
