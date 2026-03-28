@@ -79,10 +79,21 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **AbilityContext** bundles state, source_card, controller_index, chain_link, effect_engine, events, ask, keyword_engine, combat_mgr. Handlers only need this one arg.
 - **Generic abilities** in `src/htc/cards/abilities/generic.py`:
   - Ancestral Empowerment: +1 power to Ninja attack action + draw a card
-  - Razor Reflex: modal — mode 1 (dagger/sword weapon +N power) or mode 2 (attack action cost<=1 gets +N power and go again). Note: real card says "when this hits, it gets go again" but we grant immediately (TODO: proper on_hit trigger).
+  - Razor Reflex: modal — mode 1 (dagger/sword weapon +N power) or mode 2 (attack action cost<=1 gets +N power and "when this hits, it gets go again" via one-shot HIT trigger).
   - Fate Foreseen: Opt 1 via keyword_engine.perform_opt
   - Sink Below: optional put card from hand on bottom of deck, if you do draw a card
   - Shelter from the Storm: deferred (requires damage prevention layer)
 - **Game integration** — `_apply_card_ability()` helper builds AbilityContext and dispatches. Attack reactions apply effects before graveyard. Defense reactions apply effects after being added as defenders.
 - **TurnCounters field** is `num_cards_drawn`, not `cards_drawn` — easy to get wrong.
 - **Razor Reflex** in CSV is NOT "+2 power or go again" as commonly assumed — it's a Ninja-flavored modal card targeting dagger/sword weapons OR low-cost attack actions. Always read functional_text from CSV.
+
+## Phase 5.2 — Triggered Effects + Hero Abilities (2026-03-26)
+
+- **_process_pending_triggers()** — drains EventBus pending trigger queue in a loop with 50-iteration safety limit. Called after ATTACK_DECLARED, DEAL_DAMAGE, HIT, and PLAY_CARD events in game.py.
+- **Hero abilities as TriggeredEffects** — registered during _setup_game via _register_hero_abilities(). Persist for the entire game (not one-shot).
+- **Arakni, Marionette** — `ArakniMarionetteTrigger` fires on ATTACK_DECLARED when attack has Stealth and target is marked. Grants +1 power continuous effect and registers one-shot `ArakniGoAgainOnHit` HIT trigger for Go Again.
+- **Cindra, Dracai of Retribution** — `CindraRetributionTrigger` uses two-phase approach: records mark state on ATTACK_DECLARED (because HIT handler removes mark before triggers check), creates Fealty token on HIT if target was marked.
+- **Fealty tokens** — created as CardInstance permanents with synthetic CardDefinition (CardType.TOKEN, SubType.AURA). `_create_fealty_token()` on Game emits CREATE_TOKEN event.
+- **Razor Reflex Go Again fixed** — mode 2 now uses `_RazorReflexGoAgainOnHit` one-shot trigger instead of immediate keyword grant. Matches card text timing.
+- **Pattern for on-hit triggers** — subclass TriggeredEffect, check event_type==HIT and source instance_id in condition(), apply effects in create_triggered_event() and return None (no re-emit needed).
+- **Gotcha: mark removal timing** — HIT handlers run before HIT triggers are checked. So Cindra can't check is_marked in HIT condition — must record at ATTACK_DECLARED time.
