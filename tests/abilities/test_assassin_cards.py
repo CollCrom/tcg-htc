@@ -738,7 +738,7 @@ class TestOvercrowded:
     def test_bonus_from_aura_tokens(self):
         game = make_game_shell()
         # Create 2 different aura tokens
-        from htc.cards.abilities.assassin import _create_token
+        from htc.cards.abilities._helpers import create_token as _create_token
         _create_token(game.state, 0, "Frailty", SubType.AURA)
         _create_token(game.state, 1, "Inertia", SubType.AURA)
 

@@ -11,6 +11,14 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from htc.cards.abilities._helpers import (
+    color_bonus,
+    create_token,
+    draw_card,
+    grant_keyword,
+    grant_power_bonus,
+    mark_attacker,
+)
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.continuous import EffectDuration, make_defense_modifier, make_keyword_grant, make_power_modifier
@@ -24,20 +32,6 @@ log = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _color_bonus(ctx: AbilityContext) -> int:
-    """Determine bonus amount from card color: Red=3, Yellow=2, Blue=1."""
-    color = ctx.source_card.definition.color
-    if color is not None:
-        return {"Red": 3, "Yellow": 2, "Blue": 1}.get(color.value, 2)
-    return 2
-
-
-def _color_bonus_4(ctx: AbilityContext) -> int:
-    """Determine bonus amount from card color: Red=4, Yellow=3, Blue=2."""
-    color = ctx.source_card.definition.color
-    if color is not None:
-        return {"Red": 4, "Yellow": 3, "Blue": 2}.get(color.value, 3)
-    return 3
 
 
 def _is_dagger_attack(attack, link=None) -> bool:
@@ -67,55 +61,8 @@ def _has_stealth(attack, ctx: AbilityContext) -> bool:
     return Keyword.STEALTH in kws
 
 
-def _zone_hand():
-    return Zone.HAND
 
 
-def _zone_deck():
-    return Zone.DECK
-
-
-def _zone_graveyard():
-    return Zone.GRAVEYARD
-
-
-def _zone_banished():
-    return Zone.BANISHED
-
-
-def _create_token(state, controller_index: int, name: str, subtype: SubType,
-                  functional_text: str = "", type_text: str = ""):
-    """Create a token permanent for the given player."""
-    from htc.cards.card import CardDefinition
-    from htc.cards.instance import CardInstance
-
-    token_def = CardDefinition(
-        unique_id=f"{name.lower().replace(' ', '-')}-token",
-        name=name,
-        color=None,
-        pitch=None,
-        cost=None,
-        power=None,
-        defense=None,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.TOKEN}),
-        subtypes=frozenset({subtype}),
-        supertypes=frozenset(),
-        keywords=frozenset(),
-        functional_text=functional_text,
-        type_text=type_text,
-    )
-    token = CardInstance(
-        instance_id=state.next_instance_id(),
-        definition=token_def,
-        owner_index=controller_index,
-        zone=Zone.PERMANENT,
-    )
-    state.players[controller_index].permanents.append(token)
-    log.info(f"  Created {name} token for Player {controller_index}")
-    return token
 
 
 # ---------------------------------------------------------------------------
@@ -138,17 +85,8 @@ def _incision(ctx: AbilityContext) -> None:
         log.info(f"  Incision: no effect -- {attack.name} is not a dagger attack")
         return
 
-    bonus = _color_bonus(ctx)
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        bonus,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-    log.info(f"  Incision: {attack.name} gets +{bonus} power")
+    bonus = color_bonus(ctx)
+    grant_power_bonus(ctx, attack, bonus, "Incision")
 
 
 def _to_the_point(ctx: AbilityContext) -> None:
@@ -167,21 +105,12 @@ def _to_the_point(ctx: AbilityContext) -> None:
         log.info(f"  To the Point: no effect -- {attack.name} is not a dagger attack")
         return
 
-    base_bonus = _color_bonus(ctx)
+    base_bonus = color_bonus(ctx)
     # Check if defending hero is marked
     defender = ctx.state.players[link.attack_target_index]
     bonus = base_bonus + 1 if defender.is_marked else base_bonus
 
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        bonus,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-    log.info(f"  To the Point: {attack.name} gets +{bonus} power (marked={defender.is_marked})")
+    grant_power_bonus(ctx, attack, bonus, f"To the Point (marked={defender.is_marked})")
 
 
 def _stains_of_the_redback(ctx: AbilityContext) -> None:
@@ -204,29 +133,9 @@ def _stains_of_the_redback(ctx: AbilityContext) -> None:
         log.info(f"  Stains of the Redback: no effect -- {attack.name} does not have Stealth")
         return
 
-    bonus = _color_bonus(ctx)
-    atk_id = attack.instance_id
-
-    # +N power
-    power_effect = make_power_modifier(
-        bonus,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, power_effect)
-
-    # Grant go again
-    ga_effect = make_keyword_grant(
-        frozenset({Keyword.GO_AGAIN}),
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, ga_effect)
-    log.info(f"  Stains of the Redback: {attack.name} gets +{bonus} power and Go Again")
+    bonus = color_bonus(ctx)
+    grant_power_bonus(ctx, attack, bonus, "Stains of the Redback")
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Stains of the Redback")
 
 
 def _shred(ctx: AbilityContext) -> None:
@@ -327,15 +236,7 @@ def _take_up_the_mantle(ctx: AbilityContext) -> None:
         bonus = 2
         log.info(f"  Take Up the Mantle: {attack.name} gets +{bonus} power")
 
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        bonus,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
+    grant_power_bonus(ctx, attack, bonus, "Take Up the Mantle")
 
 
 def _tarantula_toxin(ctx: AbilityContext) -> None:
@@ -439,12 +340,7 @@ def _den_of_the_spider(ctx: AbilityContext) -> None:
     modified_power = ctx.effect_engine.get_modified_power(ctx.state, attack)
 
     if modified_power > base_power:
-        attacker_index = 1 - link.attack_target_index
-        ctx.state.players[attacker_index].is_marked = True
-        log.info(
-            f"  Den of the Spider: Marked Player {attacker_index} "
-            f"(attack power {modified_power} > base {base_power})"
-        )
+        mark_attacker(ctx, link, "Den of the Spider")
     else:
         log.info(f"  Den of the Spider: no effect (power {modified_power} <= base {base_power})")
 
@@ -462,9 +358,7 @@ def _lair_of_the_spider(ctx: AbilityContext) -> None:
     kws = ctx.effect_engine.get_modified_keywords(ctx.state, attack)
 
     if Keyword.GO_AGAIN in kws:
-        attacker_index = 1 - link.attack_target_index
-        ctx.state.players[attacker_index].is_marked = True
-        log.info(f"  Lair of the Spider: Marked Player {attacker_index} (attack has Go Again)")
+        mark_attacker(ctx, link, "Lair of the Spider")
     else:
         log.info(f"  Lair of the Spider: no effect (attack has no Go Again)")
 
@@ -484,7 +378,7 @@ def _frailty_trap(ctx: AbilityContext) -> None:
 
     if Keyword.GO_AGAIN in kws:
         attacker_index = 1 - link.attack_target_index
-        _create_token(
+        create_token(
             ctx.state, attacker_index, "Frailty", SubType.AURA,
             functional_text="At the beginning of your turn, destroy this then the next attack action card you defend with this turn gets -2{d}.",
             type_text="Token - Aura",
@@ -510,7 +404,7 @@ def _inertia_trap(ctx: AbilityContext) -> None:
 
     if modified_power > base_power:
         attacker_index = 1 - link.attack_target_index
-        _create_token(
+        create_token(
             ctx.state, attacker_index, "Inertia", SubType.AURA,
             functional_text="At the beginning of your turn, destroy this then the next attack action card you play this turn costs an additional {r}.",
             type_text="Token - Aura",
@@ -549,7 +443,7 @@ def _cut_from_the_same_cloth(ctx: AbilityContext) -> None:
         log.info(f"  Cut from the Same Cloth: No attack reaction found in opponent's hand")
 
     # Next dagger attack this turn gets +N power
-    bonus = _color_bonus_4(ctx)
+    bonus = color_bonus(ctx, plus_one=True)
     _grant_next_dagger_attack_bonus(ctx, bonus, "Cut from the Same Cloth")
 
 
@@ -618,12 +512,12 @@ def _codex_of_frailty(ctx: AbilityContext) -> None:
             if player.hand:
                 discarded = player.hand[0]  # Simplified: discard first card
                 player.hand.remove(discarded)
-                discarded.zone = _zone_graveyard()
+                discarded.zone = Zone.GRAVEYARD
                 player.graveyard.append(discarded)
                 log.info(f"  Codex of Frailty: Player {i} discards {discarded.name}")
 
     # Create Ponder token for controller
-    _create_token(
+    create_token(
         ctx.state, ctx.controller_index, "Ponder", SubType.AURA,
         functional_text="At the beginning of your turn, destroy this, then look at the top card of your deck. You may put it on the bottom.",
         type_text="Token - Aura",
@@ -631,7 +525,7 @@ def _codex_of_frailty(ctx: AbilityContext) -> None:
 
     # Create Frailty token for each opponent
     opponent_index = 1 - ctx.controller_index
-    _create_token(
+    create_token(
         ctx.state, opponent_index, "Frailty", SubType.AURA,
         functional_text="At the beginning of your turn, destroy this then the next attack action card you defend with this turn gets -2{d}.",
         type_text="Token - Aura",
@@ -661,18 +555,18 @@ def _codex_of_inertia(ctx: AbilityContext) -> None:
             if player.hand:
                 discarded = player.hand[0]
                 player.hand.remove(discarded)
-                discarded.zone = _zone_graveyard()
+                discarded.zone = Zone.GRAVEYARD
                 player.graveyard.append(discarded)
                 log.info(f"  Codex of Inertia: Player {i} discards {discarded.name}")
 
-    _create_token(
+    create_token(
         ctx.state, ctx.controller_index, "Ponder", SubType.AURA,
         functional_text="At the beginning of your turn, destroy this, then look at the top card of your deck. You may put it on the bottom.",
         type_text="Token - Aura",
     )
 
     opponent_index = 1 - ctx.controller_index
-    _create_token(
+    create_token(
         ctx.state, opponent_index, "Inertia", SubType.AURA,
         functional_text="At the beginning of your turn, destroy this then the next attack action card you play this turn costs an additional {r}.",
         type_text="Token - Aura",
@@ -730,7 +624,7 @@ def _up_sticks_and_run(ctx: AbilityContext) -> None:
     ctx.keyword_engine.perform_retrieve(ctx.state, ctx.controller_index, dagger_filter)
 
     # Next dagger attack bonus
-    bonus = _color_bonus_4(ctx)
+    bonus = color_bonus(ctx, plus_one=True)
     _grant_next_dagger_attack_bonus(ctx, bonus, "Up Sticks and Run")
 
 
@@ -747,14 +641,14 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     """
     # Create Graphene Chelicera equipment token
     # TODO: Implement as proper equipment with activation ability
-    _create_token(
+    create_token(
         ctx.state, ctx.controller_index, "Graphene Chelicera", SubType.ARMS,
         functional_text="Once per Turn Action - {r}: Attack with this for 1, with go again.",
         type_text="Assassin Arms Equipment Token",
     )
 
     # Next stealth attack bonus
-    bonus = _color_bonus(ctx)
+    bonus = color_bonus(ctx)
     controller = ctx.controller_index
     source_id = ctx.source_card.instance_id
 
@@ -846,7 +740,7 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
         player = state.players[self.controller_index]
         if player.deck:
             drawn = player.deck.pop(0)
-            drawn.zone = _zone_hand()
+            drawn.zone = Zone.HAND
             player.hand.append(drawn)
             player.turn_counters.num_cards_drawn += 1
             log.info(f"  Savor Bloodshed: Player {self.controller_index} draws a card (dagger hit marked hero)")
@@ -883,7 +777,7 @@ def _whittle_from_bone_on_attack(ctx: AbilityContext) -> None:
 
     defender = ctx.state.players[link.attack_target_index]
     if defender.is_marked:
-        _create_token(
+        create_token(
             ctx.state, ctx.controller_index, "Graphene Chelicera", SubType.ARMS,
             functional_text="Once per Turn Action - {r}: Attack with this for 1, with go again.",
             type_text="Assassin Arms Equipment Token",
@@ -939,7 +833,7 @@ def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
     # Opponent chooses a card to banish (simplified: first card)
     banished_card = target.hand[0]
     target.hand.remove(banished_card)
-    banished_card.zone = _zone_banished()
+    banished_card.zone = Zone.BANISHED
     target.banished.append(banished_card)
     log.info(f"  Mark of the Black Widow: Player {link.attack_target_index} banishes {banished_card.name}")
 
@@ -968,18 +862,18 @@ def _meet_madness_on_hit(ctx: AbilityContext) -> None:
         # They choose a card in hand to banish (simplified: first card)
         card = target.hand[0]
         target.hand.remove(card)
-        card.zone = _zone_banished()
+        card.zone = Zone.BANISHED
         target.banished.append(card)
         log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from hand")
     elif chosen == 2 and target.arsenal:
         card = target.arsenal[0]
         target.arsenal.remove(card)
-        card.zone = _zone_banished()
+        card.zone = Zone.BANISHED
         target.banished.append(card)
         log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from arsenal")
     elif chosen == 3 and target.deck:
         card = target.deck.pop(0)
-        card.zone = _zone_banished()
+        card.zone = Zone.BANISHED
         target.banished.append(card)
         log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from top of deck")
     else:
@@ -1041,7 +935,7 @@ def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     # Banish top card of deck
     if target.deck:
         card = target.deck.pop(0)
-        card.zone = _zone_banished()
+        card.zone = Zone.BANISHED
         target.banished.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from top of P{target_index}'s deck")
 
@@ -1049,7 +943,7 @@ def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     if target.arsenal:
         card = target.arsenal[0]
         target.arsenal.remove(card)
-        card.zone = _zone_banished()
+        card.zone = Zone.BANISHED
         target.banished.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from P{target_index}'s arsenal")
 
@@ -1089,7 +983,7 @@ def _death_touch_on_hit(ctx: AbilityContext) -> None:
     choice = response.first or "frailty"
     token_name = {"frailty": "Frailty", "inertia": "Inertia", "bloodrot_pox": "Bloodrot Pox"}.get(choice, "Frailty")
 
-    _create_token(
+    create_token(
         ctx.state, target_index, token_name, SubType.AURA,
         type_text="Token - Aura",
     )
@@ -1118,7 +1012,7 @@ def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
         return
 
     top_card = target.deck.pop(0)
-    top_card.zone = _zone_banished()
+    top_card.zone = Zone.BANISHED
     target.banished.append(top_card)
     banished_color = top_card.definition.color
     log.info(f"  Persuasive Prognosis: Banished {top_card.name} ({banished_color}) from deck")
@@ -1134,7 +1028,7 @@ def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
         if matching:
             card = matching[0]  # Simplified: first matching card
             target.hand.remove(card)
-            card.zone = _zone_banished()
+            card.zone = Zone.BANISHED
             target.banished.append(card)
             log.info(f"  Persuasive Prognosis: Banished {card.name} from hand (same color: {banished_color})")
 
@@ -1195,18 +1089,10 @@ def _overcrowded_on_attack(ctx: AbilityContext) -> None:
         log.info(f"  Overcrowded: no aura tokens in arena")
         return
 
-    atk_id = link.active_attack.instance_id
-    # +N power
-    power_effect = make_power_modifier(
-        bonus,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, power_effect)
+    grant_power_bonus(ctx, link.active_attack, bonus, "Overcrowded")
 
     # +N defense
+    atk_id = link.active_attack.instance_id
     def_effect = make_defense_modifier(
         bonus,
         ctx.controller_index,
@@ -1265,19 +1151,11 @@ def _scar_tissue(ctx: AbilityContext) -> None:
         log.info(f"  Scar Tissue: no effect -- {attack.name} is not a dagger attack")
         return
 
-    bonus = _color_bonus(ctx)
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        bonus,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
+    bonus = color_bonus(ctx)
+    grant_power_bonus(ctx, attack, bonus, "Scar Tissue")
 
     hit_trigger = _ScarTissueMarkOnHit(
-        attack_instance_id=atk_id,
+        attack_instance_id=attack.instance_id,
         target_player_index=link.attack_target_index,
         _state=ctx.state,
         one_shot=True,
