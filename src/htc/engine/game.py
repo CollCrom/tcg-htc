@@ -86,6 +86,24 @@ class Game:
         from htc.cards.abilities import register_generic_abilities
         register_generic_abilities(self.ability_registry)
 
+    def _register_hero_abilities(self) -> None:
+        """Register hero abilities as triggered effects on the EventBus.
+
+        Called after heroes are loaded during game setup. Each hero's
+        ability is registered as a persistent TriggeredEffect.
+        """
+        from htc.cards.abilities.heroes import register_hero_abilities
+        for i, player in enumerate(self.state.players):
+            if player.hero:
+                register_hero_abilities(
+                    hero_name=player.hero.name,
+                    controller_index=i,
+                    event_bus=self.events,
+                    effect_engine=self.effect_engine,
+                    state_getter=lambda: self.state,
+                    game=self,
+                )
+
     def _apply_card_ability(
         self, card: CardInstance, player_index: int, timing: str
     ) -> None:
@@ -163,6 +181,32 @@ class Game:
         player.hand.append(card)
         player.turn_counters.num_cards_drawn += 1
 
+    # --- Triggered Effect Processing ---
+
+    MAX_TRIGGER_ITERATIONS = 50  # safety limit to prevent infinite loops
+
+    def _process_pending_triggers(self) -> None:
+        """Process all pending triggered effects until none remain.
+
+        Triggered effects may cause further events which themselves trigger
+        more effects. Loop until the queue is empty, with a safety limit
+        to prevent infinite loops (rules 6.6.6).
+        """
+        iterations = 0
+        while iterations < self.MAX_TRIGGER_ITERATIONS:
+            pending = self.events.get_pending_triggers()
+            if not pending:
+                break
+            iterations += 1
+            for triggered_event in pending:
+                log.debug(f"  Processing triggered effect: {triggered_event.event_type.name}")
+                # Re-emit the triggered event through the pipeline so it
+                # gets handlers, replacement effects, and may trigger further
+                # effects.
+                self.events.emit(triggered_event)
+        if iterations >= self.MAX_TRIGGER_ITERATIONS:
+            log.warning("Triggered effect processing hit safety limit")
+
     def play(self) -> GameResult:
         """Run a complete game to conclusion."""
         self._setup_game()
@@ -183,6 +227,9 @@ class Game:
         for i in range(2):
             ps = self._build_player_state(i, self.decks[i])
             self.state.players.append(ps)
+
+        # Register hero abilities as triggered effects
+        self._register_hero_abilities()
 
         # Shuffle decks
         for ps in self.state.players:
@@ -241,6 +288,24 @@ class Game:
             owner_index=owner,
             zone=zone,
         )
+
+    def _create_fealty_token(self, controller_index: int) -> CardInstance:
+        """Create a Fealty token as a permanent for the given player.
+
+        Emits a CREATE_TOKEN event. The token is a Draconic Aura that
+        can be destroyed for an effect (Cindra's hero ability).
+        """
+        from htc.cards.abilities.heroes import _create_fealty_token_simple
+        _create_fealty_token_simple(self.state, controller_index)
+        token = self.state.players[controller_index].permanents[-1]
+        self.events.emit(GameEvent(
+            event_type=EventType.CREATE_TOKEN,
+            source=None,
+            target_player=controller_index,
+            card=token,
+            data={"token_name": "Fealty"},
+        ))
+        return token
 
     @staticmethod
     def _equipment_slot(defn: CardDefinition) -> EquipmentSlot | None:
@@ -474,6 +539,8 @@ class Game:
             target_player=player_index,
             card=card,
         ))
+        # Process triggered effects from the play event
+        self._process_pending_triggers()
 
         color_str = card.definition.color_label
 
@@ -816,6 +883,8 @@ class Game:
             target_player=defender_index,
             data={"chain_link": link, "attacker_index": attacker_index},
         ))
+        # Process triggered effects from the attack event (rules 6.6)
+        self._process_pending_triggers()
 
     def _attack_step(self) -> None:
         """Attack Step (7.2): Attack resolves onto combat chain.
@@ -823,8 +892,6 @@ class Game:
         link = self.state.combat_chain.active_link
         if link is None:
             return
-
-        # 7.2.4: "attack" event occurs — TODO: triggered effects
 
         # 7.2.5: Turn player gets priority
         self._run_priority_loop(
@@ -985,6 +1052,8 @@ class Game:
                 amount=damage,
                 data={"chain_link": link, "is_combat": True},
             ))
+            # Process triggered effects from the damage event
+            self._process_pending_triggers()
 
             actual_damage = event.amount if not event.cancelled else 0
             link.damage_dealt = actual_damage
@@ -1001,6 +1070,8 @@ class Game:
                     amount=actual_damage,
                     data={"chain_link": link},
                 ))
+                # Process triggered effects from the hit event
+                self._process_pending_triggers()
             else:
                 log.info(f"  Blocked!")
         else:
