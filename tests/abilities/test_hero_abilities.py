@@ -3,8 +3,6 @@
 Covers Arakni, Marionette and Cindra, Dracai of Retribution.
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
 from htc.cards.abilities.heroes import (
     ArakniMarionetteTrigger,
     CindraRetributionTrigger,
@@ -12,79 +10,20 @@ from htc.cards.abilities.heroes import (
 )
 from htc.engine.continuous import EffectDuration
 from htc.engine.events import EventBus, EventType, GameEvent
-from htc.enums import (
-    CardType,
-    Color,
-    Keyword,
-    SubType,
-    SuperType,
-    Zone,
-)
+from htc.enums import Keyword, Zone
 from tests.conftest import make_card, make_game_shell
+from tests.abilities.conftest import (
+    make_stealth_attack as _make_stealth_attack,
+    make_ninja_attack as _shared_make_ninja_attack,
+)
 
 
-def _make_stealth_attack(
-    instance_id: int = 1,
-    power: int = 3,
-    cost: int = 0,
-    owner_index: int = 0,
-) -> CardInstance:
-    """Create an attack action card with Stealth keyword."""
-    defn = CardDefinition(
-        unique_id=f"stealth-{instance_id}",
-        name="Stealth Strike",
-        color=Color.RED,
-        pitch=1,
-        cost=cost,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=frozenset({SuperType.ASSASSIN}),
-        keywords=frozenset({Keyword.STEALTH}),
-        functional_text="",
-        type_text="Assassin Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-    )
-
-
-def _make_non_stealth_attack(
-    instance_id: int = 2,
-    power: int = 4,
-    owner_index: int = 0,
-) -> CardInstance:
-    """Create an attack action card without Stealth keyword."""
-    defn = CardDefinition(
-        unique_id=f"nostealth-{instance_id}",
-        name="Regular Strike",
-        color=Color.RED,
-        pitch=1,
-        cost=0,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=frozenset({SuperType.ASSASSIN}),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="Assassin Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
+def _make_non_stealth_attack(instance_id: int = 2, power: int = 4, owner_index: int = 0):
+    """Create a non-stealth attack for testing (no Stealth keyword)."""
+    from htc.enums import SuperType
+    return _shared_make_ninja_attack(
+        instance_id, "Regular Strike", power=power, cost=0,
+        owner_index=owner_index, supertypes=frozenset({SuperType.ASSASSIN}),
     )
 
 

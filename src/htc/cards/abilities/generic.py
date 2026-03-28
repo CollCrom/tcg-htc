@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import logging
 
+from htc.cards.abilities._helpers import color_bonus, draw_card, grant_power_bonus
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.continuous import EffectDuration, make_keyword_grant, make_power_modifier
 from htc.engine.events import EventType, GameEvent, TriggeredEffect
-from htc.enums import ActionType, DecisionType, Keyword, SubType, SuperType
+from htc.enums import ActionType, DecisionType, Keyword, SubType, SuperType, Zone
 
 log = logging.getLogger(__name__)
 
@@ -47,27 +48,10 @@ def _ancestral_empowerment(ctx: AbilityContext) -> None:
         return
 
     # +1 power via continuous effect on the active attack
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        1,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-    log.info(
-        f"  Ancestral Empowerment: {attack.name} gets +1 power"
-    )
+    grant_power_bonus(ctx, attack, 1, "Ancestral Empowerment")
 
     # Draw a card
-    player = ctx.state.players[ctx.controller_index]
-    if player.deck:
-        drawn = player.deck.pop(0)
-        drawn.zone = _zone_hand()
-        player.hand.append(drawn)
-        player.turn_counters.num_cards_drawn += 1
-        log.info(f"  Ancestral Empowerment: Player {ctx.controller_index} draws a card")
+    draw_card(ctx, "Ancestral Empowerment")
 
 
 def _razor_reflex(ctx: AbilityContext) -> None:
@@ -92,12 +76,7 @@ def _razor_reflex(ctx: AbilityContext) -> None:
     attack = link.active_attack
 
     # Determine +N from color
-    color = ctx.source_card.definition.color
-    if color is not None:
-        color_val = color.value  # "Red", "Yellow", "Blue"
-        bonus = {"Red": 3, "Yellow": 2, "Blue": 1}.get(color_val, 2)
-    else:
-        bonus = 2  # fallback
+    bonus = color_bonus(ctx)
 
     # Check mode eligibility
     # Mode 1: dagger or sword weapon attack
@@ -157,25 +136,10 @@ def _razor_reflex(ctx: AbilityContext) -> None:
     atk_id = attack.instance_id
     if chosen_mode == 1:
         # +N power to weapon attack
-        effect = make_power_modifier(
-            bonus,
-            ctx.controller_index,
-            source_instance_id=ctx.source_card.instance_id,
-            duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-        )
-        ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-        log.info(f"  Razor Reflex: {attack.name} gets +{bonus} power (weapon mode)")
+        grant_power_bonus(ctx, attack, bonus, "Razor Reflex (weapon mode)")
     elif chosen_mode == 2:
         # +N power and "when this hits, it gets go again"
-        power_effect = make_power_modifier(
-            bonus,
-            ctx.controller_index,
-            source_instance_id=ctx.source_card.instance_id,
-            duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-        )
-        ctx.effect_engine.add_continuous_effect(ctx.state, power_effect)
+        grant_power_bonus(ctx, attack, bonus, "Razor Reflex (attack action mode)")
 
         # Register a one-shot HIT trigger that grants Go Again when this
         # attack hits. This is the correct "when this hits, it gets go again"
@@ -189,10 +153,6 @@ def _razor_reflex(ctx: AbilityContext) -> None:
             one_shot=True,
         )
         ctx.events.register_trigger(hit_trigger)
-        log.info(
-            f"  Razor Reflex: {attack.name} gets +{bonus} power and go again "
-            f"on hit (attack action mode)"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +261,7 @@ def _sink_below(ctx: AbilityContext) -> None:
         )
         if card:
             player.hand.remove(card)
-            card.zone = _zone_deck()
+            card.zone = Zone.DECK
             player.deck.append(card)
             log.info(
                 f"  Sink Below: Player {ctx.controller_index} puts "
@@ -309,14 +269,7 @@ def _sink_below(ctx: AbilityContext) -> None:
             )
 
             # Draw a card
-            if player.deck:
-                drawn = player.deck.pop(0)
-                drawn.zone = _zone_hand()
-                player.hand.append(drawn)
-                player.turn_counters.num_cards_drawn += 1
-                log.info(
-                    f"  Sink Below: Player {ctx.controller_index} draws a card"
-                )
+            draw_card(ctx, "Sink Below")
 
 
 # NOTE: Shelter from the Storm has an Instant discard activation ability that
@@ -324,20 +277,6 @@ def _sink_below(ctx: AbilityContext) -> None:
 # effect that needs Phase 5 infrastructure (damage prevention layer). The card
 # still contributes its defense value when played as a defense reaction.
 # TODO: implement Shelter from the Storm's instant discard prevention effect.
-
-
-# ---------------------------------------------------------------------------
-# Zone helpers (avoid circular imports)
-# ---------------------------------------------------------------------------
-
-def _zone_hand():
-    from htc.enums import Zone
-    return Zone.HAND
-
-
-def _zone_deck():
-    from htc.enums import Zone
-    return Zone.DECK
 
 
 # ---------------------------------------------------------------------------
