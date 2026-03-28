@@ -97,3 +97,15 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Razor Reflex Go Again fixed** — mode 2 now uses `_RazorReflexGoAgainOnHit` one-shot trigger instead of immediate keyword grant. Matches card text timing.
 - **Pattern for on-hit triggers** — subclass TriggeredEffect, check event_type==HIT and source instance_id in condition(), apply effects in create_triggered_event() and return None (no re-emit needed).
 - **Gotcha: mark removal timing** — HIT handlers run before HIT triggers are checked. So Cindra can't check is_marked in HIT condition — must record at ATTACK_DECLARED time.
+
+## Phase 5.5 — Equipment Abilities + Integration (2026-03-26)
+
+- **Equipment abilities** in `src/htc/cards/abilities/equipment.py`. Two registration paths: `register_equipment_abilities(registry)` for ability-registry-based handlers (attack reactions), and `register_equipment_triggers()` for EventBus triggered effects (Mask of Momentum, Blood Splattered Vest, Spring Tunic).
+- **Weapon triggers** — `register_weapon_triggers()` called from `_activate_weapon()` in game.py. Handles Kunai of Retribution destroy-on-chain-close.
+- **`_register_equipment_triggers()`** — new method on Game, called during `_setup_game()` after hero abilities. Iterates player equipment and registers appropriate triggered effects.
+- **Hunter's Klaive on-hit** — registered as `"Hunter's Klaive (attack)"` because on_hit is looked up by the proxy name, not the weapon name.
+- **START_OF_TURN event** — uses `event.target_player` (not `event.data["turn_player"]`). Equipment triggers that reset per-turn must check `event.target_player`.
+- **Equipment slot conflict** — Cindra has 2 chest equipment (Blood Splattered Vest, Spring Tunic) and 2 legs equipment (Dragonscaler Flight Path, Tide Flippers). Only the first loaded gets the slot. The second is silently dropped.
+- **Missing cards** — Enflame the Firebrand and Stalker's Steps are not in `data/cards.csv`. Engine logs a warning and skips them. Games still run fine.
+- **Deferred equipment** — Dragonscaler Flight Path (needs instant activation in priority windows), Mask of Deceit (needs Agent of Chaos mechanic).
+- **Integration tests** — `tests/integration/test_full_game.py` has markdown decklist parser, full game smoke tests (multiple seeds, both player orders), hero/equipment trigger registration checks, ability registry checks. 23 tests, 334 total.
