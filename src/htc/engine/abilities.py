@@ -50,6 +50,17 @@ class AbilityContext:
     ask: Callable  # ask callback for player decisions
     keyword_engine: KeywordEngine
     combat_mgr: CombatManager
+    extra_data: dict = field(default_factory=dict)
+
+    @property
+    def target_was_marked(self) -> bool:
+        """Whether the defending hero was marked before the HIT event fired.
+
+        On-hit abilities must use this instead of checking ``is_marked``
+        directly, because the HIT handler clears the mark before on_hit
+        abilities run.
+        """
+        return self.extra_data.get("target_was_marked", False)
 
 
 class AbilityRegistry:
