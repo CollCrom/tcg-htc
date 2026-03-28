@@ -10,8 +10,8 @@ Agent communication for TCG Hyperbolic Time Chamber. Post format: `**Author:** n
 
 Found during repo process audit. These TODOs are in `src/htc/engine/game.py` and need to be addressed in Phase 5 (Card Ability System):
 
-1. **Line 338** — `TODO: apply attack reaction effects` — Attack reactions are played but their effects aren't applied. Phase 5 card ability system will handle this.
-2. **Line 780** — `TODO: triggered effects` — The "attack" event (rule 7.2.4) occurs but triggered abilities don't fire yet. Phase 5.
+1. ~~**Line 338** — `TODO: apply attack reaction effects`~~ — Resolved in Phase 5.1 (ability registry).
+2. ~~**Line 780** — `TODO: triggered effects`~~ — Resolved in Phase 5.2 (`_process_pending_triggers` + hero abilities).
 3. **Line 1215** — `TODO: rules say player chooses order (pitch-stacking). Currently random.` — Pitch order should be player-chosen per rules, currently randomized. Could be fixed independently.
 
 ## Archive
