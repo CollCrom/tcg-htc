@@ -663,12 +663,41 @@ def _make_overpower_attack(instance_id=1, owner_index=0):
     )
 
 
-def test_ambush_from_arsenal_bypasses_overpower():
-    """Ambush card from arsenal should defend even when Overpower limits
-    action cards from hand to 1.
+def _make_non_action_ambush_card(instance_id=41, owner_index=1):
+    """Create a non-action card with Ambush keyword (e.g. a defense reaction)."""
+    defn = CardDefinition(
+        unique_id=f"ambush-dr-{instance_id}",
+        name="Ambush Defense Reaction",
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=None,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.DEFENSE_REACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset(),
+        keywords=frozenset({Keyword.AMBUSH}),
+        functional_text="",
+        type_text="",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.ARSENAL,
+    )
 
-    Overpower says "can't be defended by more than 1 action card from hand".
-    Arsenal is not hand, so Ambush cards from arsenal are not restricted.
+
+def test_ambush_action_from_arsenal_blocked_by_overpower():
+    """An action card with Ambush from arsenal IS restricted by Overpower.
+
+    Overpower says "can't be defended by more than 1 action card" — this is
+    a type-based restriction that applies regardless of zone. So an action
+    card from hand + an action card with Ambush from arsenal = 2 action
+    cards = blocked by Overpower.
     """
     game = make_game_shell(life=20)
     state = game.state
@@ -698,9 +727,52 @@ def test_ambush_from_arsenal_bypasses_overpower():
     game._ask = mock_ask
     game._defend_step()
 
-    # Both should defend: Overpower only restricts hand cards
+    # Overpower blocks the second action card regardless of zone
+    assert hand_action in link.defending_cards, "First action card should defend"
+    assert ambush_card not in link.defending_cards, (
+        "Ambush action card from arsenal should be blocked by Overpower (2nd action card)"
+    )
+    assert len(link.defending_cards) == 1
+
+
+def test_non_action_ambush_from_arsenal_bypasses_overpower():
+    """A non-action Ambush card from arsenal is NOT restricted by Overpower.
+
+    Overpower only restricts action cards. A defense reaction with Ambush
+    from arsenal doesn't count as an action card, so it's allowed alongside
+    an action card from hand.
+    """
+    game = make_game_shell(life=20)
+    state = game.state
+
+    game.combat_mgr.open_chain(state)
+    overpower_attack = _make_overpower_attack(instance_id=1)
+    link = game.combat_mgr.add_chain_link(state, overpower_attack, 1)
+
+    # Defender has an action card in hand and a non-action Ambush card in arsenal
+    hand_action = make_card(
+        instance_id=30, name="Hand Action", power=None, defense=2,
+        is_attack=False, owner_index=1, zone=Zone.HAND,
+    )
+    state.players[1].hand.append(hand_action)
+
+    ambush_dr = _make_non_action_ambush_card(instance_id=41, owner_index=1)
+    state.players[1].arsenal.append(ambush_dr)
+
+    def mock_ask(decision):
+        return PlayerResponse(
+            selected_option_ids=[
+                f"defend_{hand_action.instance_id}",
+                f"defend_{ambush_dr.instance_id}",
+            ]
+        )
+
+    game._ask = mock_ask
+    game._defend_step()
+
+    # Both should defend: the non-action Ambush card doesn't count for Overpower
     assert hand_action in link.defending_cards, "Hand action card should defend"
-    assert ambush_card in link.defending_cards, (
-        "Ambush from arsenal should bypass Overpower restriction"
+    assert ambush_dr in link.defending_cards, (
+        "Non-action Ambush from arsenal should bypass Overpower (not an action card)"
     )
     assert len(link.defending_cards) == 2
