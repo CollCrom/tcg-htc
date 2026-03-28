@@ -18,6 +18,7 @@ from htc.engine.cost import (
     pay_action_cost,
 )
 from htc.engine.cost_manager import CostManager
+from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.keyword_engine import KeywordEngine
 from htc.engine.effects import EffectEngine
 from htc.engine.stack import StackManager
@@ -76,7 +77,40 @@ class Game:
         self.keyword_engine = KeywordEngine(
             self.effect_engine, self.events, lambda d: self._ask(d),
         )
+        self.ability_registry = AbilityRegistry()
+        self._register_abilities()
         self._register_event_handlers()
+
+    def _register_abilities(self) -> None:
+        """Register card abilities with the ability registry."""
+        from htc.cards.abilities import register_generic_abilities
+        register_generic_abilities(self.ability_registry)
+
+    def _apply_card_ability(
+        self, card: CardInstance, player_index: int, timing: str
+    ) -> None:
+        """Look up and apply a card's ability at the given timing.
+
+        If no ability is registered for the card, does nothing (graceful
+        degradation). Builds an AbilityContext and calls the handler.
+        """
+        handler = self.ability_registry.lookup(timing, card.name)
+        if handler is None:
+            log.debug(f"  No {timing} ability for {card.name}")
+            return
+
+        ctx = AbilityContext(
+            state=self.state,
+            source_card=card,
+            controller_index=player_index,
+            chain_link=self.state.combat_chain.active_link,
+            effect_engine=self.effect_engine,
+            events=self.events,
+            ask=lambda d: self._ask(d),
+            keyword_engine=self.keyword_engine,
+            combat_mgr=self.combat_mgr,
+        )
+        handler(ctx)
 
     def _register_event_handlers(self) -> None:
         """Register handlers for core game events."""
@@ -332,11 +366,13 @@ class Game:
                 if link:
                     self.combat_mgr.add_defender(self.state, link, card)
                     log.info(f"  Defense reaction: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
+                    # Apply defense reaction effect (e.g. Fate Foreseen's Opt, Sink Below's cycle)
+                    self._apply_card_ability(card, layer.controller_index, "defense_reaction_effect")
                 else:
                     self.state.move_card(card, Zone.GRAVEYARD)
             elif card.definition.is_attack_reaction:
                 # Attack reaction resolves: apply effect, then graveyard
-                # TODO: apply attack reaction effects
+                self._apply_card_ability(card, layer.controller_index, "attack_reaction_effect")
                 self.state.move_card(card, Zone.GRAVEYARD)
                 log.info(f"  Attack reaction: {card.name}{card.definition.color_label}")
             elif card.definition.is_permanent_when_resolved:
