@@ -13,6 +13,7 @@ import logging
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.continuous import EffectDuration, make_keyword_grant, make_power_modifier
+from htc.engine.events import EventType, GameEvent, TriggeredEffect
 from htc.enums import ActionType, DecisionType, Keyword, SubType, SuperType
 
 log = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ def _razor_reflex(ctx: AbilityContext) -> None:
         ctx.effect_engine.add_continuous_effect(ctx.state, effect)
         log.info(f"  Razor Reflex: {attack.name} gets +{bonus} power (weapon mode)")
     elif chosen_mode == 2:
-        # +N power and grant go again on hit
+        # +N power and "when this hits, it gets go again"
         power_effect = make_power_modifier(
             bonus,
             ctx.controller_index,
@@ -176,23 +177,71 @@ def _razor_reflex(ctx: AbilityContext) -> None:
         )
         ctx.effect_engine.add_continuous_effect(ctx.state, power_effect)
 
-        # Grant "go again" (simplified — the real card says "when this hits,
-        # it gets go again", but implementing hit-triggered go again requires
-        # event-driven ability triggers. For now, grant go again directly.)
-        # TODO: implement "when this hits, it gets go again" properly via
-        # on_hit triggered ability instead of granting go again immediately.
+        # Register a one-shot HIT trigger that grants Go Again when this
+        # attack hits. This is the correct "when this hits, it gets go again"
+        # timing per the card text.
+        hit_trigger = _RazorReflexGoAgainOnHit(
+            attack_instance_id=atk_id,
+            controller_index=ctx.controller_index,
+            source_instance_id=ctx.source_card.instance_id,
+            _effect_engine=ctx.effect_engine,
+            _state=ctx.state,
+            one_shot=True,
+        )
+        ctx.events.register_trigger(hit_trigger)
+        log.info(
+            f"  Razor Reflex: {attack.name} gets +{bonus} power and go again "
+            f"on hit (attack action mode)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# On-Hit Triggers (registered by attack reactions)
+# ---------------------------------------------------------------------------
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class _RazorReflexGoAgainOnHit(TriggeredEffect):
+    """One-shot trigger: when the specific attack hits, grant Go Again.
+
+    Registered by Razor Reflex mode 2 to implement "when this hits,
+    it gets go again" correctly at hit timing rather than immediately.
+    """
+
+    attack_instance_id: int = 0
+    controller_index: int = 0
+    source_instance_id: int | None = None
+    one_shot: bool = True
+
+    _effect_engine: object = None  # EffectEngine
+    _state: object = None  # GameState
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.HIT:
+            return False
+        if event.source is None:
+            return False
+        return event.source.instance_id == self.attack_instance_id
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        """Grant Go Again to the attack via continuous effect."""
+        if self._effect_engine is None or self._state is None:
+            return None
+
+        atk_id = self.attack_instance_id
         go_again_effect = make_keyword_grant(
             frozenset({Keyword.GO_AGAIN}),
-            ctx.controller_index,
-            source_instance_id=ctx.source_card.instance_id,
+            self.controller_index,
+            source_instance_id=self.source_instance_id,
             duration=EffectDuration.END_OF_COMBAT,
             target_filter=lambda c, _id=atk_id: c.instance_id == _id,
         )
-        ctx.effect_engine.add_continuous_effect(ctx.state, go_again_effect)
-        log.info(
-            f"  Razor Reflex: {attack.name} gets +{bonus} power and go again "
-            f"(attack action mode)"
-        )
+        self._effect_engine.add_continuous_effect(self._state, go_again_effect)
+        log.info(f"  Razor Reflex: attack gets Go Again on hit")
+        return None
 
 
 # ---------------------------------------------------------------------------
