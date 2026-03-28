@@ -85,8 +85,10 @@ class Game:
         """Register card abilities with the ability registry."""
         from htc.cards.abilities import register_generic_abilities
         from htc.cards.abilities.assassin import register_assassin_abilities
+        from htc.cards.abilities.ninja import register_ninja_abilities
         register_generic_abilities(self.ability_registry)
         register_assassin_abilities(self.ability_registry)
+        register_ninja_abilities(self.ability_registry)
 
     def _register_hero_abilities(self) -> None:
         """Register hero abilities as triggered effects on the EventBus.
