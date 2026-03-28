@@ -58,14 +58,17 @@ def _zone_banished():
 def count_draconic_chain_links(ctx: AbilityContext) -> int:
     """Count the number of Draconic chain links the controller has on the combat chain.
 
-    A chain link is "Draconic" if its active_attack has the Draconic supertype.
+    A chain link is "Draconic" if its active_attack has the Draconic supertype
+    and is owned by the controller.
     """
     chain = ctx.state.combat_chain
+    controller = ctx.controller_index
     count = 0
     for link in chain.chain_links:
         if link.active_attack is None:
             continue
-        if SuperType.DRACONIC in link.active_attack.definition.supertypes:
+        if (link.active_attack.owner_index == controller
+                and SuperType.DRACONIC in link.active_attack.definition.supertypes):
             count += 1
     return count
 
@@ -1127,16 +1130,24 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
     if link is None:
         return
 
-    draconic_count = count_draconic_chain_links(ctx)
+    state = ctx.state
+    controller = ctx.controller_index
 
-    def _spreading_filter(card, _count=draconic_count):
-        """Match Draconic attacks with base power < draconic chain link count."""
+    def _spreading_filter(card):
+        """Match Draconic attacks with base power < draconic chain link count (dynamic)."""
         if SuperType.DRACONIC not in card.definition.supertypes:
             return False
         base_power = card.definition.power
         if base_power is None:
             return False
-        return base_power < _count
+        # Recount dynamically each evaluation — chain grows as more attacks are played
+        dcount = sum(
+            1 for lnk in state.combat_chain.chain_links
+            if lnk.active_attack
+            and lnk.active_attack.owner_index == controller
+            and SuperType.DRACONIC in lnk.active_attack.definition.supertypes
+        )
+        return base_power < dcount
 
     effect = make_power_modifier(
         1,
@@ -1147,7 +1158,7 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(
-        f"  Spreading Flames: Draconic attacks with base power < {draconic_count} "
+        f"  Spreading Flames: Draconic attacks with base power < dynamic draconic count "
         "get +1 power"
     )
 
