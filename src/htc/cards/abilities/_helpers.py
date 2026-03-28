@@ -129,6 +129,7 @@ def create_token(
     subtype: SubType,
     functional_text: str = "",
     type_text: str = "",
+    supertypes: frozenset = frozenset(),
 ) -> CardInstance:
     """Create a token permanent for the given player."""
     from htc.cards.card import CardDefinition
@@ -147,7 +148,7 @@ def create_token(
         arcane=None,
         types=frozenset({CardType.TOKEN}),
         subtypes=frozenset({subtype}),
-        supertypes=frozenset(),
+        supertypes=supertypes,
         keywords=frozenset(),
         functional_text=functional_text,
         type_text=type_text,

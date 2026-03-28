@@ -11,6 +11,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from htc.cards.abilities._helpers import (
+    create_token,
+    draw_card,
+    grant_keyword,
+    grant_power_bonus,
+)
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.continuous import (
@@ -39,22 +45,6 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _zone_hand():
-    return Zone.HAND
-
-
-def _zone_deck():
-    return Zone.DECK
-
-
-def _zone_graveyard():
-    return Zone.GRAVEYARD
-
-
-def _zone_banished():
-    return Zone.BANISHED
-
-
 def count_draconic_chain_links(ctx: AbilityContext) -> int:
     """Count the number of Draconic chain links the controller has on the combat chain.
 
@@ -79,36 +69,12 @@ def _is_draconic(card) -> bool:
 
 
 def _create_fealty_token(ctx: AbilityContext) -> None:
-    """Create a Fealty token for the controller using the same pattern as heroes.py."""
-    from htc.cards.card import CardDefinition
-    from htc.cards.instance import CardInstance
-
-    token_def = CardDefinition(
-        unique_id="fealty-token",
-        name="Fealty",
-        color=None,
-        pitch=None,
-        cost=None,
-        power=None,
-        defense=None,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.TOKEN}),
-        subtypes=frozenset({SubType.AURA}),
-        supertypes=frozenset({SuperType.DRACONIC}),
-        keywords=frozenset(),
-        functional_text="",
+    """Create a Fealty token for the controller."""
+    create_token(
+        ctx.state, ctx.controller_index, "Fealty", SubType.AURA,
         type_text="Draconic Token - Aura",
+        supertypes=frozenset({SuperType.DRACONIC}),
     )
-    token = CardInstance(
-        instance_id=ctx.state.next_instance_id(),
-        definition=token_def,
-        owner_index=ctx.controller_index,
-        zone=Zone.PERMANENT,
-    )
-    ctx.state.players[ctx.controller_index].permanents.append(token)
-    log.info(f"  Created Fealty token for Player {ctx.controller_index}")
 
 
 # ---------------------------------------------------------------------------
@@ -181,17 +147,12 @@ def _throw_dagger(ctx: AbilityContext) -> None:
     )
 
     # Dagger has hit — draw a card
-    if player.deck:
-        drawn = player.deck.pop(0)
-        drawn.zone = _zone_hand()
-        player.hand.append(drawn)
-        player.turn_counters.num_cards_drawn += 1
-        log.info(f"  Throw Dagger: Player {ctx.controller_index} draws a card")
+    draw_card(ctx, "Throw Dagger")
 
     # Destroy the dagger
     if chosen_dagger in player.weapons:
         player.weapons.remove(chosen_dagger)
-    chosen_dagger.zone = _zone_graveyard()
+    chosen_dagger.zone = Zone.GRAVEYARD
     player.graveyard.append(chosen_dagger)
     log.info(f"  Throw Dagger: {chosen_dagger.name} destroyed")
 
@@ -212,16 +173,7 @@ def _exposed(ctx: AbilityContext) -> None:
 
     # +1 power to the active attack
     attack = link.active_attack
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        1,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-    log.info(f"  Exposed: {attack.name} gets +1 power")
+    grant_power_bonus(ctx, attack, 1, "Exposed")
 
     # Mark the defending hero
     defender = ctx.state.players[link.attack_target_index]
@@ -311,16 +263,7 @@ def _dragon_power_on_attack(ctx: AbilityContext) -> None:
         log.info("  Dragon Power: not Draconic, no bonus")
         return
 
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        3,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-    log.info(f"  Dragon Power: {attack.name} gets +3 power (Draconic)")
+    grant_power_bonus(ctx, attack, 3, "Dragon Power")
 
 
 def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
@@ -342,16 +285,7 @@ def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
         return
 
     # Grant Go Again via continuous effect
-    atk_id = attack.instance_id
-    go_again_effect = make_keyword_grant(
-        frozenset({Keyword.GO_AGAIN}),
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, go_again_effect)
-    log.info(f"  Art of the Dragon: Blood: {attack.name} gets Go Again")
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Art of the Dragon: Blood")
 
     # Next 3 Draconic cards cost {r} less
     # TODO: This requires a "next N cards" cost reduction tracker that
@@ -554,7 +488,7 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
         # Destroy the dagger
         if dagger in player.weapons:
             player.weapons.remove(dagger)
-        dagger.zone = _zone_graveyard()
+        dagger.zone = Zone.GRAVEYARD
         player.graveyard.append(dagger)
         log.info(f"  Blood Runs Deep: {dagger.name} destroyed")
 
@@ -585,7 +519,7 @@ def _breaking_point_on_hit(ctx: AbilityContext) -> None:
     if defender.arsenal:
         destroyed_count = len(defender.arsenal)
         for card in list(defender.arsenal):
-            card.zone = _zone_graveyard()
+            card.zone = Zone.GRAVEYARD
             defender.graveyard.append(card)
         defender.arsenal.clear()
         log.info(
@@ -619,7 +553,7 @@ def _command_and_conquer_on_hit(ctx: AbilityContext) -> None:
     if defender.arsenal:
         destroyed_count = len(defender.arsenal)
         for card in list(defender.arsenal):
-            card.zone = _zone_graveyard()
+            card.zone = Zone.GRAVEYARD
             defender.graveyard.append(card)
         defender.arsenal.clear()
         log.info(
@@ -650,22 +584,9 @@ def _demonstrate_devotion_on_attack(ctx: AbilityContext) -> None:
         )
         return
 
-    # Grant Go Again
+    # Grant Go Again and create Fealty token
     attack = link.active_attack
-    atk_id = attack.instance_id
-    go_again_effect = make_keyword_grant(
-        frozenset({Keyword.GO_AGAIN}),
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, go_again_effect)
-    log.info(
-        f"  Demonstrate Devotion: gets Go Again ({draconic_count} Draconic links)"
-    )
-
-    # Create Fealty token
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Demonstrate Devotion")
     _create_fealty_token(ctx)
     log.info("  Demonstrate Devotion: created Fealty token")
 
@@ -691,19 +612,7 @@ def _display_loyalty_on_attack(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    atk_id = attack.instance_id
-    go_again_effect = make_keyword_grant(
-        frozenset({Keyword.GO_AGAIN}),
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, go_again_effect)
-    log.info(
-        f"  Display Loyalty: gets Go Again ({draconic_count} Draconic links)"
-    )
-
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Display Loyalty")
     _create_fealty_token(ctx)
     log.info("  Display Loyalty: created Fealty token")
 
@@ -737,7 +646,7 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
 
     # Banish the attack card
     attack = link.active_attack
-    attack.zone = _zone_banished()
+    attack.zone = Zone.BANISHED
     player = ctx.state.players[ctx.controller_index]
     player.banished.append(attack)
     log.info(
@@ -766,18 +675,7 @@ def _hot_on_their_heels_on_attack(ctx: AbilityContext) -> None:
 
     # Grant Go Again
     attack = link.active_attack
-    atk_id = attack.instance_id
-    go_again_effect = make_keyword_grant(
-        frozenset({Keyword.GO_AGAIN}),
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, go_again_effect)
-    log.info(
-        f"  Hot on Their Heels: gets Go Again ({draconic_count} Draconic links)"
-    )
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Hot on Their Heels")
 
     # Register on-hit trigger to mark the defending hero
     hit_trigger = _MarkOnHitTrigger(
@@ -812,18 +710,7 @@ def _mark_with_magma_on_attack(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    atk_id = attack.instance_id
-    go_again_effect = make_keyword_grant(
-        frozenset({Keyword.GO_AGAIN}),
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, go_again_effect)
-    log.info(
-        f"  Mark with Magma: gets Go Again ({draconic_count} Draconic links)"
-    )
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Mark with Magma")
 
     hit_trigger = _MarkOnHitTrigger(
         attack_instance_id=attack.instance_id,
@@ -889,19 +776,7 @@ def _hunt_to_the_ends_on_attack(ctx: AbilityContext) -> None:
 
     # "If attacking a marked hero, +2 power"
     if defender.is_marked:
-        attack = link.active_attack
-        atk_id = attack.instance_id
-        effect = make_power_modifier(
-            2,
-            ctx.controller_index,
-            source_instance_id=ctx.source_card.instance_id,
-            duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-        )
-        ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-        log.info(
-            "  Hunt to the Ends of Rathe: +2 power (attacking marked hero)"
-        )
+        grant_power_bonus(ctx, link.active_attack, 2, "Hunt to the Ends of Rathe")
 
 
 def _ignite_on_attack(ctx: AbilityContext) -> None:
@@ -978,7 +853,7 @@ def _enlightened_strike_on_attack(ctx: AbilityContext) -> None:
             )
             if card:
                 player.hand.remove(card)
-                card.zone = _zone_deck()
+                card.zone = Zone.DECK
                 player.deck.append(card)
                 log.info(
                     f"  Enlightened Strike: put {card.name} on bottom of deck "
@@ -1013,34 +888,11 @@ def _enlightened_strike_on_attack(ctx: AbilityContext) -> None:
     chosen = mode_response.first if mode_response.first else "draw"
 
     if chosen == "draw":
-        if player.deck:
-            drawn = player.deck.pop(0)
-            drawn.zone = _zone_hand()
-            player.hand.append(drawn)
-            player.turn_counters.num_cards_drawn += 1
-            log.info(
-                f"  Enlightened Strike: Player {ctx.controller_index} draws a card"
-            )
+        draw_card(ctx, "Enlightened Strike")
     elif chosen == "power":
-        effect = make_power_modifier(
-            2,
-            ctx.controller_index,
-            source_instance_id=ctx.source_card.instance_id,
-            duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-        )
-        ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-        log.info("  Enlightened Strike: +2 power")
+        grant_power_bonus(ctx, attack, 2, "Enlightened Strike")
     elif chosen == "go_again":
-        go_effect = make_keyword_grant(
-            frozenset({Keyword.GO_AGAIN}),
-            ctx.controller_index,
-            source_instance_id=ctx.source_card.instance_id,
-            duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-        )
-        ctx.effect_engine.add_continuous_effect(ctx.state, go_effect)
-        log.info("  Enlightened Strike: gains Go Again")
+        grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Enlightened Strike")
 
 
 def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
@@ -1108,7 +960,7 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
         card = next((c for c in eligible if c.instance_id == card_id), None)
         if card:
             player.hand.remove(card)
-            card.zone = _zone_banished()
+            card.zone = Zone.BANISHED
             player.banished.append(card)
             log.info(
                 f"  Rising Resentment: banished {card.name} "
