@@ -763,10 +763,19 @@ class TestPainInTheBackside:
         assert hit_events[0].source is dagger
         assert hit_events[0].amount == 1
 
-    def test_no_dagger_no_damage(self):
-        """If controller has no dagger weapon, no damage is dealt."""
+    def test_no_dagger_no_damage_no_events(self):
+        """If controller has no dagger weapon, no damage or hit events are emitted."""
         game = make_game_shell(life=20)
         # No weapons on player 0
+
+        damage_events = []
+        hit_events = []
+        game.events.register_handler(
+            EventType.DEAL_DAMAGE, lambda e: damage_events.append(e),
+        )
+        game.events.register_handler(
+            EventType.HIT, lambda e: hit_events.append(e),
+        )
 
         attack = _make_dagger_attack(instance_id=1, name="Pain in the Backside",
                                      keywords=frozenset({Keyword.GO_AGAIN}))
@@ -776,6 +785,42 @@ class TestPainInTheBackside:
         game._apply_card_ability(attack, 0, "on_hit")
 
         assert game.state.players[1].life_total == 20
+        assert len(damage_events) == 0, "No DEAL_DAMAGE events when no daggers"
+        assert len(hit_events) == 0, "No HIT events when no daggers"
+
+    def test_multi_dagger_choose_second(self):
+        """With 2 daggers, player chooses the second — HIT source should be that dagger."""
+        from htc.engine.actions import PlayerResponse
+
+        game = make_game_shell(life=20)
+        dagger1 = _make_dagger_weapon(instance_id=100, owner_index=0)
+        dagger2 = _make_dagger_weapon(instance_id=101, owner_index=0)
+        dagger2.definition = dagger2.definition  # same def is fine
+        game.state.players[0].weapons.extend([dagger1, dagger2])
+
+        hit_events = []
+        game.events.register_handler(
+            EventType.HIT, lambda e: hit_events.append(e),
+        )
+
+        # Mock: choose the second dagger (instance_id=101)
+        game._ask = lambda d: PlayerResponse(
+            selected_option_ids=[f"dagger_{dagger2.instance_id}"],
+        )
+
+        attack = _make_dagger_attack(instance_id=1, name="Pain in the Backside",
+                                     keywords=frozenset({Keyword.GO_AGAIN}))
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        game._apply_card_ability(attack, 0, "on_hit")
+
+        assert game.state.players[1].life_total == 19
+        assert len(hit_events) == 1
+        assert hit_events[0].source is dagger2, (
+            f"Expected dagger2 (id={dagger2.instance_id}) as HIT source, "
+            f"got id={hit_events[0].source.instance_id}"
+        )
 
 
 class TestPersuasivePrognosis:

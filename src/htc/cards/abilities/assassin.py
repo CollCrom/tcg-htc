@@ -922,16 +922,41 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
     target_index = link.attack_target_index
     controller = ctx.state.players[ctx.controller_index]
 
-    # Find a dagger the controller owns (simplified: pick first dagger weapon)
-    dagger = None
-    for weapon in controller.weapons:
-        if SubType.DAGGER in weapon.definition.subtypes:
-            dagger = weapon
-            break
+    # Find daggers the controller owns
+    daggers = [w for w in controller.weapons if SubType.DAGGER in w.definition.subtypes]
 
-    if dagger is None:
+    if not daggers:
         log.info("  Pain in the Backside: No dagger found — no damage dealt")
         return
+
+    # If multiple daggers, player chooses which one to use
+    if len(daggers) == 1:
+        dagger = daggers[0]
+    else:
+        options = [
+            ActionOption(
+                action_id=f"dagger_{d.instance_id}",
+                description=f"Use {d.name} (ID {d.instance_id})",
+                action_type=ActionType.ACTIVATE_ABILITY,
+                card_instance_id=d.instance_id,
+            )
+            for d in daggers
+        ]
+        decision = Decision(
+            player_index=ctx.controller_index,
+            decision_type=DecisionType.CHOOSE_TARGET,
+            prompt="Pain in the Backside: Choose a dagger to deal damage",
+            options=options,
+        )
+        response = ctx.ask(decision)
+        chosen_id = (
+            int(response.first.replace("dagger_", ""))
+            if response.first
+            else daggers[0].instance_id
+        )
+        dagger = next(
+            (d for d in daggers if d.instance_id == chosen_id), daggers[0]
+        )
 
     # Card text: "target dagger you control deals 1 damage to them"
     # Emit DEAL_DAMAGE so prevention/replacement effects can apply

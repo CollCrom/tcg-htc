@@ -1382,14 +1382,17 @@ class Game:
                     tp.arsenal.append(card)
 
         # 4.4.3c: ALL players' pitch zones -> bottom of deck
-        # TODO: rules say player chooses order (pitch-stacking). Currently random.
-        # Should be a Decision when strategic players are implemented.
+        # Rules say player chooses order (pitch-stacking).
         for player in self.state.players:
             if player.pitch:
-                self.state.rng.shuffle(player.pitch)
-                for card in player.pitch:
+                if len(player.pitch) > 1:
+                    # Player chooses the order cards go to bottom of deck
+                    ordered = self._choose_pitch_order(player)
+                else:
+                    ordered = list(player.pitch)
+                for card in ordered:
                     card.zone = Zone.DECK
-                player.deck.extend(player.pitch)
+                player.deck.extend(ordered)
                 player.pitch.clear()
 
         # 4.4.3d: Untap all turn player's permanents
@@ -1457,6 +1460,45 @@ class Game:
             self.state.winner = 1 - dead[0].index
             self.state.game_over = True
             log.info(f"Player {dead[0].index} defeated! Player {1 - dead[0].index} wins!")
+
+    def _choose_pitch_order(self, player: PlayerState) -> list[CardInstance]:
+        """Ask the player to choose the order pitched cards go to bottom of deck.
+
+        Returns the cards in the order they should be placed on the bottom
+        (first element = bottommost card).
+        """
+        remaining = list(player.pitch)
+        ordered: list[CardInstance] = []
+
+        while len(remaining) > 1:
+            options = [
+                ActionOption(
+                    action_id=f"pitch_order_{c.instance_id}",
+                    description=f"{c.name}{c.definition.color_label} (pitch={c.definition.pitch})",
+                    action_type=ActionType.PASS,
+                    card_instance_id=c.instance_id,
+                )
+                for c in remaining
+            ]
+            position = len(ordered) + 1
+            decision = Decision(
+                player_index=player.index,
+                decision_type=DecisionType.ORDER_PITCH_TO_DECK,
+                prompt=f"Choose card #{position} to put on bottom of deck ({len(remaining)} remaining)",
+                options=options,
+            )
+            response = self._ask(decision)
+            if response.first:
+                chosen_id = int(response.first.replace("pitch_order_", ""))
+                chosen = next((c for c in remaining if c.instance_id == chosen_id), remaining[0])
+            else:
+                chosen = remaining[0]
+            remaining.remove(chosen)
+            ordered.append(chosen)
+
+        # Last card goes automatically
+        ordered.append(remaining[0])
+        return ordered
 
     def _pitch_to_pay(self, player_index: int, cost: int) -> None:
         """Pitch cards from hand to generate resources, then pay the cost."""

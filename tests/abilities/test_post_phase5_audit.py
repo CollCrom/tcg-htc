@@ -5,6 +5,9 @@ Covers:
   damage goes through event system (DEAL_DAMAGE + HIT events).
 - CRITICAL 2: Art of the Dragon: Scale counter visible to effect engine.
 - CRITICAL 3: Ambush from arsenal not restricted by Dominate.
+- Damage prevention edge cases: LOSE_LIFE vs DEAL_DAMAGE distinction,
+  prevention paths for Throw Dagger, Blood Runs Deep, Art of Dragon: Fire.
+- Ambush + Overpower interaction from arsenal.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
 from htc.engine.abilities import AbilityContext
 from htc.engine.actions import ActionOption, PlayerResponse
-from htc.engine.events import EventType, GameEvent
+from htc.engine.events import EventType, GameEvent, ReplacementEffect
 from htc.enums import (
     CardType,
     Color,
@@ -26,6 +29,7 @@ from htc.enums import (
 from htc.state.combat_state import ChainLink, CombatChainState
 from tests.conftest import make_card, make_equipment, make_game_shell, make_state
 from tests.abilities.conftest import (
+    make_dagger_attack,
     make_draconic_ninja_attack,
     make_dagger_weapon,
     make_ninja_attack,
@@ -445,4 +449,258 @@ def test_ambush_from_arsenal_not_counted_as_hand_defense():
     assert hand1 in link.defending_cards, "First hand card should defend"
     assert hand2 not in link.defending_cards, "Second hand card blocked by Dominate"
     assert ambush_card in link.defending_cards, "Ambush from arsenal always allowed"
+    assert len(link.defending_cards) == 2
+
+
+# ---------------------------------------------------------------------------
+# Damage prevention edge cases (DEAL_DAMAGE vs LOSE_LIFE distinction)
+# ---------------------------------------------------------------------------
+
+
+class _DamagePreventionEffect(ReplacementEffect):
+    """A ReplacementEffect that cancels all DEAL_DAMAGE events (simulating
+    complete damage prevention, e.g. Arcane Barrier preventing all damage)."""
+
+    def __init__(self):
+        super().__init__(one_shot=False)
+
+    def condition(self, event: GameEvent) -> bool:
+        return event.event_type == EventType.DEAL_DAMAGE
+
+    def replace(self, event: GameEvent) -> GameEvent:
+        event.amount = 0
+        event.cancelled = True
+        return event
+
+
+def test_kiss_of_death_life_loss_bypasses_damage_prevention():
+    """Kiss of Death uses LOSE_LIFE, not DEAL_DAMAGE — damage prevention
+    should NOT prevent the life loss.
+
+    This is the core design reason for routing Kiss of Death through
+    LOSE_LIFE instead of DEAL_DAMAGE.
+    """
+    from htc.cards.abilities.assassin import _kiss_of_death_on_hit
+
+    game = make_game_shell(life=20)
+    state = game.state
+
+    # Register a blanket damage prevention effect
+    game.events.register_replacement(_DamagePreventionEffect())
+
+    # Set up combat chain
+    game.combat_mgr.open_chain(state)
+    attack = make_dagger_attack(
+        instance_id=1, name="Kiss of Death",
+        keywords=frozenset({Keyword.STEALTH}),
+    )
+    link = game.combat_mgr.add_chain_link(state, attack, 1)
+
+    ctx = _make_ctx(game, attack, link)
+    initial_life = state.players[1].life_total
+    _kiss_of_death_on_hit(ctx)
+
+    # Life loss should go through despite damage prevention
+    assert state.players[1].life_total == initial_life - 1, (
+        "Kiss of Death's LOSE_LIFE should bypass damage prevention"
+    )
+
+
+def test_throw_dagger_no_draw_when_damage_prevented():
+    """Throw Dagger: if damage is prevented (actual_damage == 0), no card
+    should be drawn."""
+    from htc.cards.abilities.ninja import _throw_dagger
+
+    game = make_game_shell(life=20)
+    state = game.state
+
+    # Register blanket damage prevention
+    game.events.register_replacement(_DamagePreventionEffect())
+
+    game.combat_mgr.open_chain(state)
+    active_attack = make_draconic_ninja_attack(instance_id=1)
+    link = game.combat_mgr.add_chain_link(state, active_attack, 1)
+    link.attack_source = active_attack
+
+    off_dagger = make_dagger_weapon(instance_id=200, name="Off-Chain Dagger")
+    state.players[0].weapons.append(off_dagger)
+
+    # Give player 0 a card in deck so draw would succeed if attempted
+    deck_card = make_card(instance_id=300, name="Deck Card", owner_index=0, zone=Zone.DECK)
+    state.players[0].deck.append(deck_card)
+
+    initial_hand_size = len(state.players[0].hand)
+    initial_life = state.players[1].life_total
+
+    ar_card = make_ninja_attack(instance_id=10, name="Throw Dagger")
+    ctx = _make_ctx(game, ar_card, link)
+    _throw_dagger(ctx)
+
+    # Damage was prevented: no life lost
+    assert state.players[1].life_total == initial_life, (
+        "Throw Dagger damage should be prevented"
+    )
+    # No card drawn because damage was prevented
+    assert len(state.players[0].hand) == initial_hand_size, (
+        "Throw Dagger should NOT draw a card when damage is prevented"
+    )
+    # Dagger should still be destroyed (card text says "Destroy the dagger" unconditionally)
+    assert off_dagger not in state.players[0].weapons, (
+        "Dagger should be destroyed regardless of prevention"
+    )
+
+
+def test_blood_runs_deep_partial_prevention():
+    """Blood Runs Deep: if one dagger's damage is prevented but the other's
+    isn't, only one HIT event should fire."""
+    from htc.cards.abilities.ninja import _blood_runs_deep_on_attack
+
+    game = make_game_shell(life=20)
+    state = game.state
+
+    game.combat_mgr.open_chain(state)
+    attack = make_draconic_ninja_attack(
+        instance_id=1, name="Blood Runs Deep", power=5,
+    )
+    link = game.combat_mgr.add_chain_link(state, attack, 1)
+
+    dagger1 = make_dagger_weapon(instance_id=100, name="Dagger A")
+    dagger2 = make_dagger_weapon(instance_id=101, name="Dagger B")
+    state.players[0].weapons.extend([dagger1, dagger2])
+
+    # Register a one-shot prevention that blocks the first DEAL_DAMAGE only
+    class _OneTimePrevention(ReplacementEffect):
+        def __init__(self):
+            super().__init__(one_shot=True)
+
+        def condition(self, event: GameEvent) -> bool:
+            return event.event_type == EventType.DEAL_DAMAGE
+
+        def replace(self, event: GameEvent) -> GameEvent:
+            event.amount = 0
+            event.cancelled = True
+            return event
+
+    game.events.register_replacement(_OneTimePrevention())
+
+    damage_events = []
+    hit_events = []
+    game.events.register_handler(EventType.DEAL_DAMAGE, lambda e: damage_events.append(e))
+    game.events.register_handler(EventType.HIT, lambda e: hit_events.append(e))
+
+    initial_life = state.players[1].life_total
+    ctx = _make_ctx(game, attack, link)
+    _blood_runs_deep_on_attack(ctx)
+
+    # First dagger's damage was prevented (cancelled), second goes through
+    assert len(hit_events) == 1, (
+        f"Expected 1 HIT event (one dagger prevented), got {len(hit_events)}"
+    )
+    assert state.players[1].life_total == initial_life - 1, (
+        "Only one dagger's damage should have gone through"
+    )
+    # Both daggers should still be destroyed
+    assert dagger1 not in state.players[0].weapons
+    assert dagger2 not in state.players[0].weapons
+
+
+def test_art_of_dragon_fire_damage_prevented():
+    """Art of the Dragon: Fire — if the 2 damage is prevented, it shouldn't
+    go through."""
+    from htc.cards.abilities.ninja import _art_of_the_dragon_fire_on_attack
+
+    game = make_game_shell(life=20)
+    state = game.state
+
+    # Register blanket damage prevention
+    game.events.register_replacement(_DamagePreventionEffect())
+
+    game.combat_mgr.open_chain(state)
+    attack = make_draconic_ninja_attack(
+        instance_id=1, name="Art of the Dragon: Fire", power=3,
+    )
+    link = game.combat_mgr.add_chain_link(state, attack, 1)
+
+    initial_life = state.players[1].life_total
+    ctx = _make_ctx(game, attack, link)
+    _art_of_the_dragon_fire_on_attack(ctx)
+
+    assert state.players[1].life_total == initial_life, (
+        "Art of the Dragon: Fire damage should be fully prevented"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ambush + Overpower interaction from arsenal
+# ---------------------------------------------------------------------------
+
+
+def _make_overpower_attack(instance_id=1, owner_index=0):
+    """Create an attack with Overpower keyword."""
+    defn = CardDefinition(
+        unique_id=f"overpower-{instance_id}",
+        name="Overpower Attack",
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=5,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ATTACK}),
+        supertypes=frozenset(),
+        keywords=frozenset({Keyword.OVERPOWER}),
+        functional_text="",
+        type_text="",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.COMBAT_CHAIN,
+    )
+
+
+def test_ambush_from_arsenal_bypasses_overpower():
+    """Ambush card from arsenal should defend even when Overpower limits
+    action cards from hand to 1.
+
+    Overpower says "can't be defended by more than 1 action card from hand".
+    Arsenal is not hand, so Ambush cards from arsenal are not restricted.
+    """
+    game = make_game_shell(life=20)
+    state = game.state
+
+    game.combat_mgr.open_chain(state)
+    overpower_attack = _make_overpower_attack(instance_id=1)
+    link = game.combat_mgr.add_chain_link(state, overpower_attack, 1)
+
+    # Defender (player 1) has an action card in hand and an Ambush action in arsenal
+    hand_action = make_card(
+        instance_id=30, name="Hand Action", power=None, defense=2,
+        is_attack=False, owner_index=1, zone=Zone.HAND,
+    )
+    state.players[1].hand.append(hand_action)
+
+    ambush_card = _make_ambush_card(instance_id=40, owner_index=1)
+    state.players[1].arsenal.append(ambush_card)
+
+    def mock_ask(decision):
+        return PlayerResponse(
+            selected_option_ids=[
+                f"defend_{hand_action.instance_id}",
+                f"defend_{ambush_card.instance_id}",
+            ]
+        )
+
+    game._ask = mock_ask
+    game._defend_step()
+
+    # Both should defend: Overpower only restricts hand cards
+    assert hand_action in link.defending_cards, "Hand action card should defend"
+    assert ambush_card in link.defending_cards, (
+        "Ambush from arsenal should bypass Overpower restriction"
+    )
     assert len(link.defending_cards) == 2
