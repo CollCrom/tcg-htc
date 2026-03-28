@@ -5,48 +5,9 @@ Defense reactions contribute defense value via the normal combat system;
 these tests verify their additional effects.
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.enums import CardType, Color, Keyword, SubType, Zone
+from htc.enums import Color, Zone
 from tests.conftest import make_card, make_game_shell, make_mock_ask
-
-
-def _make_defense_reaction(
-    name: str = "Fate Foreseen",
-    instance_id: int = 20,
-    color: Color = Color.RED,
-    defense: int = 4,
-    owner_index: int = 1,
-    keywords: frozenset | None = None,
-    keyword_values: dict | None = None,
-) -> CardInstance:
-    """Create a defense reaction card for testing."""
-    defn = CardDefinition(
-        unique_id=f"dr-{instance_id}",
-        name=name,
-        color=color,
-        pitch=1,
-        cost=0,
-        power=None,
-        defense=defense,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.DEFENSE_REACTION}),
-        subtypes=frozenset(),
-        supertypes=frozenset(),
-        keywords=keywords or frozenset(),
-        functional_text="",
-        type_text="",
-        keyword_values=keyword_values or {},
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
-    )
+from tests.abilities.conftest import make_defense_reaction as _make_defense_reaction
 
 
 # ---------------------------------------------------------------------------

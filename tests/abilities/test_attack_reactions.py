@@ -3,90 +3,13 @@
 Covers Ancestral Empowerment and Razor Reflex.
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
 from htc.engine.actions import PlayerResponse
-from htc.enums import (
-    CardType,
-    Color,
-    Keyword,
-    SubType,
-    SuperType,
-    Zone,
-)
+from htc.enums import Color, Keyword, SubType, Zone
 from tests.conftest import make_card, make_game_shell
-
-
-def _make_ninja_attack(
-    instance_id: int = 1,
-    power: int = 4,
-    cost: int = 1,
-    owner_index: int = 0,
-) -> CardInstance:
-    """Create a Ninja attack action card for testing."""
-    defn = CardDefinition(
-        unique_id=f"ninja-{instance_id}",
-        name="Ninja Strike",
-        color=Color.RED,
-        pitch=1,
-        cost=cost,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=frozenset({SuperType.NINJA}),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="Ninja Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-    )
-
-
-def _make_attack_reaction(
-    name: str = "Ancestral Empowerment",
-    instance_id: int = 10,
-    color: Color = Color.RED,
-    defense: int = 3,
-    owner_index: int = 0,
-    cost: int = 0,
-    supertypes: frozenset | None = None,
-) -> CardInstance:
-    """Create an attack reaction card for testing."""
-    if supertypes is None:
-        supertypes = frozenset()
-    defn = CardDefinition(
-        unique_id=f"ar-{instance_id}",
-        name=name,
-        color=color,
-        pitch=1,
-        cost=cost,
-        power=None,
-        defense=defense,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ATTACK_REACTION}),
-        subtypes=frozenset(),
-        supertypes=supertypes,
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
-    )
+from tests.abilities.conftest import (
+    make_ninja_attack as _make_ninja_attack,
+    make_attack_reaction as _make_attack_reaction,
+)
 
 
 # ---------------------------------------------------------------------------

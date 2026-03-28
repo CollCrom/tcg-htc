@@ -20,122 +20,18 @@ from htc.enums import (
     Zone,
 )
 from tests.conftest import make_card, make_equipment, make_game_shell, make_weapon
+from tests.abilities.conftest import (
+    make_ninja_attack as _make_ninja_attack,
+    make_draconic_ninja_attack as _make_draconic_ninja_attack,
+    make_draconic_attack as _make_draconic_attack,
+    make_attack_reaction as _shared_make_attack_reaction,
+    make_dagger_weapon as _make_dagger_weapon,
+)
 
 
 # ---------------------------------------------------------------------------
-# Test helpers
+# Test helpers — thin wrapper for Ninja-specific attack reaction defaults
 # ---------------------------------------------------------------------------
-
-
-def _make_ninja_attack(
-    instance_id: int = 1,
-    name: str = "Ninja Strike",
-    *,
-    power: int = 4,
-    cost: int = 1,
-    owner_index: int = 0,
-    supertypes: frozenset | None = None,
-    keywords: frozenset = frozenset(),
-) -> CardInstance:
-    """Create a Ninja attack action card for testing."""
-    if supertypes is None:
-        supertypes = frozenset({SuperType.NINJA})
-    defn = CardDefinition(
-        unique_id=f"ninja-{instance_id}",
-        name=name,
-        color=Color.RED,
-        pitch=1,
-        cost=cost,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=supertypes,
-        keywords=keywords,
-        functional_text="",
-        type_text="Ninja Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-    )
-
-
-def _make_draconic_ninja_attack(
-    instance_id: int = 1,
-    name: str = "Draconic Ninja Strike",
-    *,
-    power: int = 4,
-    cost: int = 1,
-    owner_index: int = 0,
-    keywords: frozenset = frozenset(),
-) -> CardInstance:
-    """Create a Draconic Ninja attack action card."""
-    defn = CardDefinition(
-        unique_id=f"draconic-ninja-{instance_id}",
-        name=name,
-        color=Color.RED,
-        pitch=1,
-        cost=cost,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=frozenset({SuperType.NINJA, SuperType.DRACONIC}),
-        keywords=keywords,
-        functional_text="",
-        type_text="Draconic Ninja Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-    )
-
-
-def _make_draconic_attack(
-    instance_id: int = 1,
-    name: str = "Draconic Strike",
-    *,
-    power: int = 4,
-    cost: int = 1,
-    owner_index: int = 0,
-    keywords: frozenset = frozenset(),
-) -> CardInstance:
-    """Create a Draconic attack action card."""
-    defn = CardDefinition(
-        unique_id=f"draconic-{instance_id}",
-        name=name,
-        color=Color.RED,
-        pitch=1,
-        cost=cost,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=frozenset({SuperType.DRACONIC}),
-        keywords=keywords,
-        functional_text="",
-        type_text="Draconic Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-    )
 
 
 def _make_attack_reaction(
@@ -145,64 +41,9 @@ def _make_attack_reaction(
     owner_index: int = 0,
     supertypes: frozenset | None = None,
 ) -> CardInstance:
-    """Create an attack reaction card."""
-    if supertypes is None:
-        supertypes = frozenset()
-    defn = CardDefinition(
-        unique_id=f"ar-{instance_id}",
-        name=name,
-        color=color,
-        pitch=3,
-        cost=0,
-        power=None,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ATTACK_REACTION}),
-        subtypes=frozenset(),
-        supertypes=supertypes,
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
-    )
-
-
-def _make_dagger_weapon(
-    instance_id: int = 100,
-    name: str = "Kunai of Retribution",
-    owner_index: int = 0,
-) -> CardInstance:
-    """Create a dagger weapon."""
-    defn = CardDefinition(
-        unique_id=f"dagger-{instance_id}",
-        name=name,
-        color=None,
-        pitch=None,
-        cost=0,
-        power=1,
-        defense=None,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.WEAPON}),
-        subtypes=frozenset({SubType.DAGGER, SubType.ONE_HAND}),
-        supertypes=frozenset(),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="Weapon - Dagger (1H)",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.WEAPON_1,
+    return _shared_make_attack_reaction(
+        name, instance_id=instance_id, color=color, owner_index=owner_index,
+        supertypes=supertypes, pitch=3,
     )
 
 

@@ -4,9 +4,7 @@ Covers attack reactions, defense reaction traps, non-attack action on_play
 effects, and attack action on_attack/on_hit effects.
 """
 
-from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
 from htc.engine.actions import PlayerResponse
 from htc.engine.events import EventType, GameEvent
 from htc.enums import (
@@ -18,86 +16,18 @@ from htc.enums import (
     Zone,
 )
 from tests.conftest import make_card, make_game_shell, make_mock_ask
+from tests.abilities.conftest import (
+    make_dagger_attack as _make_dagger_attack,
+    make_stealth_attack as _make_stealth_attack,
+    make_non_attack_action as _make_non_attack_action,
+    make_attack_reaction as _shared_make_attack_reaction,
+    make_defense_reaction as _shared_make_defense_reaction,
+)
 
 
 # ---------------------------------------------------------------------------
-# Test helpers
+# Test helpers — thin wrappers over shared factories for Assassin defaults
 # ---------------------------------------------------------------------------
-
-
-def _make_dagger_attack(
-    instance_id: int = 1,
-    power: int = 3,
-    cost: int = 0,
-    owner_index: int = 0,
-    name: str = "Dagger Strike",
-    keywords: frozenset = frozenset(),
-    supertypes: frozenset | None = None,
-) -> CardInstance:
-    """Create a dagger attack action card for testing."""
-    if supertypes is None:
-        supertypes = frozenset({SuperType.ASSASSIN})
-    defn = CardDefinition(
-        unique_id=f"dagger-{instance_id}",
-        name=name,
-        color=Color.RED,
-        pitch=1,
-        cost=cost,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK, SubType.DAGGER}),
-        supertypes=supertypes,
-        keywords=keywords,
-        functional_text="",
-        type_text="Assassin Dagger Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-    )
-
-
-def _make_stealth_attack(
-    instance_id: int = 1,
-    power: int = 3,
-    cost: int = 0,
-    owner_index: int = 0,
-    name: str = "Stealth Strike",
-    supertypes: frozenset | None = None,
-) -> CardInstance:
-    """Create an attack action card with Stealth for testing."""
-    if supertypes is None:
-        supertypes = frozenset({SuperType.ASSASSIN})
-    defn = CardDefinition(
-        unique_id=f"stealth-{instance_id}",
-        name=name,
-        color=Color.RED,
-        pitch=1,
-        cost=cost,
-        power=power,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=supertypes,
-        keywords=frozenset({Keyword.STEALTH}),
-        functional_text="",
-        type_text="Assassin Attack Action",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-    )
 
 
 def _make_attack_reaction(
@@ -107,30 +37,9 @@ def _make_attack_reaction(
     owner_index: int = 0,
     cost: int = 0,
 ) -> CardInstance:
-    """Create an attack reaction card for testing."""
-    defn = CardDefinition(
-        unique_id=f"ar-{instance_id}",
-        name=name,
-        color=color,
-        pitch=1,
-        cost=cost,
-        power=None,
-        defense=3,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ATTACK_REACTION}),
-        subtypes=frozenset(),
-        supertypes=frozenset({SuperType.ASSASSIN}),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
+    return _shared_make_attack_reaction(
+        name, instance_id=instance_id, color=color, owner_index=owner_index,
+        cost=cost, supertypes=frozenset({SuperType.ASSASSIN}),
     )
 
 
@@ -141,63 +50,10 @@ def _make_defense_reaction(
     defense: int = 3,
     owner_index: int = 1,
 ) -> CardInstance:
-    """Create a defense reaction card for testing."""
-    defn = CardDefinition(
-        unique_id=f"dr-{instance_id}",
-        name=name,
-        color=color,
-        pitch=1,
-        cost=0,
-        power=None,
-        defense=defense,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.DEFENSE_REACTION}),
-        subtypes=frozenset({SubType.TRAP}),
+    return _shared_make_defense_reaction(
+        name, instance_id=instance_id, color=color, defense=defense,
+        owner_index=owner_index, subtypes=frozenset({SubType.TRAP}),
         supertypes=frozenset({SuperType.ASSASSIN}),
-        keywords=frozenset(),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
-    )
-
-
-def _make_non_attack_action(
-    name: str,
-    instance_id: int = 30,
-    color: Color = Color.RED,
-    owner_index: int = 0,
-) -> CardInstance:
-    """Create a non-attack action card for testing."""
-    defn = CardDefinition(
-        unique_id=f"naa-{instance_id}",
-        name=name,
-        color=color,
-        pitch=1,
-        cost=0,
-        power=None,
-        defense=2,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset(),
-        supertypes=frozenset({SuperType.ASSASSIN}),
-        keywords=frozenset({Keyword.GO_AGAIN}),
-        functional_text="",
-        type_text="",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=defn,
-        owner_index=owner_index,
-        zone=Zone.HAND,
     )
 
 
