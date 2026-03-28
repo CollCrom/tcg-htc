@@ -158,25 +158,43 @@ def test_ancestral_empowerment_no_effect_on_non_ninja():
 # ---------------------------------------------------------------------------
 
 
-def test_razor_reflex_mode2_gives_power_and_go_again():
-    """Razor Reflex mode 2 gives +N power and go again to a low-cost attack action."""
+def test_razor_reflex_mode2_gives_power_and_go_again_on_hit():
+    """Razor Reflex mode 2 gives +N power immediately, and go again on hit."""
+    from htc.engine.events import EventType, GameEvent
+
     game = make_game_shell()
     # Attack action with cost 1 (eligible for mode 2)
     attack = _make_ninja_attack(instance_id=1, power=3, cost=1)
 
     game.combat_mgr.open_chain(game.state)
-    game.combat_mgr.add_chain_link(game.state, attack, 1)
+    link = game.combat_mgr.add_chain_link(game.state, attack, 1)
 
     rr_card = _make_attack_reaction(
         "Razor Reflex", instance_id=10, color=Color.RED, cost=1,
     )
     game._apply_card_ability(rr_card, 0, "attack_reaction_effect")
 
-    # Red Razor Reflex = +3 power
+    # Red Razor Reflex = +3 power (immediate)
     effective_power = game.effect_engine.get_modified_power(game.state, attack)
     assert effective_power == 6  # 3 + 3
 
-    # Should also have go again
+    # Go Again should NOT be present yet (it's granted on hit, not immediately)
+    modified_kws = game.effect_engine.get_modified_keywords(game.state, attack)
+    assert Keyword.GO_AGAIN not in modified_kws
+
+    # Simulate a hit event — this should trigger the on-hit Go Again grant
+    game.events.emit(GameEvent(
+        event_type=EventType.HIT,
+        source=attack,
+        target_player=1,
+        amount=6,
+        data={"chain_link": link},
+    ))
+    # Process the pending triggers (in a real game, _process_pending_triggers
+    # does this; here we call it manually or process inline)
+    game._process_pending_triggers()
+
+    # Now Go Again should be granted
     modified_kws = game.effect_engine.get_modified_keywords(game.state, attack)
     assert Keyword.GO_AGAIN in modified_kws
 
