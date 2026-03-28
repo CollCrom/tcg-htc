@@ -485,6 +485,43 @@ def _grant_next_dagger_attack_bonus(ctx: AbilityContext, bonus: int, source_name
     log.info(f"  {source_name}: Next dagger attack gets +{bonus} power")
 
 
+def _codex_template(
+    ctx: AbilityContext,
+    codex_name: str,
+    arsenal_fn,
+    debuff_token_name: str,
+    debuff_token_text: str,
+) -> None:
+    """Shared template for Codex of Frailty / Codex of Inertia.
+
+    Both follow the same structure:
+    1. Each hero arsenals a card via *arsenal_fn* and discards if they do.
+    2. Create a Ponder token for controller.
+    3. Create a debuff token for the opponent.
+    """
+    for i, player in enumerate(ctx.state.players):
+        arsenalled = arsenal_fn(player, i, codex_name)
+        if arsenalled and player.hand:
+            discarded = player.hand[0]
+            player.hand.remove(discarded)
+            discarded.zone = Zone.GRAVEYARD
+            player.graveyard.append(discarded)
+            log.info(f"  {codex_name}: Player {i} discards {discarded.name}")
+
+    create_token(
+        ctx.state, ctx.controller_index, "Ponder", SubType.AURA,
+        functional_text="At the beginning of your turn, destroy this, then look at the top card of your deck. You may put it on the bottom.",
+        type_text="Token - Aura",
+    )
+    opponent_index = 1 - ctx.controller_index
+    create_token(
+        ctx.state, opponent_index, debuff_token_name, SubType.AURA,
+        functional_text=debuff_token_text,
+        type_text="Token - Aura",
+    )
+    log.info(f"  {codex_name}: Created Ponder for P{ctx.controller_index}, {debuff_token_name} for P{opponent_index}")
+
+
 def _codex_of_frailty(ctx: AbilityContext) -> None:
     """Codex of Frailty (Assassin/Ranger, Non-Attack Action):
 
@@ -496,41 +533,23 @@ def _codex_of_frailty(ctx: AbilityContext) -> None:
 
     Go again (keyword, handled by engine).
     """
-    # Each hero: put an attack action from graveyard into arsenal
-    for i, player in enumerate(ctx.state.players):
+    def _arsenal_from_graveyard(player, i, name):
         attack_actions = [c for c in player.graveyard if c.definition.is_attack_action]
-        if attack_actions and len(player.arsenal) < 1:  # Arsenal typically max 1
-            # Choose which attack action to arsenal (simplified: first one)
+        if attack_actions and len(player.arsenal) < 1:
             chosen = attack_actions[0]
             player.graveyard.remove(chosen)
             chosen.zone = Zone.ARSENAL
             chosen.face_up = False
             player.arsenal.append(chosen)
-            log.info(f"  Codex of Frailty: Player {i} arsenals {chosen.name} from graveyard")
+            log.info(f"  {name}: Player {i} arsenals {chosen.name} from graveyard")
+            return True
+        return False
 
-            # Discard a card
-            if player.hand:
-                discarded = player.hand[0]  # Simplified: discard first card
-                player.hand.remove(discarded)
-                discarded.zone = Zone.GRAVEYARD
-                player.graveyard.append(discarded)
-                log.info(f"  Codex of Frailty: Player {i} discards {discarded.name}")
-
-    # Create Ponder token for controller
-    create_token(
-        ctx.state, ctx.controller_index, "Ponder", SubType.AURA,
-        functional_text="At the beginning of your turn, destroy this, then look at the top card of your deck. You may put it on the bottom.",
-        type_text="Token - Aura",
+    _codex_template(
+        ctx, "Codex of Frailty", _arsenal_from_graveyard,
+        "Frailty",
+        "At the beginning of your turn, destroy this then the next attack action card you defend with this turn gets -2{d}.",
     )
-
-    # Create Frailty token for each opponent
-    opponent_index = 1 - ctx.controller_index
-    create_token(
-        ctx.state, opponent_index, "Frailty", SubType.AURA,
-        functional_text="At the beginning of your turn, destroy this then the next attack action card you defend with this turn gets -2{d}.",
-        type_text="Token - Aura",
-    )
-    log.info(f"  Codex of Frailty: Created Ponder for P{ctx.controller_index}, Frailty for P{opponent_index}")
 
 
 def _codex_of_inertia(ctx: AbilityContext) -> None:
@@ -544,34 +563,21 @@ def _codex_of_inertia(ctx: AbilityContext) -> None:
 
     Go again (keyword, handled by engine).
     """
-    for i, player in enumerate(ctx.state.players):
+    def _arsenal_from_deck(player, i, name):
         if player.deck and len(player.arsenal) < 1:
             top = player.deck.pop(0)
             top.zone = Zone.ARSENAL
             top.face_up = False
             player.arsenal.append(top)
-            log.info(f"  Codex of Inertia: Player {i} arsenals top card face down")
+            log.info(f"  {name}: Player {i} arsenals top card face down")
+            return True
+        return False
 
-            if player.hand:
-                discarded = player.hand[0]
-                player.hand.remove(discarded)
-                discarded.zone = Zone.GRAVEYARD
-                player.graveyard.append(discarded)
-                log.info(f"  Codex of Inertia: Player {i} discards {discarded.name}")
-
-    create_token(
-        ctx.state, ctx.controller_index, "Ponder", SubType.AURA,
-        functional_text="At the beginning of your turn, destroy this, then look at the top card of your deck. You may put it on the bottom.",
-        type_text="Token - Aura",
+    _codex_template(
+        ctx, "Codex of Inertia", _arsenal_from_deck,
+        "Inertia",
+        "At the beginning of your turn, destroy this then the next attack action card you play this turn costs an additional {r}.",
     )
-
-    opponent_index = 1 - ctx.controller_index
-    create_token(
-        ctx.state, opponent_index, "Inertia", SubType.AURA,
-        functional_text="At the beginning of your turn, destroy this then the next attack action card you play this turn costs an additional {r}.",
-        type_text="Token - Aura",
-    )
-    log.info(f"  Codex of Inertia: Created Ponder for P{ctx.controller_index}, Inertia for P{opponent_index}")
 
 
 def _relentless_pursuit(ctx: AbilityContext) -> None:
