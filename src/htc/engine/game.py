@@ -364,6 +364,7 @@ class Game:
             event_type=EventType.START_OF_TURN,
             target_player=tp.index,
         ))
+        self._process_pending_triggers()
 
         # Action Phase (4.3)
         self.state.phase = Phase.ACTION
@@ -1224,6 +1225,7 @@ class Game:
         self.events.emit(GameEvent(
             event_type=EventType.COMBAT_CHAIN_CLOSES,
         ))
+        self._process_pending_triggers()
 
         # Apply equipment degradation before close_chain moves cards
         self._apply_equipment_degradation()

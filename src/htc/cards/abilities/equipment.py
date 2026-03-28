@@ -211,13 +211,28 @@ def _flick_knives(ctx: AbilityContext) -> None:
         log.info("  Flick Knives: No off-chain dagger available")
         return
 
-    # Deal 1 damage
-    target = ctx.state.players[target_index]
-    target.life_total = max(0, target.life_total - 1)
-    target.turn_counters.damage_taken += 1
-    target.turn_counters.life_lost += 1
-    player.turn_counters.damage_dealt += 1
-    log.info(f"  Flick Knives: Dagger deals 1 damage to Player {target_index}")
+    # Deal 1 damage via DEAL_DAMAGE event (so prevention/replacement can apply)
+    damage_event = ctx.events.emit(GameEvent(
+        event_type=EventType.DEAL_DAMAGE,
+        source=dagger,
+        target_player=target_index,
+        amount=1,
+        data={"chain_link": link, "is_combat": False},
+    ))
+
+    actual_damage = damage_event.amount if not damage_event.cancelled else 0
+    if actual_damage > 0:
+        # Emit HIT event — card text says "the dagger has hit"
+        ctx.events.emit(GameEvent(
+            event_type=EventType.HIT,
+            source=dagger,
+            target_player=target_index,
+            amount=actual_damage,
+            data={"chain_link": link},
+        ))
+        log.info(f"  Flick Knives: Dagger deals {actual_damage} damage to Player {target_index}")
+    else:
+        log.info(f"  Flick Knives: Damage was prevented")
 
     # Destroy the dagger (move to graveyard)
     if dagger in player.weapons:
