@@ -808,9 +808,14 @@ def _kiss_of_death_on_hit(ctx: AbilityContext) -> None:
     if link is None:
         return
 
-    target = ctx.state.players[link.attack_target_index]
-    target.life_total = max(0, target.life_total - 1)
-    log.info(f"  Kiss of Death: Player {link.attack_target_index} loses 1 life (now {target.life_total})")
+    # Card text: "they lose 1 life" — life loss, not damage (bypasses prevention)
+    ctx.events.emit(GameEvent(
+        event_type=EventType.LOSE_LIFE,
+        source=ctx.source_card,
+        target_player=link.attack_target_index,
+        amount=1,
+    ))
+    log.info(f"  Kiss of Death: Player {link.attack_target_index} loses 1 life (now {ctx.state.players[link.attack_target_index].life_total})")
 
 
 def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
@@ -915,10 +920,45 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
         return
 
     target_index = link.attack_target_index
-    target = ctx.state.players[target_index]
-    target.life_total = max(0, target.life_total - 1)
-    target.turn_counters.damage_taken += 1
-    log.info(f"  Pain in the Backside: Dagger deals 1 damage to Player {target_index} (now {target.life_total})")
+    controller = ctx.state.players[ctx.controller_index]
+
+    # Find a dagger the controller owns (simplified: pick first dagger weapon)
+    dagger = None
+    for weapon in controller.weapons:
+        if SubType.DAGGER in weapon.definition.subtypes:
+            dagger = weapon
+            break
+
+    if dagger is None:
+        log.info("  Pain in the Backside: No dagger found — no damage dealt")
+        return
+
+    # Card text: "target dagger you control deals 1 damage to them"
+    # Emit DEAL_DAMAGE so prevention/replacement effects can apply
+    damage_event = ctx.events.emit(GameEvent(
+        event_type=EventType.DEAL_DAMAGE,
+        source=dagger,
+        target_player=target_index,
+        amount=1,
+        data={"chain_link": link, "is_combat": False},
+    ))
+
+    actual_damage = damage_event.amount if not damage_event.cancelled else 0
+    if actual_damage > 0:
+        # Card text: "If damage is dealt this way, the dagger has hit."
+        ctx.events.emit(GameEvent(
+            event_type=EventType.HIT,
+            source=dagger,
+            target_player=target_index,
+            amount=actual_damage,
+            data={"chain_link": link},
+        ))
+        log.info(
+            f"  Pain in the Backside: {dagger.name} deals {actual_damage} damage "
+            f"to Player {target_index} (now {ctx.state.players[target_index].life_total})"
+        )
+    else:
+        log.info("  Pain in the Backside: Damage was prevented")
 
 
 def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
