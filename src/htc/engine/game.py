@@ -86,9 +86,11 @@ class Game:
         from htc.cards.abilities import register_generic_abilities
         from htc.cards.abilities.assassin import register_assassin_abilities
         from htc.cards.abilities.ninja import register_ninja_abilities
+        from htc.cards.abilities.equipment import register_equipment_abilities
         register_generic_abilities(self.ability_registry)
         register_assassin_abilities(self.ability_registry)
         register_ninja_abilities(self.ability_registry)
+        register_equipment_abilities(self.ability_registry)
 
     def _register_hero_abilities(self) -> None:
         """Register hero abilities as triggered effects on the EventBus.
@@ -107,6 +109,22 @@ class Game:
                     state_getter=lambda: self.state,
                     game=self,
                 )
+
+    def _register_equipment_triggers(self) -> None:
+        """Register equipment triggered effects on the EventBus.
+
+        Called after equipment is loaded during game setup. Checks each
+        player's equipped items and registers appropriate triggers.
+        """
+        from htc.cards.abilities.equipment import register_equipment_triggers
+        for i, player in enumerate(self.state.players):
+            register_equipment_triggers(
+                event_bus=self.events,
+                effect_engine=self.effect_engine,
+                state_getter=lambda: self.state,
+                player_index=i,
+                player_state=player,
+            )
 
     def _apply_card_ability(
         self, card: CardInstance, player_index: int, timing: str,
@@ -239,6 +257,9 @@ class Game:
 
         # Register hero abilities as triggered effects
         self._register_hero_abilities()
+
+        # Register equipment triggered effects
+        self._register_equipment_triggers()
 
         # Shuffle decks
         for ps in self.state.players:
@@ -703,6 +724,15 @@ class Game:
 
         # Update counters
         player.turn_counters.num_weapon_attacks += 1
+
+        # Register delayed weapon triggers (e.g. Kunai of Retribution destroy)
+        from htc.cards.abilities.equipment import register_weapon_triggers
+        register_weapon_triggers(
+            event_bus=self.events,
+            state_getter=lambda: self.state,
+            player_index=player_index,
+            weapon=weapon,
+        )
 
         # Branch: arcane ability vs physical attack
         if weapon.definition.arcane and weapon.definition.arcane > 0:

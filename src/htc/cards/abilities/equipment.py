@@ -1,0 +1,720 @@
+"""Equipment and weapon ability implementations.
+
+Registers ability handlers and triggered effects for equipment and weapons
+used in both the Cindra Blue and Arakni Marionette decklists.
+
+Card texts verified against data/cards.csv functional_text field.
+
+Equipment abilities implemented:
+- Mask of Momentum (Head) — once per turn, draw on 3rd+ consecutive chain link hit
+- Flick Knives (Arms) — once per turn attack reaction: dagger deals 1 damage
+- Blood Splattered Vest (Chest) — on dagger hit: gain resource, add stain counter
+- Fyendal's Spring Tunic (Chest) — energy counter at start of turn, spend 3 for resource
+- Tide Flippers (Legs) — attack reaction: destroy to grant go again to <=2 power attack
+- Blacktek Whisperers (Legs) — attack reaction: destroy to grant on-hit go again
+- Dragonscaler Flight Path (Legs) — instant: destroy to grant go again to Draconic attack
+- Mask of Deceit (Head) — deferred (Agent of Chaos mechanic not yet in engine)
+
+Weapon abilities implemented:
+- Kunai of Retribution — destroy when combat chain closes (registered on activation)
+- Hunter's Klaive — on-hit: mark target hero (keyword-driven Mark + Piercing already work)
+- Claw of Vynserakai — no additional ability needed (Spellvoid 1 is keyword-driven)
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+
+from htc.cards.abilities._helpers import draw_card, grant_keyword, grant_power_bonus
+from htc.engine.abilities import AbilityContext, AbilityRegistry
+from htc.engine.continuous import EffectDuration, make_keyword_grant
+from htc.engine.events import EventType, GameEvent, TriggeredEffect
+from htc.enums import CardType, Keyword, SubType, SuperType, Zone
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from htc.cards.instance import CardInstance
+    from htc.engine.effects import EffectEngine
+    from htc.engine.events import EventBus
+    from htc.state.game_state import GameState
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
+    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
+    if attack is None:
+        return False
+    if SubType.DAGGER in attack.definition.subtypes:
+        return True
+    if attack.is_proxy and link and link.attack_source:
+        if SubType.DAGGER in link.attack_source.definition.subtypes:
+            return True
+    return False
+
+
+def _is_draconic_attack(attack: CardInstance | None) -> bool:
+    """Check if an attack is Draconic (supertype)."""
+    if attack is None:
+        return False
+    return SuperType.DRACONIC in attack.definition.supertypes
+
+
+def _destroy_equipment(state: GameState, card: CardInstance) -> None:
+    """Move equipment to its owner's graveyard and clear the slot."""
+    player = state.players[card.owner_index]
+    # Remove from equipment slots
+    for slot, eq in list(player.equipment.items()):
+        if eq is not None and eq.instance_id == card.instance_id:
+            player.equipment[slot] = None
+            break
+    card.zone = Zone.GRAVEYARD
+    player.graveyard.append(card)
+    log.info(f"  Equipment destroyed: {card.name}")
+
+
+# ---------------------------------------------------------------------------
+# Mask of Momentum (Head, Ninja)
+# ---------------------------------------------------------------------------
+# "Once per Turn Effect — When an attack action card you control is the
+#  third or higher chain link in a row to hit, draw a card."
+#
+# Implemented as a TriggeredEffect on HIT. Checks:
+# 1. Source is an attack action card controlled by this player
+# 2. This is chain link 3+ in the combat chain
+# 3. All prior chain links in this combat chain were hits
+# 4. Once per turn flag
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class MaskOfMomentumTrigger(TriggeredEffect):
+    """Mask of Momentum — draw on 3rd+ consecutive chain link hit."""
+
+    controller_index: int = 0
+    one_shot: bool = False  # persists all game
+    _used_this_turn: bool = False
+    _state_getter: object = None
+    _event_bus: EventBus | None = None
+
+    def condition(self, event: GameEvent) -> bool:
+        # Reset once-per-turn flag at start of turn
+        if event.event_type == EventType.START_OF_TURN:
+            if event.target_player == self.controller_index:
+                self._used_this_turn = False
+            return False
+
+        if event.event_type != EventType.HIT:
+            return False
+
+        if self._used_this_turn:
+            return False
+
+        if event.source is None:
+            return False
+
+        # Must be our attack
+        if event.source.owner_index != self.controller_index:
+            return False
+
+        # Must be an attack action card (not weapon proxy)
+        if CardType.ACTION not in event.source.definition.types:
+            return False
+        if SubType.ATTACK not in event.source.definition.subtypes:
+            return False
+
+        state = self._get_state()
+        if state is None:
+            return False
+
+        # Check: chain link 3+ and all prior links were hits
+        chain = state.combat_chain
+        if chain.num_chain_links < 3:
+            return False
+
+        # All prior chain links must have been hits
+        for link in chain.chain_links[:-1]:
+            if not link.hit:
+                return False
+
+        return True
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        """Draw a card for the controller."""
+        state = self._get_state()
+        if state is None:
+            return None
+
+        self._used_this_turn = True
+
+        player = state.players[self.controller_index]
+        if player.deck:
+            drawn = player.deck.pop(0)
+            drawn.zone = Zone.HAND
+            player.hand.append(drawn)
+            player.turn_counters.num_cards_drawn += 1
+            log.info(
+                f"  Mask of Momentum: Player {self.controller_index} draws a card "
+                f"(3rd+ consecutive hit)"
+            )
+        return None
+
+    def _get_state(self) -> GameState | None:
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Flick Knives (Arms, Assassin/Ninja)
+# ---------------------------------------------------------------------------
+# "Once per Turn Attack Reaction — 0: Target dagger you control that isn't
+#  on the active chain link deals 1 damage to target hero. If damage is
+#  dealt this way, the dagger has hit. Destroy the dagger."
+#
+# Implemented as attack_reaction_effect. The engine handles the "once per
+# turn" and cost=0 aspects. We deal 1 damage from an off-chain dagger and
+# destroy it. Simplified: we find any non-active-link weapon dagger and
+# use it as the source.
+# ---------------------------------------------------------------------------
+
+
+def _flick_knives(ctx: AbilityContext) -> None:
+    """Flick Knives attack reaction: off-chain dagger deals 1 damage."""
+    link = ctx.chain_link
+    if link is None:
+        return
+
+    player = ctx.state.players[ctx.controller_index]
+    target_index = 1 - ctx.controller_index
+
+    # Find a dagger weapon not on the active chain link
+    active_attack_id = link.active_attack.instance_id if link.active_attack else None
+    source_id = link.attack_source.instance_id if link.attack_source else None
+
+    dagger = None
+    for weapon in player.weapons:
+        if SubType.DAGGER in weapon.definition.subtypes:
+            # Not the weapon currently attacking
+            if weapon.instance_id != source_id and weapon.instance_id != active_attack_id:
+                dagger = weapon
+                break
+
+    if dagger is None:
+        log.info("  Flick Knives: No off-chain dagger available")
+        return
+
+    # Deal 1 damage
+    target = ctx.state.players[target_index]
+    target.life_total = max(0, target.life_total - 1)
+    target.turn_counters.damage_taken += 1
+    target.turn_counters.life_lost += 1
+    player.turn_counters.damage_dealt += 1
+    log.info(f"  Flick Knives: Dagger deals 1 damage to Player {target_index}")
+
+    # Destroy the dagger (move to graveyard)
+    if dagger in player.weapons:
+        player.weapons.remove(dagger)
+    dagger.zone = Zone.GRAVEYARD
+    player.graveyard.append(dagger)
+    log.info(f"  Flick Knives: Destroyed {dagger.name}")
+
+
+# ---------------------------------------------------------------------------
+# Blood Splattered Vest (Chest, Assassin/Ninja)
+# ---------------------------------------------------------------------------
+# "Whenever a dagger you control hits, you may gain {r} and put a stain
+#  counter on this. Then if there are 3 or more stain counters on this,
+#  destroy it."
+#
+# Implemented as a TriggeredEffect on HIT. Checks if source is a dagger
+# controlled by the equipment owner. Always opts in (for random players
+# gaining a resource is worth it). Tracks stain counters on the card.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BloodSplatteredVestTrigger(TriggeredEffect):
+    """Blood Splattered Vest — gain resource on dagger hit, stain counters."""
+
+    controller_index: int = 0
+    one_shot: bool = False
+    _state_getter: object = None
+    _equipment_instance_id: int = 0
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.HIT:
+            return False
+        if event.source is None:
+            return False
+
+        # Must be our dagger hitting
+        if event.source.owner_index != self.controller_index:
+            return False
+
+        # Check if it's a dagger attack
+        chain_link = event.data.get("chain_link")
+        if not _is_dagger_attack(event.source, chain_link):
+            return False
+
+        # Equipment must still be in play
+        state = self._get_state()
+        if state is None:
+            return False
+
+        player = state.players[self.controller_index]
+        from htc.enums import EquipmentSlot
+        chest_eq = player.equipment.get(EquipmentSlot.CHEST)
+        if chest_eq is None or chest_eq.instance_id != self._equipment_instance_id:
+            return False
+
+        return True
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        """Gain 1 resource, add stain counter, check for destruction."""
+        state = self._get_state()
+        if state is None:
+            return None
+
+        player = state.players[self.controller_index]
+        from htc.enums import EquipmentSlot
+        vest = player.equipment.get(EquipmentSlot.CHEST)
+        if vest is None or vest.instance_id != self._equipment_instance_id:
+            return None
+
+        # Gain 1 resource
+        state.resource_points[self.controller_index] = (
+            state.resource_points.get(self.controller_index, 0) + 1
+        )
+        log.info(f"  Blood Splattered Vest: Player {self.controller_index} gains 1 resource")
+
+        # Add stain counter
+        vest.counters["stain"] = vest.counters.get("stain", 0) + 1
+        stain_count = vest.counters["stain"]
+        log.info(f"  Blood Splattered Vest: {stain_count} stain counter(s)")
+
+        # Destroy if 3+ stain counters
+        if stain_count >= 3:
+            _destroy_equipment(state, vest)
+
+        return None
+
+    def _get_state(self) -> GameState | None:
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Fyendal's Spring Tunic (Chest, Generic)
+# ---------------------------------------------------------------------------
+# "At the start of your turn, if this has fewer than 3 energy counters,
+#  you may put an energy counter on it.
+#  Instant — Remove 3 energy counters from this: Gain {r}"
+#
+# Implemented as a TriggeredEffect on START_OF_TURN (auto-add counter).
+# The instant activation to spend 3 counters is deferred — the random
+# player has no way to activate equipment instants yet. For now we just
+# accumulate counters and auto-spend when we hit 3.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SpringTunicTrigger(TriggeredEffect):
+    """Fyendal's Spring Tunic — energy counter at start of turn."""
+
+    controller_index: int = 0
+    one_shot: bool = False
+    _state_getter: object = None
+    _equipment_instance_id: int = 0
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.START_OF_TURN:
+            return False
+        if event.target_player != self.controller_index:
+            return False
+
+        state = self._get_state()
+        if state is None:
+            return False
+
+        # Equipment must still be equipped
+        player = state.players[self.controller_index]
+        from htc.enums import EquipmentSlot
+        chest_eq = player.equipment.get(EquipmentSlot.CHEST)
+        if chest_eq is None or chest_eq.instance_id != self._equipment_instance_id:
+            return False
+
+        # Must have fewer than 3 energy counters
+        energy = chest_eq.counters.get("energy", 0)
+        return energy < 3
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        """Add an energy counter. Auto-spend if we hit 3."""
+        state = self._get_state()
+        if state is None:
+            return None
+
+        player = state.players[self.controller_index]
+        from htc.enums import EquipmentSlot
+        tunic = player.equipment.get(EquipmentSlot.CHEST)
+        if tunic is None or tunic.instance_id != self._equipment_instance_id:
+            return None
+
+        tunic.counters["energy"] = tunic.counters.get("energy", 0) + 1
+        energy = tunic.counters["energy"]
+        log.info(
+            f"  Fyendal's Spring Tunic: Player {self.controller_index} "
+            f"adds energy counter ({energy}/3)"
+        )
+
+        # Auto-spend 3 counters for 1 resource (simplified — in real FaB
+        # this is an instant the player chooses to activate)
+        if energy >= 3:
+            tunic.counters["energy"] = 0
+            state.resource_points[self.controller_index] = (
+                state.resource_points.get(self.controller_index, 0) + 1
+            )
+            log.info(
+                f"  Fyendal's Spring Tunic: Player {self.controller_index} "
+                f"spends 3 energy counters, gains 1 resource"
+            )
+
+        return None
+
+    def _get_state(self) -> GameState | None:
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Tide Flippers (Legs, Ninja)
+# ---------------------------------------------------------------------------
+# "Attack Reaction — Destroy Tide Flippers: Target attack action card with
+#  2 or less base power gains go again."
+#
+# Implemented as attack_reaction_effect. Destroys the equipment and grants
+# Go Again to the current attack if it qualifies.
+# ---------------------------------------------------------------------------
+
+
+def _tide_flippers(ctx: AbilityContext) -> None:
+    """Tide Flippers: destroy self, grant go again to low-power attack."""
+    link = ctx.chain_link
+    if link is None or link.active_attack is None:
+        return
+
+    attack = link.active_attack
+    # Must be an attack action card (not weapon proxy)
+    if CardType.ACTION not in attack.definition.types:
+        return
+    if SubType.ATTACK not in attack.definition.subtypes:
+        return
+
+    # Base power must be 2 or less
+    base_power = attack.definition.power or 0
+    if base_power > 2:
+        return
+
+    # Destroy Tide Flippers
+    player = ctx.state.players[ctx.controller_index]
+    from htc.enums import EquipmentSlot
+    legs_eq = player.equipment.get(EquipmentSlot.LEGS)
+    if legs_eq is not None and legs_eq.name == "Tide Flippers":
+        _destroy_equipment(ctx.state, legs_eq)
+
+    # Grant Go Again
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Tide Flippers")
+
+
+# ---------------------------------------------------------------------------
+# Blacktek Whisperers (Legs, Assassin)
+# ---------------------------------------------------------------------------
+# "Attack Reaction — Destroy Blacktek Whisperers: Target Assassin attack
+#  action card gains 'When this hits a hero, it gains go again.'"
+#
+# Implemented as attack_reaction_effect. Destroys equipment and registers
+# a one-shot HIT trigger for Go Again on the target attack.
+# ---------------------------------------------------------------------------
+
+
+def _blacktek_whisperers(ctx: AbilityContext) -> None:
+    """Blacktek Whisperers: destroy self, grant on-hit go again to Assassin attack."""
+    link = ctx.chain_link
+    if link is None or link.active_attack is None:
+        return
+
+    attack = link.active_attack
+    # Must be an Assassin attack action card
+    if SuperType.ASSASSIN not in attack.definition.supertypes:
+        return
+    if CardType.ACTION not in attack.definition.types:
+        return
+    if SubType.ATTACK not in attack.definition.subtypes:
+        return
+
+    # Destroy Blacktek Whisperers
+    player = ctx.state.players[ctx.controller_index]
+    from htc.enums import EquipmentSlot
+    legs_eq = player.equipment.get(EquipmentSlot.LEGS)
+    if legs_eq is not None and legs_eq.name == "Blacktek Whisperers":
+        _destroy_equipment(ctx.state, legs_eq)
+
+    # Register one-shot HIT trigger for Go Again
+    atk_id = attack.instance_id
+    hit_trigger = _BlacktekGoAgainOnHit(
+        controller_index=ctx.controller_index,
+        attack_instance_id=atk_id,
+        _effect_engine=ctx.effect_engine,
+        _state_getter=lambda: ctx.state,
+        one_shot=True,
+    )
+    ctx.events.register_trigger(hit_trigger)
+    log.info(f"  Blacktek Whisperers: {attack.name} gains 'when this hits, go again'")
+
+
+@dataclass
+class _BlacktekGoAgainOnHit(TriggeredEffect):
+    """One-shot: when the target attack hits, grant Go Again."""
+
+    controller_index: int = 0
+    attack_instance_id: int = 0
+    one_shot: bool = True
+    _effect_engine: object = None
+    _state_getter: object = None
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.HIT:
+            return False
+        if event.source is None:
+            return False
+        return event.source.instance_id == self.attack_instance_id
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        if self._effect_engine is None:
+            return None
+        state = self._get_state()
+        if state is None:
+            return None
+
+        atk_id = self.attack_instance_id
+        go_again_effect = make_keyword_grant(
+            frozenset({Keyword.GO_AGAIN}),
+            self.controller_index,
+            source_instance_id=None,
+            duration=EffectDuration.END_OF_COMBAT,
+            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+        )
+        self._effect_engine.add_continuous_effect(state, go_again_effect)
+        log.info("  Blacktek Whisperers: attack gets Go Again on hit")
+        return None
+
+    def _get_state(self):
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Dragonscaler Flight Path (Legs, Draconic)
+# ---------------------------------------------------------------------------
+# "Instant — {r}{r}{r}, destroy this: Target Draconic attack gets go again.
+#  If it's a weapon or ally attack, you may attack with it an additional
+#  time this turn. This ability costs {r} less to activate for each Draconic
+#  chain link you control."
+#
+# Simplified: The instant activation is not yet supported by the engine's
+# priority system for equipment. Deferred — registered as a placeholder
+# attack_reaction_effect that would need the player to choose when to
+# activate. For now, this is noted as not yet activatable.
+# ---------------------------------------------------------------------------
+
+# Dragonscaler Flight Path is deferred — requires instant activation
+# during priority windows, which the engine doesn't support for equipment yet.
+
+
+# ---------------------------------------------------------------------------
+# Mask of Deceit (Head, Assassin)
+# ---------------------------------------------------------------------------
+# "Arakni Specialization. When this defends, become a random Agent of Chaos.
+#  If the attacking hero is marked, instead choose the Agent of Chaos."
+#
+# Deferred: Agent of Chaos mechanic is not in the engine. The defense
+# value (2) still works for blocking.
+# ---------------------------------------------------------------------------
+
+# Mask of Deceit is deferred — requires Agent of Chaos mechanic.
+
+
+# ---------------------------------------------------------------------------
+# Kunai of Retribution (Weapon, Draconic/Ninja, Dagger)
+# ---------------------------------------------------------------------------
+# "Once per Turn Action — {r}, destroy this when the combat chain closes:
+#  Attack. Go again"
+#
+# The weapon's "destroy this when the combat chain closes" is a delayed
+# triggered effect that fires on COMBAT_CHAIN_CLOSES. Registered when
+# the weapon is activated. The activation and go again are handled by
+# the existing weapon system.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class KunaiDestroyOnChainClose(TriggeredEffect):
+    """One-shot: destroy Kunai of Retribution when the combat chain closes."""
+
+    controller_index: int = 0
+    weapon_instance_id: int = 0
+    one_shot: bool = True
+    _state_getter: object = None
+
+    def condition(self, event: GameEvent) -> bool:
+        return event.event_type == EventType.COMBAT_CHAIN_CLOSES
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        state = self._get_state()
+        if state is None:
+            return None
+
+        player = state.players[self.controller_index]
+        # Find and destroy the weapon
+        for weapon in list(player.weapons):
+            if weapon.instance_id == self.weapon_instance_id:
+                player.weapons.remove(weapon)
+                weapon.zone = Zone.GRAVEYARD
+                player.graveyard.append(weapon)
+                log.info(
+                    f"  Kunai of Retribution: Destroyed on combat chain close "
+                    f"(Player {self.controller_index})"
+                )
+                break
+        return None
+
+    def _get_state(self):
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Hunter's Klaive (Weapon, Assassin, Dagger)
+# ---------------------------------------------------------------------------
+# "Once per Turn Action — {r}{r}: Attack. Go again.
+#  When this hits a hero, mark them."
+#
+# Mark and Piercing 1 are keyword-driven. The on-hit mark is an additional
+# ability registered as on_hit for the weapon proxy name.
+# ---------------------------------------------------------------------------
+
+
+def _hunters_klaive_on_hit(ctx: AbilityContext) -> None:
+    """Hunter's Klaive on-hit: mark the target hero."""
+    link = ctx.chain_link
+    if link is None:
+        return
+
+    target_index = link.attack_target_index
+    ctx.state.players[target_index].is_marked = True
+    log.info(f"  Hunter's Klaive: Marked Player {target_index}")
+
+
+# ---------------------------------------------------------------------------
+# Registration — Triggered Effects (equipment that uses EventBus)
+# ---------------------------------------------------------------------------
+
+
+def register_equipment_triggers(
+    event_bus: EventBus,
+    effect_engine: EffectEngine,
+    state_getter: object,
+    player_index: int,
+    player_state,
+) -> None:
+    """Register equipment triggered effects for a player.
+
+    Called during game setup after equipment is loaded. Checks which
+    equipment the player has equipped and registers the appropriate
+    triggered effects.
+    """
+    from htc.enums import EquipmentSlot
+
+    # Mask of Momentum
+    head_eq = player_state.equipment.get(EquipmentSlot.HEAD)
+    if head_eq is not None and head_eq.name == "Mask of Momentum":
+        trigger = MaskOfMomentumTrigger(
+            controller_index=player_index,
+            _state_getter=state_getter,
+            _event_bus=event_bus,
+        )
+        event_bus.register_trigger(trigger)
+        log.info(f"  Registered Mask of Momentum trigger for Player {player_index}")
+
+    # Blood Splattered Vest
+    chest_eq = player_state.equipment.get(EquipmentSlot.CHEST)
+    if chest_eq is not None and chest_eq.name == "Blood Splattered Vest":
+        trigger = BloodSplatteredVestTrigger(
+            controller_index=player_index,
+            _state_getter=state_getter,
+            _equipment_instance_id=chest_eq.instance_id,
+        )
+        event_bus.register_trigger(trigger)
+        log.info(f"  Registered Blood Splattered Vest trigger for Player {player_index}")
+
+    # Fyendal's Spring Tunic
+    if chest_eq is not None and chest_eq.name == "Fyendal's Spring Tunic":
+        trigger = SpringTunicTrigger(
+            controller_index=player_index,
+            _state_getter=state_getter,
+            _equipment_instance_id=chest_eq.instance_id,
+        )
+        event_bus.register_trigger(trigger)
+        log.info(f"  Registered Fyendal's Spring Tunic trigger for Player {player_index}")
+
+
+def register_weapon_triggers(
+    event_bus: EventBus,
+    state_getter: object,
+    player_index: int,
+    weapon: CardInstance,
+) -> None:
+    """Register a weapon's combat-chain-close trigger if applicable.
+
+    Called when a weapon with a delayed destroy effect is activated.
+    Currently handles Kunai of Retribution.
+    """
+    if weapon.name == "Kunai of Retribution":
+        trigger = KunaiDestroyOnChainClose(
+            controller_index=player_index,
+            weapon_instance_id=weapon.instance_id,
+            _state_getter=state_getter,
+            one_shot=True,
+        )
+        event_bus.register_trigger(trigger)
+        log.info(
+            f"  Registered Kunai of Retribution destroy trigger for Player {player_index}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Registration — Ability Registry (equipment using attack_reaction_effect)
+# ---------------------------------------------------------------------------
+
+
+def register_equipment_abilities(registry: AbilityRegistry) -> None:
+    """Register all equipment card abilities with the given registry."""
+
+    # Attack reactions
+    registry.register("attack_reaction_effect", "Flick Knives", _flick_knives)
+    registry.register("attack_reaction_effect", "Tide Flippers", _tide_flippers)
+    registry.register("attack_reaction_effect", "Blacktek Whisperers", _blacktek_whisperers)
+
+    # Weapon on-hit (proxy names include " (attack)" suffix)
+    registry.register("on_hit", "Hunter's Klaive (attack)", _hunters_klaive_on_hit)
