@@ -16,7 +16,6 @@ class ChainLink:
     defending_cards: list[CardInstance] = field(default_factory=list)
     damage_dealt: int = 0
     hit: bool = False
-    has_go_again: bool = False
 
 
 @dataclass

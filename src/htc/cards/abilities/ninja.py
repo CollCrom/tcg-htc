@@ -139,15 +139,31 @@ def _throw_dagger(ctx: AbilityContext) -> None:
             (d for d in daggers if d.instance_id == chosen_id), daggers[0]
         )
 
-    # Deal 1 damage to defending hero
-    defender = ctx.state.players[defender_index]
-    defender.life_total -= 1
-    log.info(
-        f"  Throw Dagger: {chosen_dagger.name} deals 1 damage to Player {defender_index}"
-    )
+    # Deal 1 damage via DEAL_DAMAGE event (so prevention/replacement can apply)
+    damage_event = ctx.events.emit(GameEvent(
+        event_type=EventType.DEAL_DAMAGE,
+        source=chosen_dagger,
+        target_player=defender_index,
+        amount=1,
+        data={"chain_link": link, "is_combat": False},
+    ))
 
-    # Dagger has hit — draw a card
-    draw_card(ctx, "Throw Dagger")
+    actual_damage = damage_event.amount if not damage_event.cancelled else 0
+    if actual_damage > 0:
+        # Dagger has hit — emit HIT event and draw a card
+        ctx.events.emit(GameEvent(
+            event_type=EventType.HIT,
+            source=chosen_dagger,
+            target_player=defender_index,
+            amount=actual_damage,
+            data={"chain_link": link},
+        ))
+        log.info(
+            f"  Throw Dagger: {chosen_dagger.name} deals {actual_damage} damage to Player {defender_index}"
+        )
+        draw_card(ctx, "Throw Dagger")
+    else:
+        log.info("  Throw Dagger: Damage was prevented")
 
     # Destroy the dagger
     if chosen_dagger in player.weapons:
@@ -323,13 +339,23 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
         log.info("  Art of the Dragon: Fire: not Draconic, no effect")
         return
 
-    # Deal 2 damage to defending hero
+    # Deal 2 damage via DEAL_DAMAGE event (so prevention/replacement can apply)
     defender_index = link.attack_target_index
-    defender = ctx.state.players[defender_index]
-    defender.life_total -= 2
-    log.info(
-        f"  Art of the Dragon: Fire: deals 2 damage to Player {defender_index}"
-    )
+    damage_event = ctx.events.emit(GameEvent(
+        event_type=EventType.DEAL_DAMAGE,
+        source=attack,
+        target_player=defender_index,
+        amount=2,
+        data={"chain_link": link, "is_combat": False},
+    ))
+
+    actual_damage = damage_event.amount if not damage_event.cancelled else 0
+    if actual_damage > 0:
+        log.info(
+            f"  Art of the Dragon: Fire: deals {actual_damage} damage to Player {defender_index}"
+        )
+    else:
+        log.info("  Art of the Dragon: Fire: Damage was prevented")
 
 
 def _art_of_the_dragon_scale_on_attack(ctx: AbilityContext) -> None:
@@ -431,11 +457,9 @@ class _ArtOfDragonScaleHitTrigger(TriggeredEffect):
         else:
             chosen_slot, chosen = equipment[0]
 
-        # Put -1 defense counter (tracked as counter on the instance)
-        if not hasattr(chosen, "defense_counters"):
-            chosen.defense_counters = 0
-        chosen.defense_counters -= 1
-        effective_defense = (chosen.definition.defense or 0) + chosen.defense_counters
+        # Put -1 defense counter using card.counters dict (visible to effect engine)
+        chosen.counters["defense"] = chosen.counters.get("defense", 0) - 1
+        effective_defense = (chosen.definition.defense or 0) + chosen.counters["defense"]
         log.info(
             f"  Art of the Dragon: Scale: {chosen.name} gets -1 defense counter "
             f"(now {effective_defense} defense)"
@@ -480,11 +504,30 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
         return
 
     for dagger in daggers:
-        # Each dagger deals 1 damage
-        defender.life_total -= 1
-        log.info(
-            f"  Blood Runs Deep: {dagger.name} deals 1 damage to Player {defender_index}"
-        )
+        # Each dagger deals 1 damage via DEAL_DAMAGE event
+        damage_event = ctx.events.emit(GameEvent(
+            event_type=EventType.DEAL_DAMAGE,
+            source=dagger,
+            target_player=defender_index,
+            amount=1,
+            data={"chain_link": link, "is_combat": False},
+        ))
+
+        actual_damage = damage_event.amount if not damage_event.cancelled else 0
+        if actual_damage > 0:
+            # Card text: "the dagger has hit" — emit HIT event
+            ctx.events.emit(GameEvent(
+                event_type=EventType.HIT,
+                source=dagger,
+                target_player=defender_index,
+                amount=actual_damage,
+                data={"chain_link": link},
+            ))
+            log.info(
+                f"  Blood Runs Deep: {dagger.name} deals {actual_damage} damage to Player {defender_index}"
+            )
+        else:
+            log.info(f"  Blood Runs Deep: {dagger.name} damage was prevented")
         # Destroy the dagger
         if dagger in player.weapons:
             player.weapons.remove(dagger)
