@@ -18,6 +18,7 @@ from htc.enums import (
 from tests.conftest import make_card, make_game_shell, make_mock_ask
 from tests.abilities.conftest import (
     make_dagger_attack as _make_dagger_attack,
+    make_dagger_weapon as _make_dagger_weapon,
     make_stealth_attack as _make_stealth_attack,
     make_non_attack_action as _make_non_attack_action,
     make_attack_reaction as _shared_make_attack_reaction,
@@ -627,7 +628,7 @@ class TestOvercrowded:
 
 
 class TestKissOfDeath:
-    """Kiss of Death: Opponent loses 1 life on hit."""
+    """Kiss of Death: Opponent loses 1 life on hit via LOSE_LIFE event."""
 
     def test_loses_one_life(self):
         game = make_game_shell(life=20)
@@ -639,6 +640,30 @@ class TestKissOfDeath:
         game._apply_card_ability(attack, 0, "on_hit")
 
         assert game.state.players[1].life_total == 19
+
+    def test_tracks_life_lost(self):
+        """Life loss should update turn_counters.life_lost."""
+        game = make_game_shell(life=20)
+        attack = _make_dagger_attack(instance_id=1, name="Kiss of Death",
+                                     keywords=frozenset({Keyword.STEALTH}))
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        game._apply_card_ability(attack, 0, "on_hit")
+
+        assert game.state.players[1].turn_counters.life_lost == 1
+
+    def test_is_not_damage(self):
+        """Life loss is not damage — damage_taken should remain 0."""
+        game = make_game_shell(life=20)
+        attack = _make_dagger_attack(instance_id=1, name="Kiss of Death",
+                                     keywords=frozenset({Keyword.STEALTH}))
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        game._apply_card_ability(attack, 0, "on_hit")
+
+        assert game.state.players[1].turn_counters.damage_taken == 0
 
 
 class TestMarkOfTheBlackWidow:
@@ -697,10 +722,13 @@ class TestLeaveNoWitnesses:
 
 
 class TestPainInTheBackside:
-    """Pain in the Backside: Dagger deals 1 damage on hit."""
+    """Pain in the Backside: Dagger deals 1 damage on hit via DEAL_DAMAGE event."""
 
-    def test_deals_one_damage(self):
+    def test_deals_one_damage_via_event(self):
         game = make_game_shell(life=20)
+        dagger = _make_dagger_weapon(instance_id=100, owner_index=0)
+        game.state.players[0].weapons.append(dagger)
+
         attack = _make_dagger_attack(instance_id=1, name="Pain in the Backside",
                                      keywords=frozenset({Keyword.GO_AGAIN}))
         game.combat_mgr.open_chain(game.state)
@@ -709,6 +737,45 @@ class TestPainInTheBackside:
         game._apply_card_ability(attack, 0, "on_hit")
 
         assert game.state.players[1].life_total == 19
+        assert game.state.players[1].turn_counters.damage_taken == 1
+        assert game.state.players[1].turn_counters.life_lost == 1
+
+    def test_emits_hit_event(self):
+        """The dagger has hit — should emit a HIT event."""
+        game = make_game_shell(life=20)
+        dagger = _make_dagger_weapon(instance_id=100, owner_index=0)
+        game.state.players[0].weapons.append(dagger)
+
+        hit_events = []
+        game.events.register_handler(
+            EventType.HIT,
+            lambda e: hit_events.append(e),
+        )
+
+        attack = _make_dagger_attack(instance_id=1, name="Pain in the Backside",
+                                     keywords=frozenset({Keyword.GO_AGAIN}))
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        game._apply_card_ability(attack, 0, "on_hit")
+
+        assert len(hit_events) == 1
+        assert hit_events[0].source is dagger
+        assert hit_events[0].amount == 1
+
+    def test_no_dagger_no_damage(self):
+        """If controller has no dagger weapon, no damage is dealt."""
+        game = make_game_shell(life=20)
+        # No weapons on player 0
+
+        attack = _make_dagger_attack(instance_id=1, name="Pain in the Backside",
+                                     keywords=frozenset({Keyword.GO_AGAIN}))
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        game._apply_card_ability(attack, 0, "on_hit")
+
+        assert game.state.players[1].life_total == 20
 
 
 class TestPersuasivePrognosis:

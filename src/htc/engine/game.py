@@ -161,6 +161,7 @@ class Game:
         """Register handlers for core game events."""
         self.events.register_handler(EventType.DEAL_DAMAGE, self._handle_damage)
         self.events.register_handler(EventType.GAIN_LIFE, self._handle_gain_life)
+        self.events.register_handler(EventType.LOSE_LIFE, self._handle_lose_life)
         self.events.register_handler(EventType.DRAW_CARD, self._handle_draw_card)
         self.events.register_handler(EventType.HIT, self._handle_hit_mark_removal)
 
@@ -183,6 +184,14 @@ class Game:
             target.life_total += event.amount
             target.turn_counters.life_gained += event.amount
             log.info(f"  Player {event.target_player} gains {event.amount} life (life: {target.life_total})")
+
+    def _handle_lose_life(self, event: GameEvent) -> None:
+        """Apply life loss to a player (not damage — bypasses prevention)."""
+        if event.target_player is not None and event.amount > 0:
+            target = self.state.players[event.target_player]
+            target.life_total = max(0, target.life_total - event.amount)
+            target.turn_counters.life_lost += event.amount
+            log.info(f"  Player {event.target_player} loses {event.amount} life (life: {target.life_total})")
 
     def _handle_hit_mark_removal(self, event: GameEvent) -> None:
         """Remove marked condition when hero is hit by opponent's source (rules 9.3.3)."""
@@ -455,7 +464,7 @@ class Game:
 
             if card.definition.is_attack:
                 # Attack resolves: move to combat chain, begin combat
-                self._begin_attack(layer.controller_index, card, layer.has_go_again)
+                self._begin_attack(layer.controller_index, card)
             elif card.definition.is_defense_reaction:
                 # Defense reaction resolves: becomes a defending card (7.4.2d)
                 link = self.state.combat_chain.active_link
@@ -762,8 +771,9 @@ class Game:
         arcane_damage = weapon.definition.arcane or 0
         target_index = 1 - player_index
 
-        # Go again from weapon (e.g. Surgent Aethertide)
-        if weapon.definition.has_go_again:
+        # Go again from weapon (e.g. Surgent Aethertide) — use effect engine
+        weapon_keywords = self.effect_engine.get_modified_keywords(self.state, weapon)
+        if Keyword.GO_AGAIN in weapon_keywords:
             self.state.action_points[player_index] += 1
 
         log.info(f"  Arcane activation: {weapon.name} (arcane={arcane_damage})")
@@ -911,7 +921,7 @@ class Game:
                 consecutive_passes = 0
                 priority_player = self.state.turn_player_index
 
-    def _begin_attack(self, attacker_index: int, attack_card: CardInstance, has_go_again: bool) -> None:
+    def _begin_attack(self, attacker_index: int, attack_card: CardInstance) -> None:
         """Move an attack from the stack to the combat chain as a new chain link."""
         defender_index = 1 - attacker_index
         link = self.combat_mgr.add_chain_link(self.state, attack_card, defender_index)
@@ -1032,16 +1042,9 @@ class Game:
                     card_kws = self.effect_engine.get_modified_keywords(self.state, card)
                     if Keyword.AMBUSH not in card_kws:
                         continue
-                    # Ambush: defending from arsenal counts as hand defense
-                    # for Dominate/Overpower purposes
-                    if has_dominate and hand_cards_defended >= 1:
-                        continue
-                    if has_overpower and card.definition.is_action and action_cards_defended >= 1:
-                        continue
+                    # Arsenal cards are NOT restricted by Dominate or Overpower —
+                    # those keywords only restrict cards defended from hand.
                     player.arsenal.remove(card)
-                    hand_cards_defended += 1
-                    if card.definition.is_action:
-                        action_cards_defended += 1
                 self.combat_mgr.add_defender(self.state, link, card)
                 log.info(f"  Defended with: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
 

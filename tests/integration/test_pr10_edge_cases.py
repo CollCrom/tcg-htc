@@ -99,7 +99,6 @@ def test_resolution_step_uses_dynamic_go_again():
         link_number=1,
         active_attack=attack,
         attack_target_index=1,
-        has_go_again=False,
     )
     state.combat_chain = CombatChainState(is_open=True, chain_links=[link])
     state.turn_player_index = 0
@@ -121,7 +120,7 @@ def test_resolution_step_uses_dynamic_go_again():
     # We test the logic directly rather than calling _resolution_step which
     # requires full game setup
     attacker_index = 1 - link.attack_target_index
-    has_go_again = link.has_go_again  # False from link
+    has_go_again = False
     if link.active_attack:
         attack_keywords = game.effect_engine.get_modified_keywords(state, link.active_attack)
         has_go_again = Keyword.GO_AGAIN in attack_keywords
@@ -369,8 +368,8 @@ def test_zero_life_gain_does_not_affect_counters():
 # ---------------------------------------------------------------------------
 
 
-def test_go_again_from_link_when_no_active_attack():
-    """If active_attack is None, fall back to link.has_go_again."""
+def test_no_go_again_when_no_active_attack():
+    """If active_attack is None, no Go Again can be resolved (nothing to check keywords on)."""
     state = make_state()
     state.action_points = {0: 0, 1: 0}
 
@@ -378,19 +377,18 @@ def test_go_again_from_link_when_no_active_attack():
         link_number=1,
         active_attack=None,
         attack_target_index=1,
-        has_go_again=True,
     )
 
-    # Replicate the resolution logic
+    # Replicate the resolution logic — with no active_attack, Go Again can't be checked
     attacker_index = 1 - link.attack_target_index
-    has_go_again = link.has_go_again
+    has_go_again = False
     if link.active_attack:
         # Would check dynamic keywords, but no active attack
         pass
     if has_go_again:
         state.action_points[attacker_index] += 1
 
-    assert state.action_points[0] == 1
+    assert state.action_points[0] == 0
 
 
 def test_go_again_link_false_no_effect_means_no_ap():
@@ -404,11 +402,10 @@ def test_go_again_link_false_no_effect_means_no_ap():
         link_number=1,
         active_attack=attack,
         attack_target_index=1,
-        has_go_again=False,
     )
 
     attacker_index = 1 - link.attack_target_index
-    has_go_again = link.has_go_again
+    has_go_again = False
     if link.active_attack:
         kw = engine.get_modified_keywords(state, link.active_attack)
         has_go_again = Keyword.GO_AGAIN in kw
