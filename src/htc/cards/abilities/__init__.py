@@ -4,5 +4,6 @@ Each module registers ability handlers with the AbilityRegistry.
 """
 
 from htc.cards.abilities.generic import register_generic_abilities
+from htc.cards.abilities.assassin import register_assassin_abilities
 
-__all__ = ["register_generic_abilities"]
+__all__ = ["register_generic_abilities", "register_assassin_abilities"]
