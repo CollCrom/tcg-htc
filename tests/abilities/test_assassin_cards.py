@@ -902,10 +902,8 @@ class TestMeetMadness:
 
     def test_banishes_something(self):
         """Meet Madness should banish from hand, arsenal, or deck top."""
-        import random
-        random.seed(42)  # Deterministic
-
         game = make_game_shell()
+        game.state.rng.seed(42)  # Deterministic via state RNG
         hand_card = make_card(instance_id=50, owner_index=1, zone=Zone.HAND)
         game.state.players[1].hand = [hand_card]
         deck_card = make_card(instance_id=51, owner_index=1, zone=Zone.DECK)

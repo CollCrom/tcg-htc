@@ -107,12 +107,16 @@ class Game:
                 )
 
     def _apply_card_ability(
-        self, card: CardInstance, player_index: int, timing: str
+        self, card: CardInstance, player_index: int, timing: str,
+        *, extra_data: dict | None = None,
     ) -> None:
         """Look up and apply a card's ability at the given timing.
 
         If no ability is registered for the card, does nothing (graceful
         degradation). Builds an AbilityContext and calls the handler.
+
+        ``extra_data`` is an optional dict of contextual info (e.g.
+        ``target_was_marked``) passed through to the AbilityContext.
         """
         handler = self.ability_registry.lookup(timing, card.name)
         if handler is None:
@@ -129,6 +133,7 @@ class Game:
             ask=lambda d: self._ask(d),
             keyword_engine=self.keyword_engine,
             combat_mgr=self.combat_mgr,
+            extra_data=extra_data or {},
         )
         handler(ctx)
 
@@ -1071,13 +1076,22 @@ class Game:
                 target = self.state.players[link.attack_target_index]
                 log.info(f"  Hit for {actual_damage} damage! (P{target.index} life: {target.life_total})")
 
-                # Emit hit event
+                # Record mark state BEFORE emitting HIT event.
+                # The HIT handler clears is_marked, but on_hit abilities
+                # (e.g. Mark of the Black Widow, Savor Bloodshed) need
+                # the pre-hit mark state.  Store it in the event data.
+                target_was_marked = target.is_marked
+
+                # Emit hit event (handler removes mark during this call)
                 self.events.emit(GameEvent(
                     event_type=EventType.HIT,
                     source=link.active_attack,
                     target_player=link.attack_target_index,
                     amount=actual_damage,
-                    data={"chain_link": link},
+                    data={
+                        "chain_link": link,
+                        "target_was_marked": target_was_marked,
+                    },
                 ))
                 # Process triggered effects from the hit event
                 self._process_pending_triggers()
@@ -1086,7 +1100,8 @@ class Game:
                 if link.active_attack:
                     attacker_index = 1 - link.attack_target_index
                     self._apply_card_ability(
-                        link.active_attack, attacker_index, "on_hit"
+                        link.active_attack, attacker_index, "on_hit",
+                        extra_data={"target_was_marked": target_was_marked},
                     )
             else:
                 log.info(f"  Blocked!")

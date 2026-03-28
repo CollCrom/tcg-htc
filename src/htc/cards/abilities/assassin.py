@@ -184,65 +184,6 @@ def _to_the_point(ctx: AbilityContext) -> None:
     log.info(f"  To the Point: {attack.name} gets +{bonus} power (marked={defender.is_marked})")
 
 
-def _scar_tissue(ctx: AbilityContext) -> None:
-    """Scar Tissue (Assassin/Warrior, Attack Reaction):
-
-    'Target dagger attack gets +N{p} and "When this hits a hero, mark them."'
-    Red=+3, Yellow=+2, Blue=+1.
-    """
-    link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
-
-    attack = link.active_attack
-    if not _is_dagger_attack(attack, link):
-        log.info(f"  Scar Tissue: no effect -- {attack.name} is not a dagger attack")
-        return
-
-    bonus = _color_bonus(ctx)
-    atk_id = attack.instance_id
-    effect = make_power_modifier(
-        bonus,
-        ctx.controller_index,
-        source_instance_id=ctx.source_card.instance_id,
-        duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
-    )
-    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-
-    # Register on-hit trigger to mark the defending hero
-    hit_trigger = _ScarTissueMarkOnHit(
-        attack_instance_id=atk_id,
-        target_player_index=link.attack_target_index,
-        one_shot=True,
-    )
-    ctx.events.register_trigger(hit_trigger)
-    log.info(f"  Scar Tissue: {attack.name} gets +{bonus} power and mark on hit")
-
-
-@dataclass
-class _ScarTissueMarkOnHit(TriggeredEffect):
-    """One-shot trigger: when the attack hits a hero, mark them."""
-    attack_instance_id: int = 0
-    target_player_index: int = 0
-    one_shot: bool = True
-
-    def condition(self, event: GameEvent) -> bool:
-        if event.event_type != EventType.HIT:
-            return False
-        if event.source is None:
-            return False
-        return event.source.instance_id == self.attack_instance_id
-
-    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        if triggering_event.target_player is not None:
-            # We can't access state directly from TriggeredEffect, so emit a
-            # custom event. Instead, we use a simpler approach: store the
-            # state reference.
-            pass
-        return None
-
-
 def _stains_of_the_redback(ctx: AbilityContext) -> None:
     """Stains of the Redback (Assassin, Attack Reaction):
 
@@ -633,10 +574,11 @@ def _grant_next_dagger_attack_bonus(ctx: AbilityContext, bonus: int, source_name
             # Also check if it's a proxy of a dagger weapon
             if not card.is_proxy:
                 return False
-        return card.owner_index == controller
-
-    def on_apply_consume(card):
+        if card.owner_index != controller:
+            return False
+        # Consume on first match so the bonus only applies once
         consumed[0] = True
+        return True
 
     effect = make_power_modifier(
         bonus,
@@ -876,14 +818,21 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
             return False
         if SubType.DAGGER not in event.source.definition.subtypes:
             return False
-        # Target must be marked
+        # Target must have been marked at the time of the hit.
+        # Check pre-recorded state from event data first (set by _damage_step
+        # before the HIT handler clears is_marked), then fall back to live
+        # state for unit tests that emit HIT events directly.
+        if event.target_player is None:
+            return False
+        was_marked = event.data.get("target_was_marked")
+        if was_marked is not None:
+            return was_marked
+        # Fallback: check live state (only reached in unit tests)
         if self._state is None:
             return False
         from htc.state.game_state import GameState
         state = self._state
         if not isinstance(state, GameState):
-            return False
-        if event.target_player is None:
             return False
         return state.players[event.target_player].is_marked
 
@@ -975,7 +924,11 @@ def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
         return
 
     target = ctx.state.players[link.attack_target_index]
-    if not target.is_marked:
+    # Use pre-hit mark state: the HIT handler clears is_marked before
+    # on_hit abilities run.  Fall back to live state for unit tests that
+    # call _apply_card_ability directly without emitting a HIT event.
+    was_marked = ctx.target_was_marked or target.is_marked
+    if not was_marked:
         log.info(f"  Mark of the Black Widow: no effect (target not marked)")
         return
 
@@ -1007,10 +960,9 @@ def _meet_madness_on_hit(ctx: AbilityContext) -> None:
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
 
-    # Choose 1 at random from 3 options
-    import random
+    # Choose 1 at random from 3 options (use state RNG for reproducibility)
     modes = [1, 2, 3]
-    chosen = random.choice(modes)
+    chosen = ctx.state.rng.choice(modes)
 
     if chosen == 1 and target.hand:
         # They choose a card in hand to banish (simplified: first card)
@@ -1111,21 +1063,37 @@ def _death_touch_on_hit(ctx: AbilityContext) -> None:
 
     NOTE: "can't be played from hand" is a play restriction, not an on-hit
     effect. TODO: Implement play restriction.
-    For the token, we choose one at random (simplified).
+    The controller chooses which token to create.
     """
     link = ctx.chain_link
     if link is None:
         return
 
     target_index = link.attack_target_index
-    import random
-    token_choice = random.choice(["Frailty", "Inertia", "Bloodrot Pox"])
+
+    options = [
+        ActionOption(action_id="frailty", description="Create Frailty token",
+                     action_type=ActionType.ACTIVATE_ABILITY),
+        ActionOption(action_id="inertia", description="Create Inertia token",
+                     action_type=ActionType.ACTIVATE_ABILITY),
+        ActionOption(action_id="bloodrot_pox", description="Create Bloodrot Pox token",
+                     action_type=ActionType.ACTIVATE_ABILITY),
+    ]
+    decision = Decision(
+        player_index=ctx.controller_index,
+        decision_type=DecisionType.CHOOSE_MODE,
+        prompt="Death Touch: Choose a token to create",
+        options=options,
+    )
+    response = ctx.ask(decision)
+    choice = response.first or "frailty"
+    token_name = {"frailty": "Frailty", "inertia": "Inertia", "bloodrot_pox": "Bloodrot Pox"}.get(choice, "Frailty")
 
     _create_token(
-        ctx.state, target_index, token_choice, SubType.AURA,
+        ctx.state, target_index, token_name, SubType.AURA,
         type_text="Token - Aura",
     )
-    log.info(f"  Death Touch: Created {token_choice} token for Player {target_index}")
+    log.info(f"  Death Touch: Created {token_name} token for Player {target_index}")
 
 
 def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
@@ -1251,15 +1219,12 @@ def _overcrowded_on_attack(ctx: AbilityContext) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Scar Tissue — fix: need state access in trigger for mark
+# Scar Tissue — on-hit trigger to mark the defending hero
 # ---------------------------------------------------------------------------
-
-# The _ScarTissueMarkOnHit trigger above can't access state to set is_marked.
-# We need a pattern like Cindra's hero ability. Let's fix it:
 
 
 @dataclass
-class _ScarTissueMarkOnHitFixed(TriggeredEffect):
+class _ScarTissueMarkOnHit(TriggeredEffect):
     """One-shot trigger: when the attack hits a hero, mark them."""
     attack_instance_id: int = 0
     target_player_index: int = 0
@@ -1285,9 +1250,12 @@ class _ScarTissueMarkOnHitFixed(TriggeredEffect):
         return None
 
 
-# Override the original _scar_tissue to use the fixed trigger
-def _scar_tissue_fixed(ctx: AbilityContext) -> None:
-    """Scar Tissue — uses the fixed trigger with state access."""
+def _scar_tissue(ctx: AbilityContext) -> None:
+    """Scar Tissue (Assassin/Warrior, Attack Reaction):
+
+    'Target dagger attack gets +N{p} and "When this hits a hero, mark them."'
+    Red=+3, Yellow=+2, Blue=+1.
+    """
     link = ctx.chain_link
     if link is None or link.active_attack is None:
         return
@@ -1308,7 +1276,7 @@ def _scar_tissue_fixed(ctx: AbilityContext) -> None:
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
 
-    hit_trigger = _ScarTissueMarkOnHitFixed(
+    hit_trigger = _ScarTissueMarkOnHit(
         attack_instance_id=atk_id,
         target_player_index=link.attack_target_index,
         _state=ctx.state,
@@ -1329,7 +1297,7 @@ def register_assassin_abilities(registry: AbilityRegistry) -> None:
     # Attack reactions
     registry.register("attack_reaction_effect", "Incision", _incision)
     registry.register("attack_reaction_effect", "To the Point", _to_the_point)
-    registry.register("attack_reaction_effect", "Scar Tissue", _scar_tissue_fixed)
+    registry.register("attack_reaction_effect", "Scar Tissue", _scar_tissue)
     registry.register("attack_reaction_effect", "Stains of the Redback", _stains_of_the_redback)
     registry.register("attack_reaction_effect", "Shred", _shred)
     registry.register("attack_reaction_effect", "Take Up the Mantle", _take_up_the_mantle)
