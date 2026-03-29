@@ -148,3 +148,16 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **BECOME_AGENT EventType** — New event for hero transformation.
 - **CHOOSE_AGENT DecisionType** — New decision for marked-attacker choice.
 - **417 tests passing** — 18 new tests for Mask of Deceit, Demi-Hero loading, hero transformation, Blade Break.
+
+## Agent of Chaos Abilities (2026-03-28)
+
+- **`src/htc/cards/abilities/agents.py`** — All 6 Agent of Chaos Demi-Hero abilities. Shared `ReturnToBroodTrigger` fires on `START_OF_END_PHASE`, reverts to original hero, deregisters agent-specific triggers. `AGENT_TRIGGER_TAG` attribute on triggers enables targeted cleanup.
+- **START_OF_END_PHASE EventType** — New event emitted at the top of `_run_end_phase()` before any end-phase cleanup. Used for return-to-brood timing.
+- **Agent ability registration** — `register_agent_abilities()` called from `_become_agent_of_chaos()` BEFORE the BECOME_AGENT event is emitted (so on-become triggers like Trap-Door catch the event). `deregister_agent_triggers()` called from `_return_to_brood()`.
+- **ReturnToBroodTrigger gotcha** — Must NOT be `one_shot=True` because its `create_triggered_event()` calls `_return_to_brood()` -> `deregister_agent_triggers()` which removes it from the list. If one-shot, `EventBus._check_triggers` tries to remove it again and crashes with `ValueError: list.remove(x)`.
+- **Attack Reaction agents** (Redback, Black Widow, Funnel Web, Tarantula) — registered as `attack_reaction_effect` in AbilityRegistry under agent hero name. All use `_discard_assassin_card()` helper for cost.
+- **Tarantula passive** — Uses `TarantulaDaggerHitTrigger` on EventBus (HIT event), emits `LOSE_LIFE` (not DEAL_DAMAGE) per card text.
+- **Orb-Weaver** — Registered as `equipment_instant_effect`. Creates Graphene Chelicera token as a permanent (not real equipment slot). Registers one-shot `_OrbWeaverStealthBuff` ATTACK_DECLARED trigger for next stealth attack +3 power. Cost reduction deferred.
+- **Trap-Door** — `TrapDoorOnBecomeTrigger` fires on BECOME_AGENT for "Arakni, Trap-Door". Searches deck, banishes face-down, shuffles. Play-trap-from-banish deferred.
+- **New enum values** — `DecisionType.CHOOSE_DISCARD`, `CHOOSE_CARD`; `ActionType.DISCARD`, `BANISH`.
+- **452 tests passing** — 32 new tests for all 6 agents + return to brood + registration.
