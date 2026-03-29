@@ -134,3 +134,17 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Dragonscaler Flight Path** — `equipment_instant_effect` handler in equipment.py. Cost = max(0, 3 - Draconic chain links). Validates active Draconic attack owned by controller. Destroys self, grants Go Again via continuous effect. Untaps source weapon if attack is a weapon proxy.
 - **ActionBuilder gets ability_registry** — Constructor now accepts AbilityRegistry to look up equipment abilities when building options. Updated in both Game.__init__ and test conftest.py make_game_shell.
 - **399 tests passing** — 30 new tests for equipment activation, Dragonscaler, and keyword parsing.
+
+## Mask of Deceit + Demi-Hero Infrastructure (2026-03-28)
+
+- **Demi-Hero / Agent of Chaos** — 6 Agent of Chaos Demi-Heroes in the card database: Arakni Black Widow, Funnel Web, Orb-Weaver, Redback, Tarantula, Trap-Door. All have types "Chaos, Assassin, Demi-Hero" and health `*` (keep current life).
+- **DeckList.demi_heroes** — New `list[str]` field. Loader auto-includes all 6 for Arakni, Marionette. Explicit `Demi-Heroes:` line uses semicolons (card names contain commas).
+- **PlayerState.demi_heroes** — `list[CardInstance]` of available Demi-Hero forms.
+- **PlayerState.original_hero** — `CardInstance | None`, saved on first transformation only.
+- **Game._become_agent_of_chaos()** — Saves original_hero, sets new hero, emits BECOME_AGENT event. Life total unchanged.
+- **MaskOfDeceitTrigger** — TriggeredEffect on DEFEND_DECLARED. Checks `event.source.instance_id` matches Mask of Deceit. If attacker marked: Decision(CHOOSE_AGENT) for player choice. If not marked: `state.rng.choice()` random selection.
+- **register_equipment_triggers** — Now accepts `game=` kwarg for triggers needing engine methods (_become_agent_of_chaos, _ask). Game._register_equipment_triggers passes `game=self`.
+- **Blade Break** — Already handled by keyword_engine.apply_equipment_degradation(). Mask of Deceit has BLADE_BREAK keyword, gets destroyed after defending.
+- **BECOME_AGENT EventType** — New event for hero transformation.
+- **CHOOSE_AGENT DecisionType** — New decision for marked-attacker choice.
+- **417 tests passing** — 18 new tests for Mask of Deceit, Demi-Hero loading, hero transformation, Blade Break.
