@@ -3,7 +3,7 @@
 Registers ability handlers and triggered effects for equipment and weapons
 used in both the Cindra Blue and Arakni Marionette decklists.
 
-Card texts verified against data/cards.csv functional_text field.
+Card texts verified against data/cards.tsv functional_text field.
 
 Equipment abilities implemented:
 - Mask of Momentum (Head) — once per turn, draw on 3rd+ consecutive chain link hit

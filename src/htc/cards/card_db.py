@@ -69,7 +69,7 @@ def _parse_keywords(value: str) -> tuple[frozenset[Keyword], dict[Keyword, int]]
 
 
 class CardDatabase:
-    """Loads and indexes card definitions from the FaB Cube CSV."""
+    """Loads and indexes card definitions from the Fabrary card dataset TSV."""
 
     def __init__(self) -> None:
         self._by_id: dict[str, CardDefinition] = {}

@@ -3,7 +3,7 @@
 Registers ability handlers for Assassin attack reactions, defense reactions,
 non-attack actions, and attack action on-attack/on-hit effects.
 
-Card texts verified against data/cards.csv functional_text field.
+Card texts verified against data/cards.tsv functional_text field.
 """
 
 from __future__ import annotations

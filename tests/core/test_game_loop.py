@@ -15,7 +15,7 @@ def test_game_completes():
 
 
 def test_card_loading():
-    db = CardDatabase.load(DATA_DIR / "cards.csv")
+    db = CardDatabase.load(DATA_DIR / "cards.tsv")
     assert len(db) > 4000
 
     bravo = db.get_by_name("Bravo, Showstopper")

@@ -43,7 +43,7 @@ def main() -> None:
         format="%(message)s",
     )
 
-    db = CardDatabase.load(DATA_DIR / "cards.csv")
+    db = CardDatabase.load(DATA_DIR / "cards.tsv")
     deck1 = parse_deck_list(WARRIOR_DECK)
     deck2 = parse_deck_list(WARRIOR_DECK)
 

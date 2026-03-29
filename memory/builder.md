@@ -9,7 +9,7 @@ Persistent learnings across sessions. Update this as you go.
 - **Single GameState tree** — all state in one object. Makes serialization, replay, and debugging straightforward.
 - **Per-turn TurnCounters** — a typed dataclass tracking everything that happened this turn (attacks played, damage dealt, cards drawn, etc.). Resets each turn. Essential because many FaB cards check "if you've done X this turn."
 - **Combat resolves inline** — for Phase 1, combat resolves immediately when an attack is played (no full stack/priority loop between combat steps yet). This simplification was necessary to get a working game loop quickly.
-- **FaB Cube CSV as card data source** — 4,217 cards loaded from `data/cards.csv`. The `Types` field is a flat comma-separated list that we classify into CardType/SubType/SuperType using our enums. Keywords are parsed with number-stripping for things like "Ward 10" → Keyword.WARD.
+- **Fabrary dataset as card data source** — 4,562 cards loaded from `data/cards.tsv` (converted from Fabrary JSON via `python3 -m htc.cards.refresh`). The `Types` field is a flat comma-separated list that we classify into CardType/SubType/SuperType using our enums. Keywords are parsed with number-stripping for things like "Ward 10" → Keyword.WARD. Includes cards missing from old FaB Cube CSV (Enflame the Firebrand, Stalker's Steps).
 
 ## Gotchas
 
@@ -106,6 +106,13 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Hunter's Klaive on-hit** — registered as `"Hunter's Klaive (attack)"` because on_hit is looked up by the proxy name, not the weapon name.
 - **START_OF_TURN event** — uses `event.target_player` (not `event.data["turn_player"]`). Equipment triggers that reset per-turn must check `event.target_player`.
 - **Equipment slot conflict** — Cindra has 2 chest equipment (Blood Splattered Vest, Spring Tunic) and 2 legs equipment (Dragonscaler Flight Path, Tide Flippers). Only the first loaded gets the slot. The second is silently dropped.
-- **Missing cards** — Enflame the Firebrand and Stalker's Steps are not in `data/cards.csv`. Engine logs a warning and skips them. Games still run fine.
+- **Previously missing cards** — Enflame the Firebrand and Stalker's Steps were missing from old FaB Cube CSV. Now present in Fabrary dataset (`data/cards.tsv`).
 - **Deferred equipment** — Dragonscaler Flight Path (needs instant activation in priority windows), Mask of Deceit (needs Agent of Chaos mechanic).
 - **Integration tests** — `tests/integration/test_full_game.py` has markdown decklist parser, full game smoke tests (multiple seeds, both player orders), hero/equipment trigger registration checks, ability registry checks. 23 tests, 334 total.
+
+## Pre-Phase 6 Cleanup (2026-03-28)
+
+- **Damage prevention tests** — `tests/abilities/test_post_phase5_audit.py` now has 13 tests (up from 8). New tests use `ReplacementEffect` to simulate damage prevention and verify: Kiss of Death LOSE_LIFE bypasses prevention, Throw Dagger no-draw on prevention, Blood Runs Deep partial prevention, Art of Dragon: Fire prevention, Ambush+Overpower arsenal bypass.
+- **Pain in the Backside player choice** — When multiple daggers are available, player is prompted to choose which dagger deals damage via Decision/Response pattern (DecisionType.CHOOSE_TARGET).
+- **Pitch-to-bottom order** — Player now chooses the order pitched cards go to bottom of deck via `_choose_pitch_order()` using Decision/Response pattern (DecisionType.ORDER_PITCH_TO_DECK). No more random shuffle.
+- **351 tests passing** after all changes.

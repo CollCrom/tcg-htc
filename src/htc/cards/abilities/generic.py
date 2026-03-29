@@ -3,7 +3,7 @@
 Registers ability handlers for commonly-used attack and defense reactions.
 Each handler receives an AbilityContext and applies its effect.
 
-Card texts verified against data/cards.csv functional_text field.
+Card texts verified against data/cards.tsv functional_text field.
 """
 
 from __future__ import annotations
