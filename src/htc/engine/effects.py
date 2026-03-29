@@ -18,7 +18,7 @@ from htc.engine.continuous import (
 
 if TYPE_CHECKING:
     from htc.cards.instance import CardInstance
-    from htc.enums import Keyword
+    from htc.enums import Keyword, SuperType
     from htc.state.game_state import GameState
 
 
@@ -74,6 +74,14 @@ class EffectEngine:
     def get_modified_cost(self, state: GameState, card: CardInstance) -> int:
         base = card.cost if card.cost is not None else 0
         return self._resolve_numeric_property(state, card, base, NumericProperty.COST)
+
+    def get_modified_supertypes(
+        self, state: GameState, card: CardInstance
+    ) -> frozenset[SuperType]:
+        """Get the effective supertypes for a card (base + continuous effects)."""
+        base = card.definition.supertypes
+        active = self._active_effects(state)
+        return self._resolver.resolve_supertypes(active, card, state, base)
 
     def get_modified_keywords(
         self, state: GameState, card: CardInstance
