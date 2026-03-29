@@ -127,6 +127,47 @@ class TestIsKeywordInherent:
         assert _is_keyword_inherent(Keyword.COMBO, text) is True
         assert _is_keyword_inherent(Keyword.DOMINATE, text) is False
 
+    # -- Bug fix: "with" prefix was too broad (Bug 1) -------------------
+
+    def test_with_prefix_not_conditional(self):
+        """'attack with X, **intimidate**' — 'with' is not a keyword-granting verb."""
+        text = (
+            "**Rhinar Specialization**\n\n"
+            "As an additional cost to play Alpha Rampage, discard a random card.\n\n"
+            "When you attack with Alpha Rampage, **intimidate**."
+        )
+        assert _is_keyword_inherent(Keyword.INTIMIDATE, text) is True
+
+    def test_attack_with_does_not_strip_keyword(self):
+        """Generic pattern: 'When you attack with <name>, **keyword**' is inherent."""
+        text = "When you attack with Wrecking Ball, **intimidate**."
+        assert _is_keyword_inherent(Keyword.INTIMIDATE, text) is True
+
+    # -- Bug fix: sentence-level context instead of line-level (Bug 2) --
+
+    def test_gets_in_earlier_clause_does_not_strip_later_keyword(self):
+        """'...gets +1{p}. **Go again**' — Go Again is a new sentence, inherent."""
+        text = (
+            "The next attack action card you play this turn gets +1{p}. "
+            "**Go again**"
+        )
+        assert _is_keyword_inherent(Keyword.GO_AGAIN, text) is True
+
+    def test_gets_same_sentence_still_conditional(self):
+        """'this gets **go again**' in the same sentence is still conditional."""
+        text = "This gets **go again**."
+        assert _is_keyword_inherent(Keyword.GO_AGAIN, text) is False
+
+    def test_multi_clause_line_with_keyword_at_end(self):
+        """Multiple sentences on one line; keyword at end after period boundary."""
+        text = "Draw a card. Create a token. **Dominate**"
+        assert _is_keyword_inherent(Keyword.DOMINATE, text) is True
+
+    def test_gains_in_prior_sentence_does_not_strip(self):
+        """'gains X. **Keyword**' — keyword is in a new sentence, inherent."""
+        text = "This gains +2{p}. **Go again**"
+        assert _is_keyword_inherent(Keyword.GO_AGAIN, text) is True
+
 
 # ---------------------------------------------------------------------------
 # _parse_keywords — integration with functional_text filtering
@@ -254,3 +295,20 @@ class TestRealCardKeywords:
         assert card is not None
         assert Keyword.COMBO in card.keywords
         assert Keyword.DOMINATE not in card.keywords
+
+    # -- Bug fix verifications: "with" prefix (Bug 1) ------------------
+
+    def test_alpha_rampage_has_intimidate(self, db):
+        """Alpha Rampage: 'attack with X, **intimidate**' — Intimidate is inherent."""
+        from htc.enums import Color
+        card = db.get_by_name("Alpha Rampage", Color.RED)
+        assert card is not None
+        assert Keyword.INTIMIDATE in card.keywords
+
+    # -- Bug fix verifications: sentence-level context (Bug 2) ----------
+
+    def test_anthem_of_spring_has_go_again(self, db):
+        """Anthem of Spring: 'gets +1{p}. **Go again**' — Go Again is inherent."""
+        card = db.get_by_name("Anthem of Spring")
+        assert card is not None
+        assert Keyword.GO_AGAIN in card.keywords

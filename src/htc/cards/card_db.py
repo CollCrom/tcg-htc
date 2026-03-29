@@ -40,7 +40,7 @@ _KEYWORD_WITH_NUMBER = re.compile(r"^(.+?)\s+\d+$")
 # Words that precede a keyword to indicate it is conditional (granted by an
 # ability), not inherent to the card.
 _CONDITIONAL_PREFIXES = re.compile(
-    r"\b(?:gets?|gains?|has|with|lose[s]?)\b",
+    r"\b(?:gets?|gains?|has|lose[s]?)\b",
     re.IGNORECASE,
 )
 
@@ -77,15 +77,21 @@ def _is_keyword_inherent(keyword: Keyword, functional_text: str) -> bool:
 
     for match in pattern.finditer(functional_text):
         start = match.start()
-        # Look backwards from the match to the start of the line to find
-        # the sentence context.
+        # Look backwards from the match to the start of the line.
         line_start = functional_text.rfind("\n", 0, start)
         if line_start == -1:
             line_start = 0
         else:
             line_start += 1  # skip the newline char
 
-        preceding = functional_text[line_start:start].strip()
+        line_text = functional_text[line_start:start]
+
+        # Use sentence-level context: split on ". " (period + space) and
+        # only check the last sentence fragment before the keyword. This
+        # avoids false positives where "gets" appears in an earlier,
+        # unrelated clause on the same line (e.g. "...gets +1{p}. **Go again**").
+        sentence_parts = re.split(r"\.\s", line_text)
+        preceding = sentence_parts[-1].strip()
 
         if not preceding:
             # Keyword is at the start of a line — inherent.
