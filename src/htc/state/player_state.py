@@ -36,6 +36,12 @@ class PlayerState:
     # Permanents this player controls (items, auras, allies, etc.)
     permanents: list[CardInstance] = field(default_factory=list)
 
+    # Demi-Hero forms (Agent of Chaos) available for transformation
+    demi_heroes: list[CardInstance] = field(default_factory=list)
+
+    # Original hero saved during Demi-Hero transformation
+    original_hero: CardInstance | None = None
+
     # Per-turn tracking
     turn_counters: TurnCounters = field(default_factory=TurnCounters)
 

@@ -52,6 +52,9 @@ class EventType(Enum):
     GAIN_LIFE = auto()
     LOSE_LIFE = auto()
 
+    # Transformation
+    BECOME_AGENT = auto()  # Demi-Hero transformation (Agent of Chaos)
+
     # Misc
     CREATE_TOKEN = auto()
     COUNTER_ADDED = auto()

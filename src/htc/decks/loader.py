@@ -9,6 +9,16 @@ _COLOR_MAP = {
     "blue": Color.BLUE,
 }
 
+# All Agent of Chaos Demi-Heroes — auto-included for Arakni, Marionette
+AGENT_OF_CHAOS_DEMI_HEROES = [
+    "Arakni, Black Widow",
+    "Arakni, Funnel Web",
+    "Arakni, Orb-Weaver",
+    "Arakni, Redback",
+    "Arakni, Tarantula",
+    "Arakni, Trap-Door",
+]
+
 
 def parse_deck_list(text: str) -> DeckList:
     """Parse a simple deck list text format.
@@ -27,6 +37,7 @@ def parse_deck_list(text: str) -> DeckList:
     hero_name = ""
     weapons: list[str] = []
     equipment: list[str] = []
+    demi_heroes: list[str] = []
     cards: list[DeckEntry] = []
     in_cards = False
 
@@ -45,12 +56,22 @@ def parse_deck_list(text: str) -> DeckList:
             weapons = [w.strip() for w in line.split(":", 1)[1].split(",")]
         elif line.lower().startswith("equipment:"):
             equipment = [e.strip() for e in line.split(":", 1)[1].split(",")]
+        elif line.lower().startswith("demi-heroes:") or line.lower().startswith("demi heroes:"):
+            # Use semicolons as delimiter since card names contain commas
+            demi_heroes = [d.strip() for d in line.split(":", 1)[1].split(";") if d.strip()]
         elif in_cards:
             entry = _parse_card_line(line)
             if entry:
                 cards.append(entry)
 
-    return DeckList(hero_name=hero_name, weapons=weapons, equipment=equipment, cards=cards)
+    # Auto-include Agent of Chaos Demi-Heroes for Arakni, Marionette
+    if not demi_heroes and "arakni" in hero_name.lower() and "marionette" in hero_name.lower():
+        demi_heroes = list(AGENT_OF_CHAOS_DEMI_HEROES)
+
+    return DeckList(
+        hero_name=hero_name, weapons=weapons, equipment=equipment,
+        cards=cards, demi_heroes=demi_heroes,
+    )
 
 
 def _parse_card_line(line: str) -> DeckEntry | None:

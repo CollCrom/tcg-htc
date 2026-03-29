@@ -270,6 +270,7 @@ class DecisionType(Enum):
     ORDER_TRIGGERED = "order_triggers"
     OPTIONAL_ABILITY = "optional_ability"
     ORDER_PITCH_TO_DECK = "pitch_order"
+    CHOOSE_AGENT = "choose_agent"  # Choose Agent of Chaos for Mask of Deceit
 
 
 class ActionType(Enum):
