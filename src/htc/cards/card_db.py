@@ -50,7 +50,7 @@ def _is_keyword_inherent(keyword: Keyword, functional_text: str) -> bool:
 
     A keyword is inherent if it appears in the functional_text as a standalone
     bold keyword (``**Keyword**`` or ``**Keyword N**``) that is NOT preceded
-    in its sentence by conditional words like "gets", "gains", "has", "with".
+    in its sentence by conditional words like "gets", "gains", "has", "loses".
 
     If the keyword does not appear in bold in the text at all, we conservatively
     treat it as inherent (the dataset may have keywords for cards with no
