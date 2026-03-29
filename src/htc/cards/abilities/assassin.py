@@ -1236,6 +1236,75 @@ def _scar_tissue(ctx: AbilityContext) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Instant-from-hand (discard to activate)
+# ---------------------------------------------------------------------------
+
+
+def _under_the_trap_door_instant(ctx: AbilityContext) -> None:
+    """Under the Trap-Door (Assassin, Attack Action):
+
+    'Instant - Discard this: Banish target trap from your graveyard.
+     If you do, you may play it this turn and if it would be put into
+     the graveyard this turn, instead banish it.'
+
+    This is the instant-discard ability. The card is already discarded
+    (moved to graveyard) before this handler runs.
+    """
+    player = ctx.state.players[ctx.controller_index]
+
+    # Find traps in graveyard
+    traps = [c for c in player.graveyard if SubType.TRAP in c.definition.subtypes]
+    if not traps:
+        log.info("  Under the Trap-Door: no traps in graveyard")
+        return
+
+    # Player chooses which trap to banish
+    options = []
+    for card in traps:
+        options.append(ActionOption(
+            action_id=f"banish_trap_{card.instance_id}",
+            description=f"{card.name} ({card.definition.color_label})",
+            action_type=ActionType.ACTIVATE_ABILITY,
+            card_instance_id=card.instance_id,
+        ))
+    options.append(ActionOption(
+        action_id="pass",
+        description="Don't banish a trap",
+        action_type=ActionType.PASS,
+    ))
+
+    decision = Decision(
+        player_index=ctx.controller_index,
+        decision_type=DecisionType.CHOOSE_TARGET,
+        prompt="Under the Trap-Door: Choose a trap from your graveyard to banish",
+        options=options,
+    )
+    response = ctx.ask(decision)
+    choice = response.first
+
+    if choice is None or choice == "pass":
+        log.info("  Under the Trap-Door: chose not to banish a trap")
+        return
+
+    instance_id = int(choice.replace("banish_trap_", ""))
+    target = next((c for c in traps if c.instance_id == instance_id), None)
+    if target is None:
+        log.warning("  Under the Trap-Door: chosen trap not found")
+        return
+
+    # Banish the trap from graveyard (face-up)
+    player.graveyard.remove(target)
+    target.zone = Zone.BANISHED
+    target.face_up = True
+    player.banished.append(target)
+    log.info(f"  Under the Trap-Door: banished {target.name} from graveyard")
+
+    # Mark as playable from banish this turn
+    player.playable_from_banish.append((target.instance_id, "end_of_turn"))
+    log.info(f"  Under the Trap-Door: {target.name} playable from banish this turn")
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -1283,3 +1352,6 @@ def register_assassin_abilities(registry: AbilityRegistry) -> None:
     registry.register("on_hit", "Leave No Witnesses", _leave_no_witnesses_on_hit)
     registry.register("on_hit", "Death Touch", _death_touch_on_hit)
     registry.register("on_hit", "Persuasive Prognosis", _persuasive_prognosis_on_hit)
+
+    # Instant-from-hand (discard to activate)
+    registry.register("instant_discard_effect", "Under the Trap-Door", _under_the_trap_door_instant)

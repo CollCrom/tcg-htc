@@ -32,6 +32,8 @@ TIMINGS = (
     "attack_reaction_effect",
     "defense_reaction_effect",
     "equipment_instant_effect",
+    "on_become",
+    "instant_discard_effect",
 )
 
 # Type alias for ability handler functions
@@ -74,6 +76,8 @@ class AbilityRegistry:
         self.attack_reaction_effect: dict[str, AbilityHandler] = {}
         self.defense_reaction_effect: dict[str, AbilityHandler] = {}
         self.equipment_instant_effect: dict[str, AbilityHandler] = {}
+        self.on_become: dict[str, AbilityHandler] = {}
+        self.instant_discard_effect: dict[str, AbilityHandler] = {}
 
     def register(self, timing: str, card_name: str, handler: AbilityHandler) -> None:
         """Register an ability handler for a card at a specific timing."""
