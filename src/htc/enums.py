@@ -271,6 +271,8 @@ class DecisionType(Enum):
     OPTIONAL_ABILITY = "optional_ability"
     ORDER_PITCH_TO_DECK = "pitch_order"
     CHOOSE_AGENT = "choose_agent"  # Choose Agent of Chaos for Mask of Deceit
+    CHOOSE_DISCARD = "choose_discard"  # Choose a card to discard (agent abilities)
+    CHOOSE_CARD = "choose_card"  # Choose a card (generic — e.g. search deck)
 
 
 class ActionType(Enum):
@@ -279,6 +281,8 @@ class ActionType(Enum):
     DEFEND_WITH = "defend_with"
     PASS = "pass"
     ARSENAL = "arsenal"
+    DISCARD = "discard"
+    BANISH = "banish"
 
 
 # Lookup tables for parsing the CSV "Types" field into the right enum category.

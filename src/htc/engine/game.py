@@ -371,6 +371,19 @@ class Game:
         old_hero_name = player.hero.name if player.hero else "unknown"
         player.hero = agent_card
 
+        # Register agent abilities BEFORE emitting BECOME_AGENT so that
+        # on-become triggers (e.g. Trap-Door) are in place to catch the event.
+        from htc.cards.abilities.agents import register_agent_abilities
+        register_agent_abilities(
+            agent_name=agent_card.name,
+            controller_index=player_index,
+            event_bus=self.events,
+            effect_engine=self.effect_engine,
+            state_getter=lambda: self.state,
+            ability_registry=self.ability_registry,
+            game=self,
+        )
+
         self.events.emit(GameEvent(
             event_type=EventType.BECOME_AGENT,
             source=agent_card,
@@ -382,6 +395,29 @@ class Game:
         log.info(
             f"  Player {player_index} becomes {agent_card.name} "
             f"(was {old_hero_name})"
+        )
+
+    def _return_to_brood(self, player_index: int) -> None:
+        """Revert a player from their Demi-Hero form to their original hero.
+
+        Called at the beginning of the end phase. Restores original_hero,
+        clears the saved reference, and deregisters agent-specific triggers.
+        """
+        player = self.state.players[player_index]
+        if player.original_hero is None:
+            return  # Not transformed — nothing to revert
+
+        old_name = player.hero.name if player.hero else "unknown"
+        player.hero = player.original_hero
+        player.original_hero = None
+
+        # Deregister agent-specific triggered effects
+        from htc.cards.abilities.agents import deregister_agent_triggers
+        deregister_agent_triggers(self.events, player_index)
+
+        log.info(
+            f"  Player {player_index} returns to the brood: "
+            f"{old_name} -> {player.hero.name}"
         )
 
     @staticmethod
@@ -1443,6 +1479,13 @@ class Game:
     def _run_end_phase(self) -> None:
         """End phase procedure (rules 4.4)."""
         tp = self.state.turn_player
+
+        # Start of end phase — triggers "return to the brood" for Demi-Heroes
+        self.events.emit(GameEvent(
+            event_type=EventType.START_OF_END_PHASE,
+            target_player=tp.index,
+        ))
+        self._process_pending_triggers()
 
         self.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,

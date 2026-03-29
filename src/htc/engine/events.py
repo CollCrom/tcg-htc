@@ -40,6 +40,7 @@ class EventType(Enum):
 
     # Turn structure
     START_OF_TURN = auto()
+    START_OF_END_PHASE = auto()  # fires before end-phase cleanup
     END_OF_TURN = auto()
     START_OF_ACTION_PHASE = auto()
 
