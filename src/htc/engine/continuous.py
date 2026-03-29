@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from typing import TYPE_CHECKING, Callable
 
-from htc.enums import Keyword, Zone
+from htc.enums import Keyword, SuperType, Zone
 
 if TYPE_CHECKING:
     from htc.cards.instance import CardInstance
@@ -111,6 +111,9 @@ class ContinuousEffect:
     keywords_to_add: frozenset[Keyword] = frozenset()
     keywords_to_remove: frozenset[Keyword] = frozenset()
 
+    # Supertype modification (stage 5)
+    supertypes_to_add: frozenset[SuperType] = frozenset()
+
     # Optional condition — effect only active when this returns True
     condition: Callable[[GameState], bool] | None = None
 
@@ -154,6 +157,30 @@ class StagingResolver:
             assert effect.modify_numeric is not None
             value = effect.modify_numeric(value)
         return value
+
+    def resolve_supertypes(
+        self,
+        effects: list[ContinuousEffect],
+        card: CardInstance,
+        state: GameState,
+        base_supertypes: frozenset[SuperType],
+    ) -> frozenset[SuperType]:
+        """Apply supertype grant effects in timestamp order."""
+        matching = [
+            e
+            for e in effects
+            if (
+                e.stage == ModStage.SUPERTYPES
+                and e.supertypes_to_add
+                and e.target_filter(card)
+            )
+        ]
+        matching.sort(key=lambda e: e.timestamp)
+
+        supertypes = set(base_supertypes)
+        for effect in matching:
+            supertypes |= effect.supertypes_to_add
+        return frozenset(supertypes)
 
     def resolve_keywords(
         self,
@@ -224,6 +251,28 @@ def make_defense_modifier(amount: int, controller_index: int, **kwargs) -> Conti
 def make_cost_modifier(amount: int, controller_index: int, **kwargs) -> ContinuousEffect:
     """Create a +N/-N cost modification effect."""
     return _make_numeric_modifier(amount, controller_index, NumericProperty.COST, **kwargs)
+
+
+def make_supertype_grant(
+    supertypes: frozenset[SuperType],
+    controller_index: int,
+    *,
+    source_instance_id: int | None = None,
+    duration: EffectDuration = EffectDuration.END_OF_TURN,
+    target_filter: Callable[[CardInstance], bool] | None = None,
+    condition: Callable[[GameState], bool] | None = None,
+) -> ContinuousEffect:
+    """Create an effect that grants supertypes to matching cards."""
+    return ContinuousEffect(
+        source_instance_id=source_instance_id,
+        controller_index=controller_index,
+        stage=ModStage.SUPERTYPES,
+        substage=ModSubstage.ADD_TO,
+        duration=duration,
+        target_filter=target_filter or (lambda _c: True),
+        supertypes_to_add=supertypes,
+        condition=condition,
+    )
 
 
 def make_keyword_grant(

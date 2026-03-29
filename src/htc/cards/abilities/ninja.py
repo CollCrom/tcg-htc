@@ -24,6 +24,7 @@ from htc.engine.continuous import (
     make_cost_modifier,
     make_keyword_grant,
     make_power_modifier,
+    make_supertype_grant,
 )
 from htc.engine.events import EventType, GameEvent, TriggeredEffect
 from htc.enums import (
@@ -49,7 +50,8 @@ def count_draconic_chain_links(ctx: AbilityContext) -> int:
     """Count the number of Draconic chain links the controller has on the combat chain.
 
     A chain link is "Draconic" if its active_attack has the Draconic supertype
-    and is owned by the controller.
+    (including supertypes granted by continuous effects) and is owned by the
+    controller.
     """
     chain = ctx.state.combat_chain
     controller = ctx.controller_index
@@ -57,14 +59,25 @@ def count_draconic_chain_links(ctx: AbilityContext) -> int:
     for link in chain.chain_links:
         if link.active_attack is None:
             continue
-        if (link.active_attack.owner_index == controller
-                and SuperType.DRACONIC in link.active_attack.definition.supertypes):
+        if link.active_attack.owner_index != controller:
+            continue
+        supertypes = ctx.effect_engine.get_modified_supertypes(
+            ctx.state, link.active_attack,
+        )
+        if SuperType.DRACONIC in supertypes:
             count += 1
     return count
 
 
-def _is_draconic(card) -> bool:
-    """Check if a card has the Draconic supertype."""
+def _is_draconic(card, ctx: AbilityContext | None = None) -> bool:
+    """Check if a card has the Draconic supertype (including granted supertypes).
+
+    When *ctx* is provided, uses the effect engine for modified supertypes.
+    Otherwise falls back to the card definition (for backward compatibility).
+    """
+    if ctx is not None:
+        supertypes = ctx.effect_engine.get_modified_supertypes(ctx.state, card)
+        return SuperType.DRACONIC in supertypes
     return SuperType.DRACONIC in card.definition.supertypes
 
 
@@ -1059,6 +1072,52 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Enflame the Firebrand (Draconic Ninja Attack Action)
+# ---------------------------------------------------------------------------
+# "When this attacks, if you control 2 or more Draconic chain links,
+#  this gets go again, 3 or more, your attacks are Draconic this combat
+#  chain, 4 or more, this gets +2{p}."
+#
+# NOTE: Fabrary data incorrectly lists Go Again as inherent; stripped via
+# _KEYWORD_OVERRIDES_REMOVE in card_db.py. Go Again is only granted
+# conditionally at 2+ Draconic chain links.
+# ---------------------------------------------------------------------------
+
+
+def _enflame_the_firebrand_on_attack(ctx: AbilityContext) -> None:
+    """Enflame the Firebrand on_attack: tiered bonuses based on Draconic chain links."""
+    link = ctx.chain_link
+    if link is None or link.active_attack is None:
+        return
+
+    attack = link.active_attack
+    draconic_count = count_draconic_chain_links(ctx)
+    log.info(f"  Enflame the Firebrand: {draconic_count} Draconic chain link(s)")
+
+    if draconic_count >= 2:
+        # This gets go again (conditional — not an inherent keyword)
+        grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Enflame the Firebrand (2+)")
+
+    if draconic_count >= 3:
+        # Your attacks are Draconic this combat chain — grant Draconic supertype
+        # to all future attacks by this controller for the rest of combat
+        controller = ctx.controller_index
+        effect = make_supertype_grant(
+            frozenset({SuperType.DRACONIC}),
+            controller,
+            source_instance_id=ctx.source_card.instance_id,
+            duration=EffectDuration.END_OF_COMBAT,
+            target_filter=lambda c, _ctrl=controller: c.owner_index == _ctrl,
+        )
+        ctx.effect_engine.add_continuous_effect(ctx.state, effect)
+        log.info("  Enflame the Firebrand (3+): your attacks are Draconic this combat chain")
+
+    if draconic_count >= 4:
+        # This gets +2 power
+        grant_power_bonus(ctx, attack, 2, "Enflame the Firebrand (4+)")
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -1105,6 +1164,9 @@ def register_ninja_abilities(registry: AbilityRegistry) -> None:
     )
     registry.register(
         "on_attack", "Spreading Flames", _spreading_flames_on_attack
+    )
+    registry.register(
+        "on_attack", "Enflame the Firebrand", _enflame_the_firebrand_on_attack
     )
 
     # Attack actions — on_hit

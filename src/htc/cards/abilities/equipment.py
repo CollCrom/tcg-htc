@@ -552,6 +552,42 @@ class _BlacktekGoAgainOnHit(TriggeredEffect):
 # activate. For now, this is noted as not yet activatable.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Stalker's Steps (Legs, Assassin)
+# ---------------------------------------------------------------------------
+# "Attack Reaction - Destroy this: Target attack with stealth gets go again.
+#  Arcane Barrier 1"
+#
+# Implemented as attack_reaction_effect. Destroys the equipment and grants
+# Go Again to the current attack if it has the Stealth keyword.
+# Arcane Barrier 1 is handled by the keyword system.
+# ---------------------------------------------------------------------------
+
+
+def _stalkers_steps(ctx: AbilityContext) -> None:
+    """Stalker's Steps: destroy self, grant go again to stealth attack."""
+    link = ctx.chain_link
+    if link is None or link.active_attack is None:
+        return
+
+    attack = link.active_attack
+    # Must have Stealth keyword (check via effect engine for modified keywords)
+    attack_keywords = ctx.effect_engine.get_modified_keywords(ctx.state, attack)
+    if Keyword.STEALTH not in attack_keywords:
+        log.info(f"  Stalker's Steps: no effect -- {attack.name} does not have Stealth")
+        return
+
+    # Destroy Stalker's Steps
+    player = ctx.state.players[ctx.controller_index]
+    from htc.enums import EquipmentSlot
+    legs_eq = player.equipment.get(EquipmentSlot.LEGS)
+    if legs_eq is not None and legs_eq.name == "Stalker's Steps":
+        _destroy_equipment(ctx.state, legs_eq)
+
+    # Grant Go Again
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Stalker's Steps")
+
+
 # Dragonscaler Flight Path is deferred — requires instant activation
 # during priority windows, which the engine doesn't support for equipment yet.
 
@@ -730,6 +766,7 @@ def register_equipment_abilities(registry: AbilityRegistry) -> None:
     registry.register("attack_reaction_effect", "Flick Knives", _flick_knives)
     registry.register("attack_reaction_effect", "Tide Flippers", _tide_flippers)
     registry.register("attack_reaction_effect", "Blacktek Whisperers", _blacktek_whisperers)
+    registry.register("attack_reaction_effect", "Stalker's Steps", _stalkers_steps)
 
     # Weapon on-hit (proxy names include " (attack)" suffix)
     registry.register("on_hit", "Hunter's Klaive (attack)", _hunters_klaive_on_hit)

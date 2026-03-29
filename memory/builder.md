@@ -116,3 +116,10 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Pain in the Backside player choice** — When multiple daggers are available, player is prompted to choose which dagger deals damage via Decision/Response pattern (DecisionType.CHOOSE_TARGET).
 - **Pitch-to-bottom order** — Player now chooses the order pitched cards go to bottom of deck via `_choose_pitch_order()` using Decision/Response pattern (DecisionType.ORDER_PITCH_TO_DECK). No more random shuffle.
 - **351 tests passing** after all changes.
+
+## Enflame & Stalker's Steps (2026-03-28)
+
+- **Supertype granting** — Added `supertypes_to_add` to `ContinuousEffect`, `resolve_supertypes` to `StagingResolver`, `get_modified_supertypes` to `EffectEngine`, and `make_supertype_grant` factory. This enables dynamic supertype modification (e.g. "your attacks are Draconic"). Currently only `count_draconic_chain_links` and `_is_draconic` in ninja.py use effect engine for supertypes. Other Draconic checks across the codebase still read `card.definition.supertypes` directly — migration should happen when those cards matter.
+- **Enflame the Firebrand** — `on_attack` handler with tiered bonuses at 2+/3+/4+ Draconic chain links. Registered in ninja.py. Note: the card has inherent Go Again keyword per Fabrary data AND the text says "this gets go again" at 2+ Draconic links. Both are implemented — the ability grant is redundant but matches card text.
+- **Stalker's Steps** — `attack_reaction_effect` handler in equipment.py. Destroys self, grants Go Again to stealth attack. Validates Stealth keyword via effect engine. Arcane Barrier 1 handled by keyword system.
+- **368 tests passing** after all changes.
