@@ -48,6 +48,12 @@ class PlayerState:
     # Marked condition (rules 9.3): hero is marked until hit by opponent's source
     is_marked: bool = False
 
+    # Banished cards that are currently playable.
+    # Each entry is (instance_id, expiry) where expiry is:
+    #   "end_of_turn" — playable until end of this turn
+    #   "start_of_next_turn" — playable until start of controller's next turn
+    playable_from_banish: list[tuple[int, str]] = field(default_factory=list)
+
     def get_zone_cards(self, zone: Zone) -> list[CardInstance]:
         """Get the list of cards in a given zone for this player."""
         match zone:

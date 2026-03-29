@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from htc.cards.instance import CardInstance
 from htc.engine.actions import ActionOption, Decision
 from htc.engine.cost import can_pay_action_cost, can_pay_resource_cost
-from htc.enums import ActionType, CardType, DecisionType, EquipmentSlot
+from htc.enums import ActionType, CardType, DecisionType, EquipmentSlot, Zone
 
 if TYPE_CHECKING:
     from htc.engine.abilities import AbilityRegistry
@@ -50,6 +50,13 @@ class ActionBuilder:
                         card.instance_id, card.name, card.definition.color_label,
                     ))
 
+            # Playable-from-banish cards (e.g. Trap-Door, Under the Trap-Door)
+            for card in self._get_playable_from_banish(state, player_index):
+                if self.can_play_card(state, player_index, card):
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label,
+                    ))
+
             # Weapon activations (1.4.3): untapped weapons
             for weapon in player.weapons:
                 if self._can_activate_weapon(state, player_index, weapon):
@@ -81,6 +88,25 @@ class ActionBuilder:
                     options.append(ActionOption.play_card(
                         card.instance_id, card.name, card.definition.color_label, suffix="instant",
                     ))
+        # Instant-discard cards (e.g. Under the Trap-Door): cards in hand with
+        # a registered instant_discard_effect can be discarded to activate.
+        # These coexist with normal play options (a card can be both played
+        # as an attack OR discarded for its instant ability).
+        if self.ability_registry:
+            for card in player.hand:
+                handler = self.ability_registry.lookup("instant_discard_effect", card.name)
+                if handler is not None:
+                    # Check no duplicate activate for this card
+                    if not any(
+                        o.card_instance_id == card.instance_id
+                        and o.action_type == ActionType.ACTIVATE_ABILITY
+                        for o in options
+                    ):
+                        options.append(ActionOption.activate(
+                            card.instance_id,
+                            f"Discard {card.name} (instant ability)",
+                        ))
+
         # Equipment instants can be activated whenever you have priority
         if self.ability_registry:
             self._add_equipment_instant_options(options, state, player_index)
@@ -139,6 +165,16 @@ class ActionBuilder:
                         suffix="defense reaction",
                     ))
 
+        # Defense reactions from banish (e.g. traps banished by Trap-Door)
+        if priority_player == defender_index:
+            for card in self._get_playable_from_banish(state, priority_player):
+                if card.definition.is_defense_reaction:
+                    if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
+                        options.append(ActionOption.play_card(
+                            card.instance_id, card.name, card.definition.color_label,
+                            suffix="defense reaction",
+                        ))
+
         # Equipment attack reactions: only attacker can use (e.g. Tide Flippers, Stalker's Steps)
         if priority_player == attacker_index and self.ability_registry:
             self._add_equipment_reaction_options(options, state, priority_player)
@@ -166,6 +202,13 @@ class ActionBuilder:
         if is_turn_player:
             # Can play attack cards to continue the chain (7.6.3a)
             for card in player.hand + player.arsenal:
+                if card.definition.is_attack and self.can_play_card(state, player_index, card):
+                    options.append(ActionOption.play_card(
+                        card.instance_id, card.name, card.definition.color_label,
+                    ))
+
+            # Playable-from-banish attack cards
+            for card in self._get_playable_from_banish(state, player_index):
                 if card.definition.is_attack and self.can_play_card(state, player_index, card):
                     options.append(ActionOption.play_card(
                         card.instance_id, card.name, card.definition.color_label,
@@ -229,6 +272,8 @@ class ActionBuilder:
             return False
         # Must be able to pay resource cost
         cost = weapon.definition.cost if weapon.definition.cost is not None else weapon.definition.functional_text.count("{r}")
+        # Orb-Weaver reduces Graphene Chelicera activation cost by 1
+        cost = ActionBuilder._apply_weapon_cost_reduction(state, player_index, weapon, cost)
         if cost > 0:
             available = state.resource_points[player_index]
             player = state.players[player_index]
@@ -238,6 +283,23 @@ class ActionBuilder:
             if available < cost:
                 return False
         return True
+
+    @staticmethod
+    def _apply_weapon_cost_reduction(
+        state: GameState, player_index: int, weapon: CardInstance, cost: int,
+    ) -> int:
+        """Apply hero-based weapon activation cost reductions.
+
+        Orb-Weaver: Graphene Chelicera costs {r} less to activate.
+        """
+        player = state.players[player_index]
+        if (
+            player.hero
+            and player.hero.name == "Arakni, Orb-Weaver"
+            and weapon.name == "Graphene Chelicera"
+        ):
+            cost = max(0, cost - 1)
+        return cost
 
     # --- Equipment ability helpers ---
 
@@ -347,6 +409,13 @@ class ActionBuilder:
             if SuperType.DRACONIC in self.effect_engine.get_modified_supertypes(state, atk):
                 count += 1
         return count
+
+    @staticmethod
+    def _get_playable_from_banish(state: GameState, player_index: int) -> list[CardInstance]:
+        """Get banished cards that are currently marked as playable for this player."""
+        player = state.players[player_index]
+        playable_ids = {iid for iid, _ in player.playable_from_banish}
+        return [c for c in player.banished if c.instance_id in playable_ids]
 
     @staticmethod
     def _can_afford_resource_cost(state: GameState, player_index: int, cost: int) -> bool:

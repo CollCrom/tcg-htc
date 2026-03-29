@@ -32,6 +32,8 @@ TIMINGS = (
     "attack_reaction_effect",
     "defense_reaction_effect",
     "equipment_instant_effect",
+    "on_become",
+    "instant_discard_effect",
 )
 
 # Type alias for ability handler functions
@@ -63,6 +65,34 @@ class AbilityContext:
         """
         return self.extra_data.get("target_was_marked", False)
 
+    def banish_card(
+        self, card: "CardInstance", player_index: int, *, face_down: bool = False,
+    ) -> None:
+        """Move a card to the banish zone and emit a BANISH event.
+
+        This is the preferred way for ability handlers to banish cards,
+        instead of manually manipulating zone/lists.
+        """
+        from htc.engine.events import EventType, GameEvent
+        from htc.enums import Zone as _Zone
+
+        player = self.state.players[player_index]
+        player.remove_card(card)
+        card.zone = _Zone.BANISHED
+        card.face_up = not face_down
+        player.banished.append(card)
+        self.events.emit(GameEvent(
+            event_type=EventType.BANISH,
+            source=None,
+            target_player=player_index,
+            card=card,
+            data={"face_down": face_down},
+        ))
+        log.info(
+            f"  Banish: {card.name} ({'face-down' if face_down else 'face-up'}) "
+            f"for Player {player_index}"
+        )
+
 
 class AbilityRegistry:
     """Registry mapping (timing, card_name) to ability handler functions."""
@@ -74,6 +104,8 @@ class AbilityRegistry:
         self.attack_reaction_effect: dict[str, AbilityHandler] = {}
         self.defense_reaction_effect: dict[str, AbilityHandler] = {}
         self.equipment_instant_effect: dict[str, AbilityHandler] = {}
+        self.on_become: dict[str, AbilityHandler] = {}
+        self.instant_discard_effect: dict[str, AbilityHandler] = {}
 
     def register(self, timing: str, card_name: str, handler: AbilityHandler) -> None:
         """Register an ability handler for a card at a specific timing."""

@@ -270,13 +270,13 @@ def test_arcane_weapon_activation_cost_from_text():
     staff = _make_arcane_weapon(
         functional_text="**Once per Turn Action** - {r}{r}{r}: Deal 2 arcane damage.",
     )
-    assert Game._weapon_activation_cost(staff) == 3
+    assert Game._base_weapon_activation_cost(staff) == 3
 
 
 def test_arcane_weapon_activation_cost_from_field():
     """If cost field is set, use it instead of text parsing."""
     staff = _make_arcane_weapon(cost=5, functional_text="irrelevant")
-    assert Game._weapon_activation_cost(staff) == 5
+    assert Game._base_weapon_activation_cost(staff) == 5
 
 
 # ---------------------------------------------------------------------------
