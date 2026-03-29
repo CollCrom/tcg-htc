@@ -812,8 +812,15 @@ class Game:
         """
         player = self.state.players[player_index]
 
-        # Tap the weapon (enforces once-per-turn)
-        weapon.is_tapped = True
+        # Tap the weapon (enforces once-per-turn), or consume a bonus attack
+        if weapon.is_tapped:
+            # Using a bonus attack — consume one charge
+            bonus = player.turn_counters.bonus_weapon_attacks
+            bonus[weapon.instance_id] = bonus.get(weapon.instance_id, 0) - 1
+            if bonus[weapon.instance_id] <= 0:
+                del bonus[weapon.instance_id]
+        else:
+            weapon.is_tapped = True
 
         # Pay action point cost
         self.state.action_points[player_index] -= 1

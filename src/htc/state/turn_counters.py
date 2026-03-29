@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -26,6 +26,10 @@ class TurnCounters:
     num_weapon_attacks: int = 0
     has_boosted: bool = False
     has_attacked: bool = False
+    # Bonus weapon attacks granted by effects (e.g. Dragonscaler Flight Path).
+    # Keyed by weapon instance_id; each entry is the number of additional
+    # activations allowed beyond the normal once-per-turn limit.
+    bonus_weapon_attacks: dict[int, int] = field(default_factory=dict)
 
     def reset(self) -> None:
         self.__init__()  # type: ignore[misc]

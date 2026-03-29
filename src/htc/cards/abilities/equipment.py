@@ -12,7 +12,7 @@ Equipment abilities implemented:
 - Fyendal's Spring Tunic (Chest) — energy counter at start of turn, spend 3 for resource
 - Tide Flippers (Legs) — attack reaction: destroy to grant go again to <=2 power attack
 - Blacktek Whisperers (Legs) — attack reaction: destroy to grant on-hit go again
-- Dragonscaler Flight Path (Legs) — instant: cost 3 minus Draconic links, destroy to grant go again + weapon untap
+- Dragonscaler Flight Path (Legs) — instant: cost 3 minus Draconic links, destroy to grant go again + bonus weapon attack
 - Mask of Deceit (Head) — on defend: become Agent of Chaos (random or choice if marked)
 
 Weapon abilities implemented:
@@ -596,7 +596,7 @@ def _dragonscaler_flight_path(ctx: AbilityContext) -> None:
     1. Validates the active attack is Draconic
     2. Destroys the equipment
     3. Grants Go Again to the active attack
-    4. If it's a weapon attack (proxy), untaps the weapon for additional attack
+    4. If it's a weapon attack (proxy), grants a bonus weapon activation this turn
     """
     link = ctx.chain_link
     if link is None or link.active_attack is None:
@@ -619,13 +619,14 @@ def _dragonscaler_flight_path(ctx: AbilityContext) -> None:
     # Grant Go Again to the active Draconic attack
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Dragonscaler Flight Path")
 
-    # If it's a weapon attack (proxy), untap the source weapon for additional attack
+    # If it's a weapon attack (proxy), grant one bonus weapon activation this turn
     if attack.is_proxy and link.attack_source is not None:
         weapon = link.attack_source
-        weapon.is_tapped = False
+        bonus = ctx.state.players[ctx.controller_index].turn_counters.bonus_weapon_attacks
+        bonus[weapon.instance_id] = bonus.get(weapon.instance_id, 0) + 1
         log.info(
-            f"  Dragonscaler Flight Path: Untapped {weapon.name} "
-            f"for additional attack this turn"
+            f"  Dragonscaler Flight Path: Granted bonus attack with {weapon.name} "
+            f"this turn"
         )
 
 

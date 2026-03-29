@@ -4,7 +4,7 @@ Verifies:
 1. Equipment attack reactions (Tide Flippers, Blacktek Whisperers, Stalker's Steps)
    are now offered as options during the reaction step.
 2. Dragonscaler Flight Path equipment instant activation: cost reduction,
-   Go Again grant, weapon untap, precondition checks.
+   Go Again grant, bonus weapon attack, precondition checks.
 3. Keyword parsing: _is_keyword_inherent correctly distinguishes inherent
    vs conditional keywords.
 """
@@ -390,8 +390,8 @@ class TestDragonscalerFlightPath:
         # Should be in graveyard
         assert dragonscaler in game.state.players[0].graveyard
 
-    def test_weapon_untap_for_additional_attack(self):
-        """If the active attack is a weapon proxy, untap the source weapon."""
+    def test_bonus_weapon_attack_for_proxy(self):
+        """If the active attack is a weapon proxy, grant a bonus weapon activation."""
         game = make_game_shell()
         dragonscaler = _make_dragonscaler()
         _equip(game, dragonscaler)
@@ -409,14 +409,17 @@ class TestDragonscalerFlightPath:
         ctx = _build_ctx(game, dragonscaler, controller_index=0, chain_link=link)
         _dragonscaler_flight_path(ctx)
 
-        # Weapon should be untapped
-        assert not weapon.is_tapped
+        # Weapon stays tapped — bonus attack counter is used instead
+        assert weapon.is_tapped
+        # Bonus weapon attack counter should be set
+        bonus = game.state.players[0].turn_counters.bonus_weapon_attacks
+        assert bonus.get(weapon.instance_id, 0) == 1
         # Attack should have Go Again
         attack_keywords = game.effect_engine.get_modified_keywords(game.state, proxy)
         assert Keyword.GO_AGAIN in attack_keywords
 
-    def test_no_untap_for_card_attack(self):
-        """Non-weapon attacks should get Go Again but no weapon untap."""
+    def test_no_bonus_attack_for_card_attack(self):
+        """Non-weapon attacks should get Go Again but no bonus weapon attack."""
         game = make_game_shell()
         dragonscaler = _make_dragonscaler()
         _equip(game, dragonscaler)

@@ -221,9 +221,14 @@ class ActionBuilder:
 
     @staticmethod
     def _can_activate_weapon(state: GameState, player_index: int, weapon: CardInstance) -> bool:
-        """Check if a weapon can be activated (untapped, has AP, can pay cost)."""
+        """Check if a weapon can be activated (untapped or has bonus attacks, has AP, can pay cost)."""
         if weapon.is_tapped:
-            return False
+            # Check for bonus weapon attacks (e.g. from Dragonscaler Flight Path)
+            bonus = state.players[player_index].turn_counters.bonus_weapon_attacks.get(
+                weapon.instance_id, 0
+            )
+            if bonus <= 0:
+                return False
         # Weapons need an action point to activate
         if state.action_points[player_index] < 1:
             return False

@@ -44,6 +44,32 @@ def test_cannot_activate_tapped_weapon():
     assert game._can_activate_weapon(0, weapon) is False
 
 
+def test_can_activate_tapped_weapon_with_bonus_attack():
+    """A tapped weapon with bonus attacks remaining should be activatable."""
+    game = make_game_shell(action_points={0: 1, 1: 0})
+    weapon = _make_weapon()
+    weapon.is_tapped = True
+    game.state.players[0].weapons.append(weapon)
+    game.state.players[0].turn_counters.bonus_weapon_attacks[weapon.instance_id] = 1
+    assert game._can_activate_weapon(0, weapon) is True
+
+
+def test_bonus_attack_consumed_on_activation():
+    """Activating a tapped weapon with a bonus attack should consume the bonus."""
+    game = make_game_shell(action_points={0: 1, 1: 0})
+    weapon = _make_weapon()
+    weapon.is_tapped = True
+    game.state.players[0].weapons.append(weapon)
+    game.state.players[0].turn_counters.bonus_weapon_attacks[weapon.instance_id] = 1
+    game._activate_weapon(0, weapon)
+
+    # Bonus should be consumed
+    bonus = game.state.players[0].turn_counters.bonus_weapon_attacks
+    assert weapon.instance_id not in bonus
+    # Weapon stays tapped
+    assert weapon.is_tapped is True
+
+
 def test_cannot_activate_without_action_point():
     game = make_game_shell(action_points={0: 1, 1: 0})
     game.state.action_points[0] = 0
