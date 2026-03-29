@@ -107,7 +107,7 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **START_OF_TURN event** — uses `event.target_player` (not `event.data["turn_player"]`). Equipment triggers that reset per-turn must check `event.target_player`.
 - **Equipment slot conflict** — Cindra has 2 chest equipment (Blood Splattered Vest, Spring Tunic) and 2 legs equipment (Dragonscaler Flight Path, Tide Flippers). Only the first loaded gets the slot. The second is silently dropped.
 - **Previously missing cards** — Enflame the Firebrand and Stalker's Steps were missing from old FaB Cube CSV. Now present in Fabrary dataset (`data/cards.tsv`).
-- **Deferred equipment** — Dragonscaler Flight Path (needs instant activation in priority windows), Mask of Deceit (needs Agent of Chaos mechanic).
+- **Deferred equipment** — Mask of Deceit (needs Agent of Chaos mechanic). Dragonscaler Flight Path is now implemented.
 - **Integration tests** — `tests/integration/test_full_game.py` has markdown decklist parser, full game smoke tests (multiple seeds, both player orders), hero/equipment trigger registration checks, ability registry checks. 23 tests, 334 total.
 
 ## Pre-Phase 6 Cleanup (2026-03-28)
@@ -120,6 +120,31 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 ## Enflame & Stalker's Steps (2026-03-28)
 
 - **Supertype granting** — Added `supertypes_to_add` to `ContinuousEffect`, `resolve_supertypes` to `StagingResolver`, `get_modified_supertypes` to `EffectEngine`, and `make_supertype_grant` factory. This enables dynamic supertype modification (e.g. "your attacks are Draconic"). Currently only `count_draconic_chain_links` and `_is_draconic` in ninja.py use effect engine for supertypes. Other Draconic checks across the codebase still read `card.definition.supertypes` directly — migration should happen when those cards matter.
-- **Enflame the Firebrand** — `on_attack` handler with tiered bonuses at 2+/3+/4+ Draconic chain links. Registered in ninja.py. Note: the card has inherent Go Again keyword per Fabrary data AND the text says "this gets go again" at 2+ Draconic links. Both are implemented — the ability grant is redundant but matches card text.
+- **Enflame the Firebrand** — `on_attack` handler with tiered bonuses at 2+/3+/4+ Draconic chain links. Registered in ninja.py. Go Again is correctly stripped from inherent keywords by `_is_keyword_inherent()` heuristic.
 - **Stalker's Steps** — `attack_reaction_effect` handler in equipment.py. Destroys self, grants Go Again to stealth attack. Validates Stealth keyword via effect engine. Arcane Barrier 1 handled by keyword system.
 - **368 tests passing** after all changes.
+
+## Equipment Activation Infrastructure (2026-03-28)
+
+- **Keyword parsing fix** — Replaced `_KEYWORD_OVERRIDES_REMOVE` hack in card_db.py with `_is_keyword_inherent()` heuristic. Parses functional_text to distinguish inherent (standalone bold) vs conditional (preceded by "gets"/"gains"/"has"/"loses") keywords. Case-insensitive matching. "with" is NOT conditional.
+- **`equipment_instant_effect` timing** — New timing in AbilityRegistry for equipment instants that can be activated during any priority window.
+- **ActionBuilder equipment integration** — `build_reaction_decision()` now offers equipment attack reactions (Tide Flippers, Stalker's Steps, etc.) and equipment instants. `add_instant_options()` also offers equipment instants. Dynamic cost checking via `_get_equipment_instant_cost()` and precondition checking via `_can_use_equipment_instant()`.
+- **Game._activate_equipment()** — New method dispatches equipment activations. Checks for equipment_instant_effect first, then attack_reaction_effect. Pays resource cost for equipment instants before calling handler.
+- **Game._is_equipment_activation()** — Checks if an activate action targets equipment (not a weapon) by looking up the card in player equipment slots.
+- **Dragonscaler Flight Path** — `equipment_instant_effect` handler in equipment.py. Cost = max(0, 3 - Draconic chain links). Validates active Draconic attack owned by controller. Destroys self, grants Go Again via continuous effect. Untaps source weapon if attack is a weapon proxy.
+- **ActionBuilder gets ability_registry** — Constructor now accepts AbilityRegistry to look up equipment abilities when building options. Updated in both Game.__init__ and test conftest.py make_game_shell.
+- **399 tests passing** — 30 new tests for equipment activation, Dragonscaler, and keyword parsing.
+
+## Mask of Deceit + Demi-Hero Infrastructure (2026-03-28)
+
+- **Demi-Hero / Agent of Chaos** — 6 Agent of Chaos Demi-Heroes in the card database: Arakni Black Widow, Funnel Web, Orb-Weaver, Redback, Tarantula, Trap-Door. All have types "Chaos, Assassin, Demi-Hero" and health `*` (keep current life).
+- **DeckList.demi_heroes** — New `list[str]` field. Loader auto-includes all 6 for Arakni, Marionette. Explicit `Demi-Heroes:` line uses semicolons (card names contain commas).
+- **PlayerState.demi_heroes** — `list[CardInstance]` of available Demi-Hero forms.
+- **PlayerState.original_hero** — `CardInstance | None`, saved on first transformation only.
+- **Game._become_agent_of_chaos()** — Saves original_hero, sets new hero, emits BECOME_AGENT event. Life total unchanged.
+- **MaskOfDeceitTrigger** — TriggeredEffect on DEFEND_DECLARED. Checks `event.source.instance_id` matches Mask of Deceit. If attacker marked: Decision(CHOOSE_AGENT) for player choice. If not marked: `state.rng.choice()` random selection.
+- **register_equipment_triggers** — Now accepts `game=` kwarg for triggers needing engine methods (_become_agent_of_chaos, _ask). Game._register_equipment_triggers passes `game=self`.
+- **Blade Break** — Already handled by keyword_engine.apply_equipment_degradation(). Mask of Deceit has BLADE_BREAK keyword, gets destroyed after defending.
+- **BECOME_AGENT EventType** — New event for hero transformation.
+- **CHOOSE_AGENT DecisionType** — New decision for marked-attacker choice.
+- **417 tests passing** — 18 new tests for Mask of Deceit, Demi-Hero loading, hero transformation, Blade Break.

@@ -12,8 +12,8 @@ Equipment abilities implemented:
 - Fyendal's Spring Tunic (Chest) — energy counter at start of turn, spend 3 for resource
 - Tide Flippers (Legs) — attack reaction: destroy to grant go again to <=2 power attack
 - Blacktek Whisperers (Legs) — attack reaction: destroy to grant on-hit go again
-- Dragonscaler Flight Path (Legs) — instant: destroy to grant go again to Draconic attack
-- Mask of Deceit (Head) — deferred (Agent of Chaos mechanic not yet in engine)
+- Dragonscaler Flight Path (Legs) — instant: cost 3 minus Draconic links, destroy to grant go again + weapon untap
+- Mask of Deceit (Head) — on defend: become Agent of Chaos (random or choice if marked)
 
 Weapon abilities implemented:
 - Kunai of Retribution — destroy when combat chain closes (registered on activation)
@@ -30,7 +30,7 @@ from htc.cards.abilities._helpers import draw_card, grant_keyword, grant_power_b
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.continuous import EffectDuration, make_keyword_grant
 from htc.engine.events import EventType, GameEvent, TriggeredEffect
-from htc.enums import CardType, Keyword, SubType, SuperType, Zone
+from htc.enums import ActionType, CardType, Keyword, SubType, SuperType, Zone
 
 from typing import TYPE_CHECKING
 
@@ -588,21 +588,150 @@ def _stalkers_steps(ctx: AbilityContext) -> None:
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Stalker's Steps")
 
 
-# Dragonscaler Flight Path is deferred — requires instant activation
-# during priority windows, which the engine doesn't support for equipment yet.
+def _dragonscaler_flight_path(ctx: AbilityContext) -> None:
+    """Dragonscaler Flight Path instant: grant go again to Draconic attack.
+
+    Cost (3 - Draconic chain links) is paid by the game engine before this
+    handler is called.  This handler:
+    1. Validates the active attack is Draconic
+    2. Destroys the equipment
+    3. Grants Go Again to the active attack
+    4. If it's a weapon attack (proxy), untaps the weapon for additional attack
+    """
+    link = ctx.chain_link
+    if link is None or link.active_attack is None:
+        return
+
+    attack = link.active_attack
+    # Must be a Draconic attack — check via effect engine for modified supertypes
+    supertypes = ctx.effect_engine.get_modified_supertypes(ctx.state, attack)
+    if SuperType.DRACONIC not in supertypes:
+        log.info(f"  Dragonscaler Flight Path: no effect — {attack.name} is not Draconic")
+        return
+
+    # Must be our attack
+    if attack.owner_index != ctx.controller_index:
+        return
+
+    # Destroy Dragonscaler Flight Path
+    _destroy_equipment(ctx.state, ctx.source_card)
+
+    # Grant Go Again to the active Draconic attack
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Dragonscaler Flight Path")
+
+    # If it's a weapon attack (proxy), untap the source weapon for additional attack
+    if attack.is_proxy and link.attack_source is not None:
+        weapon = link.attack_source
+        weapon.is_tapped = False
+        log.info(
+            f"  Dragonscaler Flight Path: Untapped {weapon.name} "
+            f"for additional attack this turn"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Mask of Deceit (Head, Assassin)
 # ---------------------------------------------------------------------------
 # "Arakni Specialization. When this defends, become a random Agent of Chaos.
-#  If the attacking hero is marked, instead choose the Agent of Chaos."
+#  If the attacking hero is marked, instead choose the Agent of Chaos.
+#  Blade Break"
 #
-# Deferred: Agent of Chaos mechanic is not in the engine. The defense
-# value (2) still works for blocking.
+# Implemented as a TriggeredEffect on DEFEND_DECLARED. When Mask of Deceit
+# is the defending card, the controller becomes an Agent of Chaos. If the
+# attacking hero is marked, the player chooses which form; otherwise random.
+# Blade Break is handled by the keyword engine (destroyed after defending).
 # ---------------------------------------------------------------------------
 
-# Mask of Deceit is deferred — requires Agent of Chaos mechanic.
+
+@dataclass
+class MaskOfDeceitTrigger(TriggeredEffect):
+    """Mask of Deceit — become Agent of Chaos when this defends."""
+
+    controller_index: int = 0
+    one_shot: bool = False  # persists all game
+    _equipment_instance_id: int = 0
+    _state_getter: object = None
+    _game: object = None  # Game reference for _become_agent_of_chaos and _ask
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.DEFEND_DECLARED:
+            return False
+        if event.source is None:
+            return False
+        # Must be this specific Mask of Deceit defending
+        return event.source.instance_id == self._equipment_instance_id
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        """Become an Agent of Chaos — random or player choice."""
+        state = self._get_state()
+        if state is None or self._game is None:
+            return None
+
+        player = state.players[self.controller_index]
+        if not player.demi_heroes:
+            log.info("  Mask of Deceit: No Demi-Heroes available")
+            return None
+
+        chain_link = triggering_event.data.get("chain_link")
+        if chain_link is None:
+            return None
+
+        # Determine attacking player
+        attacker_index = 1 - self.controller_index
+        attacker = state.players[attacker_index]
+
+        if attacker.is_marked:
+            # Marked: player chooses which Agent of Chaos
+            from htc.engine.actions import ActionOption, Decision
+            from htc.enums import DecisionType
+
+            options = []
+            for dh in player.demi_heroes:
+                options.append(ActionOption(
+                    action_id=f"agent_{dh.instance_id}",
+                    description=f"Become {dh.name}",
+                    action_type=ActionType.ACTIVATE_ABILITY,
+                    card_instance_id=dh.instance_id,
+                ))
+
+            decision = Decision(
+                player_index=self.controller_index,
+                decision_type=DecisionType.CHOOSE_AGENT,
+                prompt="Choose which Agent of Chaos to become (attacker is marked)",
+                options=options,
+                min_selections=1,
+                max_selections=1,
+            )
+            response = self._game._ask(decision)
+
+            chosen = None
+            if response.first:
+                chosen_id = int(response.first.replace("agent_", ""))
+                for dh in player.demi_heroes:
+                    if dh.instance_id == chosen_id:
+                        chosen = dh
+                        break
+
+            if chosen is None:
+                # Fallback to first if response was invalid
+                chosen = player.demi_heroes[0]
+
+            log.info(f"  Mask of Deceit: Player {self.controller_index} chooses {chosen.name}")
+        else:
+            # Not marked: random selection
+            chosen = state.rng.choice(player.demi_heroes)
+            log.info(
+                f"  Mask of Deceit: Player {self.controller_index} randomly becomes "
+                f"{chosen.name}"
+            )
+
+        self._game._become_agent_of_chaos(self.controller_index, chosen)
+        return None
+
+    def _get_state(self):
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -688,12 +817,18 @@ def register_equipment_triggers(
     state_getter: object,
     player_index: int,
     player_state,
+    *,
+    game: object = None,
 ) -> None:
     """Register equipment triggered effects for a player.
 
     Called during game setup after equipment is loaded. Checks which
     equipment the player has equipped and registers the appropriate
     triggered effects.
+
+    *game* is an optional Game reference needed by triggers that call
+    engine methods (e.g. Mask of Deceit uses ``_become_agent_of_chaos``
+    and ``_ask``).
     """
     from htc.enums import EquipmentSlot
 
@@ -728,6 +863,17 @@ def register_equipment_triggers(
         )
         event_bus.register_trigger(trigger)
         log.info(f"  Registered Fyendal's Spring Tunic trigger for Player {player_index}")
+
+    # Mask of Deceit
+    if head_eq is not None and head_eq.name == "Mask of Deceit":
+        trigger = MaskOfDeceitTrigger(
+            controller_index=player_index,
+            _equipment_instance_id=head_eq.instance_id,
+            _state_getter=state_getter,
+            _game=game,
+        )
+        event_bus.register_trigger(trigger)
+        log.info(f"  Registered Mask of Deceit trigger for Player {player_index}")
 
 
 def register_weapon_triggers(
@@ -767,6 +913,9 @@ def register_equipment_abilities(registry: AbilityRegistry) -> None:
     registry.register("attack_reaction_effect", "Tide Flippers", _tide_flippers)
     registry.register("attack_reaction_effect", "Blacktek Whisperers", _blacktek_whisperers)
     registry.register("attack_reaction_effect", "Stalker's Steps", _stalkers_steps)
+
+    # Equipment instants
+    registry.register("equipment_instant_effect", "Dragonscaler Flight Path", _dragonscaler_flight_path)
 
     # Weapon on-hit (proxy names include " (attack)" suffix)
     registry.register("on_hit", "Hunter's Klaive (attack)", _hunters_klaive_on_hit)

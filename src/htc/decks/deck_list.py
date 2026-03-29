@@ -22,6 +22,7 @@ class DeckList:
     weapons: list[str] = field(default_factory=list)
     equipment: list[str] = field(default_factory=list)  # head, chest, arms, legs
     cards: list[DeckEntry] = field(default_factory=list)
+    demi_heroes: list[str] = field(default_factory=list)  # Agent of Chaos forms
 
     @property
     def total_deck_cards(self) -> int:

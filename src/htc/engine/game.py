@@ -71,7 +71,6 @@ class Game:
         self.stack_mgr = StackManager()
         self.effect_engine = EffectEngine()
         self.combat_mgr = CombatManager(self.effect_engine)
-        self.action_builder = ActionBuilder(self.effect_engine)
         self.cost_manager = CostManager(self.effect_engine, lambda d: self._ask(d))
         self.events = EventBus()
         self.keyword_engine = KeywordEngine(
@@ -79,6 +78,7 @@ class Game:
         )
         self.ability_registry = AbilityRegistry()
         self._register_abilities()
+        self.action_builder = ActionBuilder(self.effect_engine, self.ability_registry)
         self._register_event_handlers()
 
     def _register_abilities(self) -> None:
@@ -124,6 +124,7 @@ class Game:
                 state_getter=lambda: self.state,
                 player_index=i,
                 player_state=player,
+                game=self,
             )
 
     def _apply_card_ability(
@@ -318,6 +319,14 @@ class Game:
             for _ in range(entry.count):
                 ps.deck.append(self._make_instance(cdef, index, Zone.DECK))
 
+        # Demi-Heroes (Agent of Chaos forms)
+        for dh_name in deck.demi_heroes:
+            dh_def = self.db.get_by_name(dh_name)
+            if dh_def is None:
+                log.warning(f"Demi-Hero not found: {dh_name}")
+                continue
+            ps.demi_heroes.append(self._make_instance(dh_def, index, Zone.HERO))
+
         return ps
 
     def _make_instance(self, defn: CardDefinition, owner: int, zone: Zone) -> CardInstance:
@@ -345,6 +354,35 @@ class Game:
             data={"token_name": "Fealty"},
         ))
         return token
+
+    def _become_agent_of_chaos(self, player_index: int, agent_card: CardInstance) -> None:
+        """Transform a player's hero into an Agent of Chaos Demi-Hero.
+
+        Saves the current hero as original_hero (only on first transformation),
+        sets the player's hero to the agent card, and emits a BECOME_AGENT event.
+        Life total is unchanged — Demi-Hero health is '*' (keep current).
+        """
+        player = self.state.players[player_index]
+
+        # Save original hero only if not already transformed
+        if player.original_hero is None:
+            player.original_hero = player.hero
+
+        old_hero_name = player.hero.name if player.hero else "unknown"
+        player.hero = agent_card
+
+        self.events.emit(GameEvent(
+            event_type=EventType.BECOME_AGENT,
+            source=agent_card,
+            target_player=player_index,
+            data={"previous_hero": old_hero_name, "new_hero": agent_card.name},
+        ))
+        self._process_pending_triggers()
+
+        log.info(
+            f"  Player {player_index} becomes {agent_card.name} "
+            f"(was {old_hero_name})"
+        )
 
     @staticmethod
     def _equipment_slot(defn: CardDefinition) -> EquipmentSlot | None:
@@ -533,9 +571,13 @@ class Game:
                 self._play_card(player_index, card)
         elif action_id.startswith("activate_"):
             instance_id = int(action_id.split("_", 1)[1])
-            weapon = self.state.find_card(instance_id)
-            if weapon:
-                self._activate_weapon(player_index, weapon)
+            card = self.state.find_card(instance_id)
+            if card:
+                # Check if it's an equipment with a registered ability
+                if self._is_equipment_activation(card):
+                    self._activate_equipment(player_index, card)
+                else:
+                    self._activate_weapon(player_index, card)
 
     def _play_card(self, player_index: int, card: CardInstance) -> None:
         """Play a card from hand/arsenal onto the stack (rules 5.1).
@@ -695,6 +737,54 @@ class Game:
     def _apply_spellvoid(self, player_index: int, damage: int) -> int:
         """Let the player use Spellvoid to prevent arcane damage."""
         return self.keyword_engine.apply_spellvoid(self.state, player_index, damage)
+
+    # --- Equipment Activation ---
+
+    def _is_equipment_activation(self, card: CardInstance) -> bool:
+        """Check if an activate action targets equipment (not a weapon)."""
+        player = self.state.players[card.owner_index]
+        for _slot, eq in player.equipment.items():
+            if eq is not None and eq.instance_id == card.instance_id:
+                return True
+        return False
+
+    def _activate_equipment(self, player_index: int, equipment: CardInstance) -> None:
+        """Activate an equipment ability (attack reaction or instant).
+
+        Looks up the handler from the ability registry, builds an AbilityContext,
+        pays any resource cost, and calls the handler.
+        """
+        # Try equipment_instant_effect first, then attack_reaction_effect
+        handler = self.ability_registry.lookup("equipment_instant_effect", equipment.name)
+        timing = "equipment_instant_effect"
+        if handler is None:
+            handler = self.ability_registry.lookup("attack_reaction_effect", equipment.name)
+            timing = "attack_reaction_effect"
+        if handler is None:
+            log.warning(f"  No equipment ability handler for {equipment.name}")
+            return
+
+        # Pay resource cost for equipment instants
+        if timing == "equipment_instant_effect":
+            cost = self.action_builder._get_equipment_instant_cost(
+                self.state, player_index, equipment,
+            )
+            if cost is not None and cost > 0:
+                self._pitch_to_pay(player_index, cost)
+
+        ctx = AbilityContext(
+            state=self.state,
+            source_card=equipment,
+            controller_index=player_index,
+            chain_link=self.state.combat_chain.active_link,
+            effect_engine=self.effect_engine,
+            events=self.events,
+            ask=lambda d: self._ask(d),
+            keyword_engine=self.keyword_engine,
+            combat_mgr=self.combat_mgr,
+        )
+        handler(ctx)
+        log.info(f"  Equipment activated: {equipment.name} ({timing})")
 
     # --- Weapon Activation (rules 1.4.3) ---
 
@@ -1055,6 +1145,9 @@ class Game:
                     target_player=defender_index,
                     data={"chain_link": link},
                 ))
+
+        # Process triggered effects from defend events (e.g. Mask of Deceit)
+        self._process_pending_triggers()
 
         # 7.3.3: Turn player gets priority after defenders declared
         self._priority_loop_until_pass(allow_actions=False)

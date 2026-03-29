@@ -7,16 +7,63 @@ from pathlib import Path
 from htc.cards.card import CardDefinition
 from htc.enums import Color, Keyword, classify_type_string
 
+
 # ---------------------------------------------------------------------------
-# Data overrides — corrections to known errors in the external Fabrary dataset
+# Inherent vs conditional keyword detection
 # ---------------------------------------------------------------------------
-# Map card name -> set of keywords to REMOVE from the parsed keyword set.
-# Enflame the Firebrand: Fabrary incorrectly lists Go Again as an inherent
-# keyword. Go Again is only conditionally granted by the card's ability text
-# when there are 2+ Draconic chain links.
-_KEYWORD_OVERRIDES_REMOVE: dict[str, set[Keyword]] = {
-    "Enflame the Firebrand": {Keyword.GO_AGAIN},
-}
+# The Fabrary dataset "Card Keywords" field lists ALL keywords mentioned on a
+# card, including ones that are only conditionally granted by ability text
+# (e.g. "this gets **go again**").  We need to distinguish inherent keywords
+# (standalone bold text like "**Go again**") from conditional ones that are
+# preceded in the same sentence by verbs like "gets", "gains", "has", "loses".
+#
+# "with" is NOT treated as a conditional word — cards that say "with go again"
+# are granting inherently.
+
+_CONDITIONAL_VERBS = {"gets", "gains", "has", "loses"}
+
+
+def _is_keyword_inherent(keyword: Keyword, functional_text: str) -> bool:
+    """Check whether a keyword appears as inherent (standalone) in functional text.
+
+    A keyword is inherent if it appears as standalone bold text (e.g. ``**Go again**``)
+    without being preceded in the same sentence by a conditional verb
+    ("gets", "gains", "has", "loses").
+
+    Returns True if the keyword is inherent OR if it doesn't appear in the text
+    at all (trust the Card Keywords field for keywords not mentioned in text).
+    """
+    kw_name = keyword.value  # e.g. "Go again"
+    # Case-insensitive search: the text may have "go again" while enum is "Go again"
+    text_lower = functional_text.lower()
+    bold_pattern_lower = f"**{kw_name.lower()}**"
+
+    if bold_pattern_lower not in text_lower:
+        # Keyword not mentioned in text at all — trust the Card Keywords field
+        return True
+
+    # Split into sentences (period-space boundary)
+    sentences = text_lower.replace(". ", ".\n").split("\n")
+
+    for sentence in sentences:
+        if bold_pattern_lower not in sentence:
+            continue
+
+        # Check if any conditional verb precedes the keyword in this sentence
+        kw_pos = sentence.find(bold_pattern_lower)
+
+        # Look at the text before the keyword in this sentence
+        prefix = sentence[:kw_pos]
+        words = prefix.split()
+
+        has_conditional_verb = any(w.rstrip(",.;:") in _CONDITIONAL_VERBS for w in words)
+
+        if not has_conditional_verb:
+            # Found standalone bold keyword — it's inherent
+            return True
+
+    # Every occurrence was preceded by a conditional verb — not inherent
+    return False
 
 
 def _parse_int(value: str) -> int | None:
@@ -140,11 +187,13 @@ class CardDatabase:
         card_types, sub_types, super_types = classify_type_string(types_str)
         keywords, keyword_values = _parse_keywords(row.get("Card Keywords", ""))
 
-        # Apply data overrides for known dataset errors
-        name = row["Name"]
-        removals = _KEYWORD_OVERRIDES_REMOVE.get(name)
-        if removals:
-            keywords = frozenset(keywords - removals)
+        # Filter out non-inherent keywords using functional text analysis
+        functional_text = row.get("Functional Text", "")
+        if functional_text:
+            keywords = frozenset(
+                kw for kw in keywords
+                if _is_keyword_inherent(kw, functional_text)
+            )
 
         return CardDefinition(
             unique_id=row["Unique ID"],

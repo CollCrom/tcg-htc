@@ -258,13 +258,13 @@ def make_game_shell(
     game.events = EventBus()
     game.stack_mgr = StackManager()
     game.combat_mgr = CombatManager(game.effect_engine)
-    game.action_builder = ActionBuilder(game.effect_engine)
     game.cost_manager = CostManager(game.effect_engine, lambda d: game._ask(d))
     game.keyword_engine = KeywordEngine(
         game.effect_engine, game.events, lambda d: game._ask(d),
     )
     game.ability_registry = AbilityRegistry()
     game._register_abilities()
+    game.action_builder = ActionBuilder(game.effect_engine, game.ability_registry)
     game._register_event_handlers()
     game.state.action_points = action_points or {0: 0, 1: 0}
     game.state.resource_points = resource_points or {0: 0, 1: 0}

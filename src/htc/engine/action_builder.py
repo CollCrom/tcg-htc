@@ -12,9 +12,10 @@ from typing import TYPE_CHECKING
 from htc.cards.instance import CardInstance
 from htc.engine.actions import ActionOption, Decision
 from htc.engine.cost import can_pay_action_cost, can_pay_resource_cost
-from htc.enums import ActionType, CardType, DecisionType
+from htc.enums import ActionType, CardType, DecisionType, EquipmentSlot
 
 if TYPE_CHECKING:
+    from htc.engine.abilities import AbilityRegistry
     from htc.engine.effects import EffectEngine
     from htc.state.game_state import GameState
 
@@ -27,8 +28,9 @@ class ActionBuilder:
     Stateless — all context comes via method parameters.
     """
 
-    def __init__(self, effect_engine: EffectEngine) -> None:
+    def __init__(self, effect_engine: EffectEngine, ability_registry: AbilityRegistry | None = None) -> None:
         self.effect_engine = effect_engine
+        self.ability_registry = ability_registry
 
     # --- Public decision builders ---
 
@@ -79,6 +81,9 @@ class ActionBuilder:
                     options.append(ActionOption.play_card(
                         card.instance_id, card.name, card.definition.color_label, suffix="instant",
                     ))
+        # Equipment instants can be activated whenever you have priority
+        if self.ability_registry:
+            self._add_equipment_instant_options(options, state, player_index)
 
     def build_combat_priority_decision(
         self, state: GameState, player_index: int, allow_actions: bool = False
@@ -134,7 +139,11 @@ class ActionBuilder:
                         suffix="defense reaction",
                     ))
 
-        # Instants: either player can play
+        # Equipment attack reactions: only attacker can use (e.g. Tide Flippers, Stalker's Steps)
+        if priority_player == attacker_index and self.ability_registry:
+            self._add_equipment_reaction_options(options, state, priority_player)
+
+        # Instants (including equipment instants): either player can play
         self.add_instant_options(options, state, priority_player)
         options.append(self.pass_option())
 
@@ -229,3 +238,124 @@ class ActionBuilder:
             if available < cost:
                 return False
         return True
+
+    # --- Equipment ability helpers ---
+
+    def _add_equipment_reaction_options(
+        self, options: list[ActionOption], state: GameState, player_index: int
+    ) -> None:
+        """Add equipment attack reaction options (e.g. Tide Flippers, Stalker's Steps).
+
+        Equipment with registered attack_reaction_effect handlers are offered
+        as activate options during the reaction step.
+        """
+        if not self.ability_registry:
+            return
+        player = state.players[player_index]
+        for _slot, eq in player.equipment.items():
+            if eq is None:
+                continue
+            handler = self.ability_registry.lookup("attack_reaction_effect", eq.name)
+            if handler is None:
+                continue
+            # Already in options?
+            if any(o.card_instance_id == eq.instance_id for o in options):
+                continue
+            options.append(ActionOption.activate(
+                eq.instance_id, f"Activate {eq.name} (attack reaction)",
+            ))
+
+    def _add_equipment_instant_options(
+        self, options: list[ActionOption], state: GameState, player_index: int
+    ) -> None:
+        """Add equipment instant activation options (e.g. Dragonscaler Flight Path).
+
+        Equipment with registered equipment_instant_effect handlers are offered
+        as activate options whenever the player has priority.  A cost checker
+        callback may be registered on the equipment to gate affordability.
+        """
+        if not self.ability_registry:
+            return
+        player = state.players[player_index]
+        for _slot, eq in player.equipment.items():
+            if eq is None:
+                continue
+            handler = self.ability_registry.lookup("equipment_instant_effect", eq.name)
+            if handler is None:
+                continue
+            # Already in options?
+            if any(o.card_instance_id == eq.instance_id for o in options):
+                continue
+            # Check preconditions (e.g. Dragonscaler needs active Draconic attack)
+            if not self._can_use_equipment_instant(state, player_index, eq):
+                continue
+            # Check affordability via the equipment cost checker (if registered)
+            cost = self._get_equipment_instant_cost(state, player_index, eq)
+            if cost is not None and not self._can_afford_resource_cost(state, player_index, cost):
+                continue
+            options.append(ActionOption.activate(
+                eq.instance_id,
+                f"Activate {eq.name} (instant, cost={cost if cost is not None else '?'})",
+            ))
+
+    def _get_equipment_instant_cost(
+        self, state: GameState, player_index: int, equipment: CardInstance,
+    ) -> int | None:
+        """Get the dynamic resource cost for an equipment instant activation.
+
+        Returns the cost in resources, or None if unknown.
+        """
+        # Dragonscaler Flight Path: base 3, reduced by Draconic chain link count
+        if equipment.name == "Dragonscaler Flight Path":
+            draconic_count = self._count_draconic_chain_links(state, player_index)
+            return max(0, 3 - draconic_count)
+        return None
+
+    def _can_use_equipment_instant(
+        self, state: GameState, player_index: int, equipment: CardInstance,
+    ) -> bool:
+        """Check additional preconditions for equipment instant activation.
+
+        Beyond cost affordability, some equipment instants require specific
+        game state (e.g. Dragonscaler needs an active Draconic attack).
+        """
+        if equipment.name == "Dragonscaler Flight Path":
+            # Must have an active Draconic attack on the chain
+            link = state.combat_chain.active_link
+            if link is None or link.active_attack is None:
+                return False
+            atk = link.active_attack
+            if atk.owner_index != player_index:
+                return False
+            from htc.enums import SuperType
+            if SuperType.DRACONIC not in self.effect_engine.get_modified_supertypes(state, atk):
+                return False
+        return True
+
+    def _count_draconic_chain_links(self, state: GameState, player_index: int) -> int:
+        """Count Draconic chain links controlled by a player on the combat chain."""
+        from htc.enums import SuperType
+        count = 0
+        if not state.combat_chain.is_open:
+            return 0
+        for link in state.combat_chain.chain_links:
+            atk = link.active_attack
+            if atk is None:
+                continue
+            if atk.owner_index != player_index:
+                continue
+            if SuperType.DRACONIC in self.effect_engine.get_modified_supertypes(state, atk):
+                count += 1
+        return count
+
+    @staticmethod
+    def _can_afford_resource_cost(state: GameState, player_index: int, cost: int) -> bool:
+        """Check if a player can afford a given resource cost."""
+        if cost <= 0:
+            return True
+        available = state.resource_points[player_index]
+        player = state.players[player_index]
+        for c in player.hand:
+            if c.pitch is not None:
+                available += c.pitch
+        return available >= cost
