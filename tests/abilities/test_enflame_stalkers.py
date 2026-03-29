@@ -2,7 +2,7 @@
 
 Enflame the Firebrand (Draconic Ninja Attack Action, Red):
 - Cost 0, Power 2, Defense 3, Pitch 1
-- Keywords: Go again
+- Keywords: (none inherent — Go Again is conditional, see ability text)
 - "When this attacks, if you control 2 or more Draconic chain links,
    this gets go again, 3 or more, your attacks are Draconic this combat
    chain, 4 or more, this gets +2{p}."
@@ -57,7 +57,7 @@ def _make_enflame(instance_id: int = 50, owner_index: int = 0):
         types=frozenset({CardType.ACTION}),
         subtypes=frozenset({SubType.ATTACK}),
         supertypes=frozenset({SuperType.DRACONIC, SuperType.NINJA}),
-        keywords=frozenset({Keyword.GO_AGAIN}),
+        keywords=frozenset(),
         functional_text=(
             "When this attacks, if you control 2 or more Draconic chain links, "
             "this gets go again, 3 or more, your attacks are Draconic this combat "
@@ -151,6 +151,24 @@ class TestEnflameTheFirebrand:
         power = game.effect_engine.get_modified_power(game.state, enflame)
         assert power == 2
 
+    def test_no_go_again_without_two_draconic_links(self):
+        """Enflame does NOT have Go Again without 2+ Draconic chain links.
+
+        Go Again is conditional (granted by ability at 2+ Draconic links),
+        not an inherent keyword. The Fabrary dataset incorrectly lists it.
+        """
+        game = make_game_shell()
+        game.combat_mgr.open_chain(game.state)
+        enflame = _make_enflame()
+        link = game.combat_mgr.add_chain_link(game.state, enflame, 1)
+
+        # Apply on_attack with only 1 Draconic link (Enflame itself)
+        game._apply_card_ability(enflame, 0, "on_attack")
+
+        # Go Again should NOT be present — neither inherent nor ability-granted
+        kws = game.effect_engine.get_modified_keywords(game.state, enflame)
+        assert Keyword.GO_AGAIN not in kws
+
     def test_go_again_at_two_draconic_links(self):
         """With 2+ Draconic chain links, Enflame gets go again from ability."""
         game = make_game_shell()
@@ -161,7 +179,7 @@ class TestEnflameTheFirebrand:
 
         game._apply_card_ability(enflame, 0, "on_attack")
 
-        # Go again should be granted (redundant with inherent, but both present)
+        # Go again should be granted by the ability (not inherent)
         kws = game.effect_engine.get_modified_keywords(game.state, enflame)
         assert Keyword.GO_AGAIN in kws
 

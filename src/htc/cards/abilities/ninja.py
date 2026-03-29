@@ -1097,7 +1097,7 @@ def _enflame_the_firebrand_on_attack(ctx: AbilityContext) -> None:
     log.info(f"  Enflame the Firebrand: {draconic_count} Draconic chain link(s)")
 
     if draconic_count >= 2:
-        # This gets go again (redundant with inherent keyword, but apply per card text)
+        # This gets go again (conditional — not an inherent keyword)
         grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Enflame the Firebrand (2+)")
 
     if draconic_count >= 3:

@@ -7,6 +7,17 @@ from pathlib import Path
 from htc.cards.card import CardDefinition
 from htc.enums import Color, Keyword, classify_type_string
 
+# ---------------------------------------------------------------------------
+# Data overrides — corrections to known errors in the external Fabrary dataset
+# ---------------------------------------------------------------------------
+# Map card name -> set of keywords to REMOVE from the parsed keyword set.
+# Enflame the Firebrand: Fabrary incorrectly lists Go Again as an inherent
+# keyword. Go Again is only conditionally granted by the card's ability text
+# when there are 2+ Draconic chain links.
+_KEYWORD_OVERRIDES_REMOVE: dict[str, set[Keyword]] = {
+    "Enflame the Firebrand": {Keyword.GO_AGAIN},
+}
+
 
 def _parse_int(value: str) -> int | None:
     """Parse an integer from a TSV field, returning None for blank/non-numeric."""
@@ -128,6 +139,12 @@ class CardDatabase:
 
         card_types, sub_types, super_types = classify_type_string(types_str)
         keywords, keyword_values = _parse_keywords(row.get("Card Keywords", ""))
+
+        # Apply data overrides for known dataset errors
+        name = row["Name"]
+        removals = _KEYWORD_OVERRIDES_REMOVE.get(name)
+        if removals:
+            keywords = frozenset(keywords - removals)
 
         return CardDefinition(
             unique_id=row["Unique ID"],
