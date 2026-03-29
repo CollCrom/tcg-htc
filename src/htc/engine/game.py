@@ -124,6 +124,7 @@ class Game:
                 state_getter=lambda: self.state,
                 player_index=i,
                 player_state=player,
+                game=self,
             )
 
     def _apply_card_ability(
@@ -318,6 +319,14 @@ class Game:
             for _ in range(entry.count):
                 ps.deck.append(self._make_instance(cdef, index, Zone.DECK))
 
+        # Demi-Heroes (Agent of Chaos forms)
+        for dh_name in deck.demi_heroes:
+            dh_def = self.db.get_by_name(dh_name)
+            if dh_def is None:
+                log.warning(f"Demi-Hero not found: {dh_name}")
+                continue
+            ps.demi_heroes.append(self._make_instance(dh_def, index, Zone.HERO))
+
         return ps
 
     def _make_instance(self, defn: CardDefinition, owner: int, zone: Zone) -> CardInstance:
@@ -345,6 +354,35 @@ class Game:
             data={"token_name": "Fealty"},
         ))
         return token
+
+    def _become_agent_of_chaos(self, player_index: int, agent_card: CardInstance) -> None:
+        """Transform a player's hero into an Agent of Chaos Demi-Hero.
+
+        Saves the current hero as original_hero (only on first transformation),
+        sets the player's hero to the agent card, and emits a BECOME_AGENT event.
+        Life total is unchanged — Demi-Hero health is '*' (keep current).
+        """
+        player = self.state.players[player_index]
+
+        # Save original hero only if not already transformed
+        if player.original_hero is None:
+            player.original_hero = player.hero
+
+        old_hero_name = player.hero.name if player.hero else "unknown"
+        player.hero = agent_card
+
+        self.events.emit(GameEvent(
+            event_type=EventType.BECOME_AGENT,
+            source=agent_card,
+            target_player=player_index,
+            data={"previous_hero": old_hero_name, "new_hero": agent_card.name},
+        ))
+        self._process_pending_triggers()
+
+        log.info(
+            f"  Player {player_index} becomes {agent_card.name} "
+            f"(was {old_hero_name})"
+        )
 
     @staticmethod
     def _equipment_slot(defn: CardDefinition) -> EquipmentSlot | None:
