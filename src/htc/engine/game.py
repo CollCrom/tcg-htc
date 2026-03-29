@@ -80,6 +80,8 @@ class Game:
         self._register_abilities()
         self.action_builder = ActionBuilder(self.effect_engine, self.ability_registry)
         self._register_event_handlers()
+        # Track cards played from banish that should go back to banish instead of graveyard
+        self._banish_instead_of_graveyard: set[int] = set()  # instance_ids
 
     def _register_abilities(self) -> None:
         """Register card abilities with the ability registry."""
@@ -87,10 +89,12 @@ class Game:
         from htc.cards.abilities.assassin import register_assassin_abilities
         from htc.cards.abilities.ninja import register_ninja_abilities
         from htc.cards.abilities.equipment import register_equipment_abilities
+        from htc.cards.abilities.agents import register_agent_abilities
         register_generic_abilities(self.ability_registry)
         register_assassin_abilities(self.ability_registry)
         register_ninja_abilities(self.ability_registry)
         register_equipment_abilities(self.ability_registry)
+        register_agent_abilities(self.ability_registry)
 
     def _register_hero_abilities(self) -> None:
         """Register hero abilities as triggered effects on the EventBus.
@@ -384,6 +388,101 @@ class Game:
             f"(was {old_hero_name})"
         )
 
+        # Fire on_become ability for the new demi-hero
+        self._apply_card_ability(agent_card, player_index, "on_become")
+
+    def _banish_card(
+        self, card: CardInstance, player_index: int, *, face_down: bool = False,
+    ) -> None:
+        """Move a card to the banish zone, setting face_up accordingly.
+
+        Emits a BANISH event. The card is removed from its current zone
+        and placed into the player's banished pile.
+        """
+        player = self.state.players[player_index]
+        player.remove_card(card)
+        card.zone = Zone.BANISHED
+        card.face_up = not face_down
+        player.banished.append(card)
+        self.events.emit(GameEvent(
+            event_type=EventType.BANISH,
+            source=None,
+            target_player=player_index,
+            card=card,
+            data={"face_down": face_down},
+        ))
+        log.info(
+            f"  Banish: {card.name} ({'face-down' if face_down else 'face-up'}) "
+            f"for Player {player_index}"
+        )
+
+    def _mark_playable_from_banish(
+        self, card: CardInstance, player_index: int, expiry: str,
+    ) -> None:
+        """Mark a banished card as playable until the given expiry.
+
+        expiry is "end_of_turn" or "start_of_next_turn".
+        """
+        player = self.state.players[player_index]
+        player.playable_from_banish.append((card.instance_id, expiry))
+        log.info(
+            f"  Playable from banish: {card.name} until {expiry} "
+            f"for Player {player_index}"
+        )
+
+    def _expire_playable_from_banish_end_of_turn(self) -> None:
+        """Remove end_of_turn entries from playable_from_banish for all players."""
+        for player in self.state.players:
+            player.playable_from_banish = [
+                (iid, exp) for iid, exp in player.playable_from_banish
+                if exp != "end_of_turn"
+            ]
+
+    def _expire_playable_from_banish_start_of_turn(self, player_index: int) -> None:
+        """Remove start_of_next_turn entries for the given player."""
+        player = self.state.players[player_index]
+        player.playable_from_banish = [
+            (iid, exp) for iid, exp in player.playable_from_banish
+            if exp != "start_of_next_turn"
+        ]
+
+    def _is_playable_from_banish(self, card: CardInstance, player_index: int) -> bool:
+        """Check if a banished card is currently marked as playable."""
+        player = self.state.players[player_index]
+        return any(iid == card.instance_id for iid, _ in player.playable_from_banish)
+
+    def _redirect_banish_on_chain_close(self) -> None:
+        """Before combat chain close, redirect cards that should go to banish.
+
+        Cards played from banish (Trap-Door, Under the Trap-Door) should
+        go to banish instead of graveyard when the chain closes.
+        """
+        if not self._banish_instead_of_graveyard:
+            return
+        for link in self.state.combat_chain.chain_links:
+            atk = link.active_attack
+            if atk and not atk.is_proxy and atk.instance_id in self._banish_instead_of_graveyard:
+                # Pre-move to banish; close_chain will skip it since it's not on chain
+                self._banish_instead_of_graveyard.discard(atk.instance_id)
+                owner = self.state.players[atk.owner_index]
+                atk.zone = Zone.BANISHED
+                owner.banished.append(atk)
+                link.active_attack = None  # prevent close_chain from moving it again
+                log.info(f"  {atk.name} banished instead of graveyard on chain close")
+
+    def _move_to_graveyard_or_banish(self, card: CardInstance) -> None:
+        """Move card to graveyard, or banish if it was played from banish.
+
+        Cards played from banish (via Trap-Door, Under the Trap-Door, etc.)
+        go to banish instead of graveyard when they would be put there.
+        """
+        if card.instance_id in self._banish_instead_of_graveyard:
+            self._banish_instead_of_graveyard.discard(card.instance_id)
+            self.state.move_card(card, Zone.BANISHED)
+            log.info(f"  {card.name} banished instead of graveyard (played from banish)")
+        else:
+            self.state.move_card(card, Zone.GRAVEYARD)
+
     @staticmethod
     def _equipment_slot(defn: CardDefinition) -> EquipmentSlot | None:
         if SubType.HEAD in defn.subtypes:
@@ -404,6 +503,9 @@ class Game:
         # Reset turn counters for ALL players at start of each turn
         for player in self.state.players:
             player.turn_counters.reset()
+
+        # Expire "start_of_next_turn" banish playability for the turn player
+        self._expire_playable_from_banish_start_of_turn(tp.index)
 
         # Start Phase (4.2) — no priority
         self.state.phase = Phase.START
@@ -512,11 +614,11 @@ class Game:
                     # Apply defense reaction effect (e.g. Fate Foreseen's Opt, Sink Below's cycle)
                     self._apply_card_ability(card, layer.controller_index, "defense_reaction_effect")
                 else:
-                    self.state.move_card(card, Zone.GRAVEYARD)
+                    self._move_to_graveyard_or_banish(card)
             elif card.definition.is_attack_reaction:
                 # Attack reaction resolves: apply effect, then graveyard
                 self._apply_card_ability(card, layer.controller_index, "attack_reaction_effect")
-                self.state.move_card(card, Zone.GRAVEYARD)
+                self._move_to_graveyard_or_banish(card)
                 log.info(f"  Attack reaction: {card.name}{card.definition.color_label}")
             elif card.definition.is_permanent_when_resolved:
                 # Permanent subtypes (auras, items, allies, etc.) enter the arena (1.3.3)
@@ -533,7 +635,7 @@ class Game:
                 if card.definition.arcane and card.definition.arcane > 0:
                     target_index = 1 - layer.controller_index
                     self._deal_arcane_damage(card, target_index, card.definition.arcane)
-                self.state.move_card(card, Zone.GRAVEYARD)
+                self._move_to_graveyard_or_banish(card)
 
             # Go again from resolved layer
             if layer.has_go_again and not card.definition.is_attack:
@@ -573,8 +675,11 @@ class Game:
             instance_id = int(action_id.split("_", 1)[1])
             card = self.state.find_card(instance_id)
             if card:
+                # Check if it's an instant-discard from hand
+                if self._is_instant_discard_activation(card):
+                    self._activate_instant_discard(player_index, card)
                 # Check if it's an equipment with a registered ability
-                if self._is_equipment_activation(card):
+                elif self._is_equipment_activation(card):
                     self._activate_equipment(player_index, card)
                 else:
                     self._activate_weapon(player_index, card)
@@ -588,10 +693,20 @@ class Game:
         player = self.state.players[player_index]
 
         # 5.1.2: Announce — remove from zone and put on stack
+        played_from_banish = card in player.banished and self._is_playable_from_banish(card, player_index)
         if card in player.hand:
             player.hand.remove(card)
         elif card in player.arsenal:
             player.arsenal.remove(card)
+        elif played_from_banish:
+            player.banished.remove(card)
+            # Remove playable-from-banish tracking entry
+            player.playable_from_banish = [
+                (iid, exp) for iid, exp in player.playable_from_banish
+                if iid != card.instance_id
+            ]
+            # Mark: if this card would go to graveyard, it goes to banish instead
+            self._banish_instead_of_graveyard.add(card.instance_id)
 
         layer = self.stack_mgr.add_card_layer(
             self.state, card, player_index,
@@ -740,6 +855,47 @@ class Game:
 
     # --- Equipment Activation ---
 
+    def _is_instant_discard_activation(self, card: CardInstance) -> bool:
+        """Check if an activate action targets a card in hand with instant_discard_effect."""
+        player = self.state.players[card.owner_index]
+        if card not in player.hand:
+            return False
+        handler = self.ability_registry.lookup("instant_discard_effect", card.name)
+        return handler is not None
+
+    def _activate_instant_discard(self, player_index: int, card: CardInstance) -> None:
+        """Activate a card's instant-discard ability.
+
+        Discards the card from hand (cost), then applies the handler.
+        """
+        player = self.state.players[player_index]
+
+        # Discard the card (move from hand to graveyard as cost)
+        if card in player.hand:
+            player.hand.remove(card)
+            card.zone = Zone.GRAVEYARD
+            player.graveyard.append(card)
+
+        # Apply the handler
+        handler = self.ability_registry.lookup("instant_discard_effect", card.name)
+        if handler is None:
+            log.warning(f"  No instant_discard_effect handler for {card.name}")
+            return
+
+        ctx = AbilityContext(
+            state=self.state,
+            source_card=card,
+            controller_index=player_index,
+            chain_link=self.state.combat_chain.active_link,
+            effect_engine=self.effect_engine,
+            events=self.events,
+            ask=lambda d: self._ask(d),
+            keyword_engine=self.keyword_engine,
+            combat_mgr=self.combat_mgr,
+        )
+        handler(ctx)
+        log.info(f"  Instant discard activated: {card.name}")
+
     def _is_equipment_activation(self, card: CardInstance) -> bool:
         """Check if an activate action targets equipment (not a weapon)."""
         player = self.state.players[card.owner_index]
@@ -789,8 +945,8 @@ class Game:
     # --- Weapon Activation (rules 1.4.3) ---
 
     @staticmethod
-    def _weapon_activation_cost(weapon: CardInstance) -> int:
-        """Get the resource cost to activate a weapon.
+    def _base_weapon_activation_cost(weapon: CardInstance) -> int:
+        """Get the base resource cost to activate a weapon (before reductions).
 
         Weapons store activation cost in functional text as {r} tokens
         (e.g. '{r}{r}' = 2), since the CSV 'Cost' field is for play cost.
@@ -799,6 +955,13 @@ class Game:
         if weapon.definition.cost is not None:
             return weapon.definition.cost
         return weapon.definition.functional_text.count("{r}")
+
+    def _weapon_activation_cost(self, weapon: CardInstance, player_index: int) -> int:
+        """Get the resource cost to activate a weapon, including hero reductions."""
+        cost = self._base_weapon_activation_cost(weapon)
+        return ActionBuilder._apply_weapon_cost_reduction(
+            self.state, player_index, weapon, cost,
+        )
 
     def _can_activate_weapon(self, player_index: int, weapon: CardInstance) -> bool:
         """Check if a weapon can be activated (untapped, has AP, can pay cost)."""
@@ -818,8 +981,8 @@ class Game:
         # Pay action point cost
         self.state.action_points[player_index] -= 1
 
-        # Pay resource cost
-        resource_cost = self._weapon_activation_cost(weapon)
+        # Pay resource cost (with hero-based reductions)
+        resource_cost = self._weapon_activation_cost(weapon, player_index)
         self._pitch_to_pay(player_index, resource_cost)
 
         # Update counters
@@ -1326,6 +1489,9 @@ class Game:
         # Apply equipment degradation before close_chain moves cards
         self._apply_equipment_degradation()
 
+        # Redirect banish-instead-of-graveyard cards before close_chain
+        self._redirect_banish_on_chain_close()
+
         self.combat_mgr.close_chain(self.state)
         self.effect_engine.cleanup_expired_effects(self.state, EffectDuration.END_OF_COMBAT)
         log.debug("  Combat chain closed")
@@ -1441,6 +1607,9 @@ class Game:
             event_type=EventType.END_OF_TURN,
             target_player=tp.index,
         ))
+
+        # Expire "end_of_turn" banish playability
+        self._expire_playable_from_banish_end_of_turn()
 
         # Clean up continuous effects that expire at end of turn
         self.effect_engine.cleanup_expired_effects(self.state, EffectDuration.END_OF_TURN)

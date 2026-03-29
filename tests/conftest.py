@@ -266,6 +266,7 @@ def make_game_shell(
     game._register_abilities()
     game.action_builder = ActionBuilder(game.effect_engine, game.ability_registry)
     game._register_event_handlers()
+    game._banish_instead_of_graveyard = set()
     game.state.action_points = action_points or {0: 0, 1: 0}
     game.state.resource_points = resource_points or {0: 0, 1: 0}
     game.state.turn_player_index = 0
