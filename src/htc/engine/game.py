@@ -411,9 +411,14 @@ class Game:
         player.hero = player.original_hero
         player.original_hero = None
 
-        # Deregister agent-specific triggered effects
+        # Deregister agent-specific triggered effects and ability handlers
         from htc.cards.abilities.agents import deregister_agent_triggers
-        deregister_agent_triggers(self.events, player_index)
+        deregister_agent_triggers(
+            self.events,
+            player_index,
+            ability_registry=self.ability_registry,
+            agent_name=old_name,
+        )
 
         log.info(
             f"  Player {player_index} returns to the brood: "

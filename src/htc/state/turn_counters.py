@@ -30,6 +30,9 @@ class TurnCounters:
     # Keyed by weapon instance_id; each entry is the number of additional
     # activations allowed beyond the normal once-per-turn limit.
     bonus_weapon_attacks: dict[int, int] = field(default_factory=dict)
+    # Agent abilities used this turn (Once per Turn enforcement).
+    # Each entry is the agent name whose ability was activated.
+    agent_abilities_used: set[str] = field(default_factory=set)
 
     def reset(self) -> None:
         self.__init__()  # type: ignore[misc]

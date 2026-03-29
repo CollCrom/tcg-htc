@@ -878,9 +878,9 @@ class TestOrbWeaver:
         ctx = _build_ability_context(game, agent, None)
         _orb_weaver_instant(ctx)
 
-        permanents = game.state.players[0].permanents
-        assert len(permanents) == 1
-        assert permanents[0].name == "Graphene Chelicera"
+        arms_eq = game.state.players[0].equipment[EquipmentSlot.ARMS]
+        assert arms_eq is not None
+        assert arms_eq.name == "Graphene Chelicera"
 
     def test_orb_weaver_stealth_attack_gets_plus_3(self):
         """Next stealth attack this turn gets +3 power."""
@@ -943,7 +943,7 @@ class TestOrbWeaver:
         ctx = _build_ability_context(game, agent, None)
         _orb_weaver_instant(ctx)
 
-        assert len(game.state.players[0].permanents) == 0
+        assert game.state.players[0].equipment[EquipmentSlot.ARMS] is None
 
 
 # ---------------------------------------------------------------------------
@@ -1095,3 +1095,289 @@ class TestAgentAbilityRegistration:
                 if isinstance(t, ReturnToBroodTrigger)
             ]
             assert len(brood_triggers) >= 1, f"{name} missing ReturnToBroodTrigger"
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: _is_assassin_card uses effect engine for supertypes
+# ---------------------------------------------------------------------------
+
+
+class TestIsAssassinCardEffectEngine:
+    """_is_assassin_card should use the effect engine when available."""
+
+    def test_is_assassin_card_uses_effect_engine(self):
+        """When effect engine grants Assassin supertype, _is_assassin_card returns True."""
+        from htc.cards.abilities.agents import _is_assassin_card
+        from htc.engine.continuous import make_supertype_grant
+
+        game = make_game_shell()
+        state = game.state
+
+        # Card with no Assassin supertype by default
+        card = make_card(instance_id=1, name="Generic")
+        assert not _is_assassin_card(card)  # no effect engine => base supertypes
+
+        # Grant Assassin supertype via continuous effect
+        effect = make_supertype_grant(
+            frozenset({SuperType.ASSASSIN}),
+            controller_index=0,
+        )
+        game.effect_engine.add_continuous_effect(state, effect)
+
+        # Now should be True when effect engine is provided
+        assert _is_assassin_card(card, game.effect_engine, state)
+
+    def test_is_assassin_card_base_fallback(self):
+        """Without effect engine, falls back to definition supertypes."""
+        from htc.cards.abilities.agents import _is_assassin_card
+
+        assassin_card = _make_assassin_hand_card(instance_id=500)
+        assert _is_assassin_card(assassin_card)
+
+        non_assassin = _make_non_assassin_card(instance_id=600)
+        assert not _is_assassin_card(non_assassin)
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Once-per-turn enforcement for agent abilities
+# ---------------------------------------------------------------------------
+
+
+class TestOncePerTurn:
+    """Agent abilities are Once per Turn."""
+
+    def test_redback_ar_once_per_turn(self):
+        """Redback AR cannot be used twice in the same turn."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Redback")
+        assassin1 = _make_assassin_hand_card(instance_id=500, owner_index=0)
+        assassin2 = _make_assassin_hand_card(instance_id=501, owner_index=0)
+        game.state.players[0].hand.extend([assassin1, assassin2])
+
+        attack = make_stealth_assassin_attack(instance_id=12, owner_index=0)
+        link = game.state.combat_chain.chain_links[0]
+        link.active_attack = attack
+
+        game._ask = lambda d: PlayerResponse(
+            selected_option_ids=[f"discard_{d.options[0].card_instance_id}"]
+        )
+
+        from htc.cards.abilities.agents import _redback_ar
+        ctx = _build_ability_context(game, agent, link)
+
+        # First activation succeeds
+        _redback_ar(ctx)
+        modified_power = game.effect_engine.get_modified_power(game.state, attack)
+        assert modified_power == 3 + 3  # +3 applied
+
+        # Second activation does nothing (once per turn)
+        _redback_ar(ctx)
+        modified_power = game.effect_engine.get_modified_power(game.state, attack)
+        assert modified_power == 3 + 3  # still +3, not +6
+
+    def test_tarantula_ar_once_per_turn(self):
+        """Tarantula AR cannot be used twice in the same turn."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Tarantula")
+        assassin1 = _make_assassin_hand_card(instance_id=500, owner_index=0)
+        assassin2 = _make_assassin_hand_card(instance_id=501, owner_index=0)
+        game.state.players[0].hand.extend([assassin1, assassin2])
+
+        dagger = make_dagger_attack(instance_id=15, power=1, owner_index=0)
+        link = game.state.combat_chain.chain_links[0]
+        link.active_attack = dagger
+
+        game._ask = lambda d: PlayerResponse(
+            selected_option_ids=[f"discard_{d.options[0].card_instance_id}"]
+        )
+
+        from htc.cards.abilities.agents import _tarantula_ar
+        ctx = _build_ability_context(game, agent, link)
+
+        _tarantula_ar(ctx)
+        assert game.effect_engine.get_modified_power(game.state, dagger) == 1 + 3
+
+        _tarantula_ar(ctx)
+        assert game.effect_engine.get_modified_power(game.state, dagger) == 1 + 3
+
+    def test_orb_weaver_instant_once_per_turn(self):
+        """Orb-Weaver instant cannot be used twice in the same turn."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Orb-Weaver")
+        assassin1 = _make_assassin_hand_card(instance_id=500, owner_index=0)
+        assassin2 = _make_assassin_hand_card(instance_id=501, owner_index=0)
+        game.state.players[0].hand.extend([assassin1, assassin2])
+
+        game._ask = lambda d: PlayerResponse(
+            selected_option_ids=[f"discard_{d.options[0].card_instance_id}"]
+        )
+
+        from htc.cards.abilities.agents import _orb_weaver_instant
+        ctx = _build_ability_context(game, agent, None)
+
+        _orb_weaver_instant(ctx)
+        assert game.state.players[0].equipment[EquipmentSlot.ARMS] is not None
+
+        # Second call: should not consume another card
+        hand_before = len(game.state.players[0].hand)
+        _orb_weaver_instant(ctx)
+        assert len(game.state.players[0].hand) == hand_before
+
+    def test_once_per_turn_resets_on_new_turn(self):
+        """Agent ability tracking resets when turn counters reset."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Redback")
+        player = game.state.players[0]
+        player.turn_counters.agent_abilities_used.add("Arakni, Redback")
+
+        # Reset simulates new turn
+        player.turn_counters.reset()
+        assert "Arakni, Redback" not in player.turn_counters.agent_abilities_used
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: Deregister agent AR/instant from AbilityRegistry on return to brood
+# ---------------------------------------------------------------------------
+
+
+class TestDeregisterAbilityOnBrood:
+    """Return to brood removes agent ability handlers from AbilityRegistry."""
+
+    def test_redback_ar_unregistered_on_brood_return(self):
+        """Redback AR handler is removed from AbilityRegistry on brood return."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Redback")
+
+        # Verify registered
+        assert game.ability_registry.lookup(
+            "attack_reaction_effect", "Arakni, Redback"
+        ) is not None
+
+        # Return to brood
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_END_PHASE,
+            target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        # Should be gone
+        assert game.ability_registry.lookup(
+            "attack_reaction_effect", "Arakni, Redback"
+        ) is None
+
+    def test_orb_weaver_instant_unregistered_on_brood_return(self):
+        """Orb-Weaver instant handler is removed from AbilityRegistry on brood return."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Orb-Weaver")
+
+        assert game.ability_registry.lookup(
+            "equipment_instant_effect", "Arakni, Orb-Weaver"
+        ) is not None
+
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_END_PHASE,
+            target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        assert game.ability_registry.lookup(
+            "equipment_instant_effect", "Arakni, Orb-Weaver"
+        ) is None
+
+    def test_ability_registry_unregister_returns_false_for_unknown(self):
+        """AbilityRegistry.unregister returns False for unknown card."""
+        from htc.engine.abilities import AbilityRegistry
+        reg = AbilityRegistry()
+        assert reg.unregister("on_play", "Nonexistent") is False
+
+    def test_ability_registry_unregister_returns_true(self):
+        """AbilityRegistry.unregister returns True when removing a handler."""
+        from htc.engine.abilities import AbilityRegistry
+        reg = AbilityRegistry()
+        reg.register("on_play", "TestCard", lambda ctx: None)
+        assert reg.unregister("on_play", "TestCard") is True
+        assert reg.lookup("on_play", "TestCard") is None
+
+
+# ---------------------------------------------------------------------------
+# Fix 4: Orb-Weaver Graphene Chelicera goes to Arms equipment slot
+# ---------------------------------------------------------------------------
+
+
+class TestOrbWeaverEquipmentSlot:
+    """Graphene Chelicera token should be placed in the Arms equipment slot."""
+
+    def test_token_placed_in_arms_slot(self):
+        """Token goes into equipment[ARMS], not permanents."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Orb-Weaver")
+        assassin_card = _make_assassin_hand_card(instance_id=500, owner_index=0)
+        game.state.players[0].hand.append(assassin_card)
+
+        game._ask = lambda d: PlayerResponse(
+            selected_option_ids=[f"discard_{assassin_card.instance_id}"]
+        )
+
+        from htc.cards.abilities.agents import _orb_weaver_instant
+        ctx = _build_ability_context(game, agent, None)
+        _orb_weaver_instant(ctx)
+
+        player = game.state.players[0]
+        arms = player.equipment[EquipmentSlot.ARMS]
+        assert arms is not None
+        assert arms.name == "Graphene Chelicera"
+        assert arms.zone == Zone.ARMS
+        # Not in permanents
+        assert not any(p.name == "Graphene Chelicera" for p in player.permanents)
+
+    def test_token_is_equipment_type(self):
+        """Token has CardType.EQUIPMENT, not TOKEN."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Orb-Weaver")
+        assassin_card = _make_assassin_hand_card(instance_id=500, owner_index=0)
+        game.state.players[0].hand.append(assassin_card)
+
+        game._ask = lambda d: PlayerResponse(
+            selected_option_ids=[f"discard_{assassin_card.instance_id}"]
+        )
+
+        from htc.cards.abilities.agents import _orb_weaver_instant
+        ctx = _build_ability_context(game, agent, None)
+        _orb_weaver_instant(ctx)
+
+        arms = game.state.players[0].equipment[EquipmentSlot.ARMS]
+        assert CardType.EQUIPMENT in arms.definition.types
+
+    def test_token_replaces_existing_arms_equipment(self):
+        """If Arms slot is occupied, existing equipment goes to graveyard."""
+        game, agent, _, _ = _setup_agent_test("Arakni, Orb-Weaver")
+        assassin_card = _make_assassin_hand_card(instance_id=500, owner_index=0)
+        game.state.players[0].hand.append(assassin_card)
+
+        # Put existing equipment in Arms slot
+        existing_arms = CardInstance(
+            instance_id=999,
+            definition=CardDefinition(
+                unique_id="old-arms",
+                name="Old Arm Guards",
+                color=None, pitch=None, cost=None, power=None,
+                defense=2, health=None, intellect=None, arcane=None,
+                types=frozenset({CardType.EQUIPMENT}),
+                subtypes=frozenset({SubType.ARMS}),
+                supertypes=frozenset(),
+                keywords=frozenset(),
+                functional_text="",
+                type_text="Equipment - Arms",
+            ),
+            owner_index=0,
+            zone=Zone.ARMS,
+        )
+        game.state.players[0].equipment[EquipmentSlot.ARMS] = existing_arms
+
+        game._ask = lambda d: PlayerResponse(
+            selected_option_ids=[f"discard_{assassin_card.instance_id}"]
+        )
+
+        from htc.cards.abilities.agents import _orb_weaver_instant
+        ctx = _build_ability_context(game, agent, None)
+        _orb_weaver_instant(ctx)
+
+        player = game.state.players[0]
+        arms = player.equipment[EquipmentSlot.ARMS]
+        assert arms is not None
+        assert arms.name == "Graphene Chelicera"
+        # Old equipment should be in graveyard
+        assert existing_arms in player.graveyard
+        assert existing_arms.zone == Zone.GRAVEYARD

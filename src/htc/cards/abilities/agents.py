@@ -27,6 +27,7 @@ from htc.enums import (
     ActionType,
     CardType,
     DecisionType,
+    EquipmentSlot,
     Keyword,
     SubType,
     SuperType,
@@ -52,13 +53,30 @@ AGENT_TRIGGER_TAG = "_agent_trigger_controller"
 # ---------------------------------------------------------------------------
 
 
-def _is_assassin_card(card: CardInstance) -> bool:
-    """Check if a card has the Assassin supertype."""
-    return SuperType.ASSASSIN in card.definition.supertypes
+def _is_assassin_card(
+    card: CardInstance,
+    effect_engine: EffectEngine | None = None,
+    state: GameState | None = None,
+) -> bool:
+    """Check if a card has the Assassin supertype.
+
+    When *effect_engine* and *state* are provided, uses
+    ``get_modified_supertypes`` so continuous effects are respected.
+    Falls back to the base definition otherwise.
+    """
+    if effect_engine is not None and state is not None:
+        supertypes = effect_engine.get_modified_supertypes(state, card)
+    else:
+        supertypes = card.definition.supertypes
+    return SuperType.ASSASSIN in supertypes
 
 
 def _is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
-    """Check if an attack is a dagger attack."""
+    """Check if an attack is a dagger attack.
+
+    Subtypes are not currently modified by continuous effects, so
+    ``definition.subtypes`` is read directly.
+    """
     if attack is None:
         return False
     if SubType.DAGGER in attack.definition.subtypes:
@@ -67,6 +85,68 @@ def _is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
         if SubType.DAGGER in link.attack_source.definition.subtypes:
             return True
     return False
+
+
+def _is_agent_ability_used(ctx: AbilityContext, agent_name: str) -> bool:
+    """Check whether the named agent ability was already used this turn."""
+    player = ctx.state.players[ctx.controller_index]
+    return agent_name in player.turn_counters.agent_abilities_used
+
+
+def _mark_agent_ability_used(ctx: AbilityContext, agent_name: str) -> None:
+    """Record that the named agent ability has been used this turn."""
+    player = ctx.state.players[ctx.controller_index]
+    player.turn_counters.agent_abilities_used.add(agent_name)
+
+
+def _create_equipment_token(ctx: AbilityContext) -> CardInstance:
+    """Create a Graphene Chelicera equipment token in the Arms slot.
+
+    If the Arms slot is already occupied, the existing equipment is
+    destroyed (sent to graveyard) per standard equipment replacement
+    rules before the token is placed.
+    """
+    from htc.cards.card import CardDefinition
+    from htc.cards.instance import CardInstance as CI
+
+    player = ctx.state.players[ctx.controller_index]
+
+    # Destroy existing Arms equipment if occupied
+    existing = player.equipment.get(EquipmentSlot.ARMS)
+    if existing is not None:
+        player.equipment[EquipmentSlot.ARMS] = None
+        existing.zone = Zone.GRAVEYARD
+        player.graveyard.append(existing)
+        log.info(
+            f"  Graphene Chelicera: Replaced {existing.name} in Arms slot"
+        )
+
+    token_def = CardDefinition(
+        unique_id="graphene-chelicera-token",
+        name="Graphene Chelicera",
+        color=None,
+        pitch=None,
+        cost=None,
+        power=None,
+        defense=None,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.EQUIPMENT}),
+        subtypes=frozenset({SubType.ARMS}),
+        supertypes=frozenset({SuperType.ASSASSIN}),
+        keywords=frozenset(),
+        functional_text="(Equipment token)",
+        type_text="Assassin Arms Equipment Token",
+    )
+    token = CI(
+        instance_id=ctx.state.next_instance_id(),
+        definition=token_def,
+        owner_index=ctx.controller_index,
+        zone=Zone.ARMS,
+    )
+    player.equipment[EquipmentSlot.ARMS] = token
+    return token
 
 
 def _has_stealth(attack: CardInstance, effect_engine, state) -> bool:
@@ -83,7 +163,10 @@ def _discard_assassin_card(ctx: AbilityContext) -> CardInstance | None:
     from htc.engine.actions import ActionOption, Decision
 
     player = ctx.state.players[ctx.controller_index]
-    assassin_cards = [c for c in player.hand if _is_assassin_card(c)]
+    assassin_cards = [
+        c for c in player.hand
+        if _is_assassin_card(c, ctx.effect_engine, ctx.state)
+    ]
     if not assassin_cards:
         return None
 
@@ -176,7 +259,11 @@ def _redback_ar(ctx: AbilityContext) -> None:
 
     attack = link.active_attack
     # Must be an Assassin attack
-    if not _is_assassin_card(attack):
+    if not _is_assassin_card(attack, ctx.effect_engine, ctx.state):
+        return
+
+    # Once per turn
+    if _is_agent_ability_used(ctx, "Arakni, Redback"):
         return
 
     # Cost: discard an Assassin card
@@ -184,6 +271,8 @@ def _redback_ar(ctx: AbilityContext) -> None:
     if discarded is None:
         log.info("  Arakni, Redback: No Assassin card to discard")
         return
+
+    _mark_agent_ability_used(ctx, "Arakni, Redback")
 
     # +3 power
     grant_power_bonus(ctx, attack, 3, "Arakni, Redback")
@@ -252,13 +341,19 @@ def _black_widow_ar(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    if not _is_assassin_card(attack):
+    if not _is_assassin_card(attack, ctx.effect_engine, ctx.state):
+        return
+
+    # Once per turn
+    if _is_agent_ability_used(ctx, "Arakni, Black Widow"):
         return
 
     discarded = _discard_assassin_card(ctx)
     if discarded is None:
         log.info("  Arakni, Black Widow: No Assassin card to discard")
         return
+
+    _mark_agent_ability_used(ctx, "Arakni, Black Widow")
 
     grant_power_bonus(ctx, attack, 3, "Arakni, Black Widow")
 
@@ -335,13 +430,19 @@ def _funnel_web_ar(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    if not _is_assassin_card(attack):
+    if not _is_assassin_card(attack, ctx.effect_engine, ctx.state):
+        return
+
+    # Once per turn
+    if _is_agent_ability_used(ctx, "Arakni, Funnel Web"):
         return
 
     discarded = _discard_assassin_card(ctx)
     if discarded is None:
         log.info("  Arakni, Funnel Web: No Assassin card to discard")
         return
+
+    _mark_agent_ability_used(ctx, "Arakni, Funnel Web")
 
     grant_power_bonus(ctx, attack, 3, "Arakni, Funnel Web")
 
@@ -425,10 +526,16 @@ def _tarantula_ar(ctx: AbilityContext) -> None:
     if not _is_dagger_attack(attack, link):
         return
 
+    # Once per turn
+    if _is_agent_ability_used(ctx, "Arakni, Tarantula"):
+        return
+
     discarded = _discard_assassin_card(ctx)
     if discarded is None:
         log.info("  Arakni, Tarantula: No Assassin card to discard")
         return
+
+    _mark_agent_ability_used(ctx, "Arakni, Tarantula")
 
     grant_power_bonus(ctx, attack, 3, "Arakni, Tarantula")
 
@@ -496,27 +603,22 @@ class _OrbWeaverStealthBuff(TriggeredEffect):
 
 def _orb_weaver_instant(ctx: AbilityContext) -> None:
     """Arakni, Orb-Weaver instant: create Graphene Chelicera + stealth buff."""
+    # Once per turn
+    if _is_agent_ability_used(ctx, "Arakni, Orb-Weaver"):
+        return
+
     # Cost: discard an Assassin card
     discarded = _discard_assassin_card(ctx)
     if discarded is None:
         log.info("  Arakni, Orb-Weaver: No Assassin card to discard")
         return
 
-    # Create Graphene Chelicera equipment token
-    from htc.cards.abilities._helpers import create_token
-    # TODO: Graphene Chelicerae is actually an equipment token that goes into
-    # an equipment slot. For now we create it as a permanent token. Full
-    # equipment-token support would need slot assignment and weapon activation.
-    token = create_token(
-        ctx.state,
-        ctx.controller_index,
-        "Graphene Chelicera",
-        SubType.ARMS,
-        functional_text="(Equipment token)",
-        supertypes=frozenset({SuperType.ASSASSIN}),
-    )
+    _mark_agent_ability_used(ctx, "Arakni, Orb-Weaver")
+
+    # Create Graphene Chelicera equipment token in the Arms slot
+    token = _create_equipment_token(ctx)
     log.info(
-        f"  Arakni, Orb-Weaver: Created Graphene Chelicera token "
+        f"  Arakni, Orb-Weaver: Equipped Graphene Chelicera token "
         f"for Player {ctx.controller_index}"
     )
 
@@ -704,11 +806,18 @@ def register_agent_abilities(
     log.info(f"  Registered {agent_name} abilities for Player {controller_index}")
 
 
-def deregister_agent_triggers(event_bus: EventBus, controller_index: int) -> None:
-    """Remove all agent-specific triggered effects for a player.
+def deregister_agent_triggers(
+    event_bus: EventBus,
+    controller_index: int,
+    ability_registry: AbilityRegistry | None = None,
+    agent_name: str | None = None,
+) -> None:
+    """Remove all agent-specific triggered effects and ability handlers.
 
     Called during return-to-brood when the player reverts to original hero.
     Identifies triggers by the AGENT_TRIGGER_TAG attribute.
+    If *ability_registry* and *agent_name* are provided, also removes
+    the agent's AR/instant handler from the registry.
     """
     to_remove = [
         t for t in event_bus._triggered_effects
@@ -722,3 +831,12 @@ def deregister_agent_triggers(event_bus: EventBus, controller_index: int) -> Non
             f"  Deregistered {len(to_remove)} agent trigger(s) "
             f"for Player {controller_index}"
         )
+
+    # Remove agent ability handler from AbilityRegistry
+    if ability_registry is not None and agent_name and agent_name in _AGENT_AR_MAP:
+        timing, _ = _AGENT_AR_MAP[agent_name]
+        if ability_registry.unregister(timing, agent_name):
+            log.info(
+                f"  Unregistered {agent_name} ability handler ({timing}) "
+                f"for Player {controller_index}"
+            )

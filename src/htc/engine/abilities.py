@@ -82,6 +82,16 @@ class AbilityRegistry:
         registry: dict[str, AbilityHandler] = getattr(self, timing)
         registry[card_name] = handler
 
+    def unregister(self, timing: str, card_name: str) -> bool:
+        """Remove the handler for *card_name* at *timing*.
+
+        Returns True if a handler was removed, False if none was registered.
+        """
+        if timing not in TIMINGS:
+            return False
+        registry: dict[str, AbilityHandler] = getattr(self, timing)
+        return registry.pop(card_name, None) is not None
+
     def lookup(self, timing: str, card_name: str) -> AbilityHandler | None:
         """Look up the ability handler for a card at a specific timing.
 
