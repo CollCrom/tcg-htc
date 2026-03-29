@@ -455,20 +455,31 @@ class Game:
         """Before combat chain close, redirect cards that should go to banish.
 
         Cards played from banish (Trap-Door, Under the Trap-Door) should
-        go to banish instead of graveyard when the chain closes.
+        go to banish instead of graveyard when the chain closes.  This
+        covers both active attacks and defending cards (e.g. trap defense
+        reactions played from banish).
         """
         if not self._banish_instead_of_graveyard:
             return
         for link in self.state.combat_chain.chain_links:
             atk = link.active_attack
             if atk and not atk.is_proxy and atk.instance_id in self._banish_instead_of_graveyard:
-                # Pre-move to banish; close_chain will skip it since it's not on chain
                 self._banish_instead_of_graveyard.discard(atk.instance_id)
                 owner = self.state.players[atk.owner_index]
                 atk.zone = Zone.BANISHED
                 owner.banished.append(atk)
                 link.active_attack = None  # prevent close_chain from moving it again
                 log.info(f"  {atk.name} banished instead of graveyard on chain close")
+
+            # Also redirect defending cards played from banish
+            for card in list(link.defending_cards):
+                if card.instance_id in self._banish_instead_of_graveyard:
+                    self._banish_instead_of_graveyard.discard(card.instance_id)
+                    owner = self.state.players[card.owner_index]
+                    card.zone = Zone.BANISHED
+                    owner.banished.append(card)
+                    link.defending_cards.remove(card)  # prevent close_chain from moving it
+                    log.info(f"  {card.name} banished instead of graveyard on chain close")
 
     def _move_to_graveyard_or_banish(self, card: CardInstance) -> None:
         """Move card to graveyard, or banish if it was played from banish.

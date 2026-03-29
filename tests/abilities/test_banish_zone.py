@@ -697,3 +697,159 @@ class TestOnBecomeTiming:
         game = make_game_shell()
         handler = game.ability_registry.lookup("instant_discard_effect", "Under the Trap-Door")
         assert handler is not None
+
+
+# ---------------------------------------------------------------------------
+# Critical fix: defending cards redirected to banish on chain close
+# ---------------------------------------------------------------------------
+
+
+class TestDefendingCardBanishRedirect:
+    """Tests that defending cards played from banish go back to banish
+    (not graveyard) when the combat chain closes."""
+
+    def test_defending_card_banished_on_chain_close(self):
+        """A trap defense reaction played from banish should return to banish
+        when the chain closes, not graveyard."""
+        from htc.state.combat_state import ChainLink
+
+        game = make_game_shell()
+        state = game.state
+
+        # Set up an attack on the chain
+        attack = make_card(instance_id=1, zone=Zone.COMBAT_CHAIN, owner_index=0)
+        trap = _make_trap(instance_id=50, zone=Zone.COMBAT_CHAIN, owner_index=1)
+
+        link = ChainLink(link_number=1, active_attack=attack, attack_target_index=1)
+        link.defending_cards.append(trap)
+
+        state.combat_chain.is_open = True
+        state.combat_chain.chain_links.append(link)
+
+        # Mark the trap as needing banish redirect (played from banish)
+        game._banish_instead_of_graveyard.add(trap.instance_id)
+
+        # Run redirect + close
+        game._redirect_banish_on_chain_close()
+        game.combat_mgr.close_chain(state)
+
+        # Trap should be in banish, not graveyard
+        assert trap.zone == Zone.BANISHED
+        assert trap in state.players[1].banished
+        assert trap not in state.players[1].graveyard
+
+    def test_non_banish_defending_card_goes_to_graveyard(self):
+        """A normal defending card (not played from banish) should go to graveyard."""
+        from htc.state.combat_state import ChainLink
+
+        game = make_game_shell()
+        state = game.state
+
+        attack = make_card(instance_id=1, zone=Zone.COMBAT_CHAIN, owner_index=0)
+        defender = make_card(instance_id=2, zone=Zone.COMBAT_CHAIN, owner_index=1, is_attack=False)
+
+        link = ChainLink(link_number=1, active_attack=attack, attack_target_index=1)
+        link.defending_cards.append(defender)
+
+        state.combat_chain.is_open = True
+        state.combat_chain.chain_links.append(link)
+
+        # No banish redirect for this card
+        game._redirect_banish_on_chain_close()
+        game.combat_mgr.close_chain(state)
+
+        assert defender.zone == Zone.GRAVEYARD
+
+    def test_mixed_defending_cards_redirect(self):
+        """When multiple defenders, only the one played from banish is redirected."""
+        from htc.state.combat_state import ChainLink
+
+        game = make_game_shell()
+        state = game.state
+
+        attack = make_card(instance_id=1, zone=Zone.COMBAT_CHAIN, owner_index=0)
+        trap = _make_trap(instance_id=50, zone=Zone.COMBAT_CHAIN, owner_index=1)
+        normal = make_card(instance_id=2, zone=Zone.COMBAT_CHAIN, owner_index=1, is_attack=False)
+
+        link = ChainLink(link_number=1, active_attack=attack, attack_target_index=1)
+        link.defending_cards.extend([trap, normal])
+
+        state.combat_chain.is_open = True
+        state.combat_chain.chain_links.append(link)
+
+        game._banish_instead_of_graveyard.add(trap.instance_id)
+
+        game._redirect_banish_on_chain_close()
+        game.combat_mgr.close_chain(state)
+
+        assert trap.zone == Zone.BANISHED
+        assert trap in state.players[1].banished
+        assert normal.zone == Zone.GRAVEYARD
+
+
+# ---------------------------------------------------------------------------
+# Critical fix: defense reactions from banish offered during reaction step
+# ---------------------------------------------------------------------------
+
+
+class TestDefenseReactionFromBanish:
+    """Tests that defense reactions in the banish zone (marked playable)
+    are offered during the reaction step."""
+
+    def test_banished_trap_offered_as_defense_reaction(self):
+        """A trap defense reaction banished by Trap-Door should appear
+        as a defense reaction option during the reaction step."""
+        game = make_game_shell()
+        state = game.state
+
+        trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=1)
+        state.players[1].banished.append(trap)
+        state.players[1].playable_from_banish.append((50, "start_of_next_turn"))
+
+        decision = game.action_builder.build_reaction_decision(
+            state,
+            priority_player=1,
+            attacker_index=0,
+            defender_index=1,
+        )
+
+        play_ids = [o.card_instance_id for o in decision.options if o.card_instance_id]
+        assert 50 in play_ids
+
+    def test_banished_trap_not_offered_to_attacker(self):
+        """Defense reactions from banish should NOT be offered to the attacker."""
+        game = make_game_shell()
+        state = game.state
+
+        trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=0)
+        state.players[0].banished.append(trap)
+        state.players[0].playable_from_banish.append((50, "start_of_next_turn"))
+
+        decision = game.action_builder.build_reaction_decision(
+            state,
+            priority_player=0,
+            attacker_index=0,
+            defender_index=1,
+        )
+
+        play_ids = [o.card_instance_id for o in decision.options if o.card_instance_id]
+        assert 50 not in play_ids
+
+    def test_unmarked_banished_trap_not_offered(self):
+        """Banished traps NOT marked as playable should not be offered."""
+        game = make_game_shell()
+        state = game.state
+
+        trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=1)
+        state.players[1].banished.append(trap)
+        # Not marked as playable
+
+        decision = game.action_builder.build_reaction_decision(
+            state,
+            priority_player=1,
+            attacker_index=0,
+            defender_index=1,
+        )
+
+        play_ids = [o.card_instance_id for o in decision.options if o.card_instance_id]
+        assert 50 not in play_ids

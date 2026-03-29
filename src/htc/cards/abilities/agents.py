@@ -81,11 +81,8 @@ def _trap_door_on_become(ctx: AbilityContext) -> None:
         log.warning("  Trap-Door: chosen card not found in deck")
         return
 
-    # Banish face-down
-    player.deck.remove(target)
-    target.zone = Zone.BANISHED
-    target.face_up = False
-    player.banished.append(target)
+    # Banish face-down (uses AbilityContext helper to emit BANISH event)
+    ctx.banish_card(target, ctx.controller_index, face_down=True)
     log.info(f"  Trap-Door: banished {target.name} face-down")
 
     # Shuffle deck

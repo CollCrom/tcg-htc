@@ -165,6 +165,16 @@ class ActionBuilder:
                         suffix="defense reaction",
                     ))
 
+        # Defense reactions from banish (e.g. traps banished by Trap-Door)
+        if priority_player == defender_index:
+            for card in self._get_playable_from_banish(state, priority_player):
+                if card.definition.is_defense_reaction:
+                    if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
+                        options.append(ActionOption.play_card(
+                            card.instance_id, card.name, card.definition.color_label,
+                            suffix="defense reaction",
+                        ))
+
         # Equipment attack reactions: only attacker can use (e.g. Tide Flippers, Stalker's Steps)
         if priority_player == attacker_index and self.ability_registry:
             self._add_equipment_reaction_options(options, state, priority_player)

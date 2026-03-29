@@ -1292,11 +1292,8 @@ def _under_the_trap_door_instant(ctx: AbilityContext) -> None:
         log.warning("  Under the Trap-Door: chosen trap not found")
         return
 
-    # Banish the trap from graveyard (face-up)
-    player.graveyard.remove(target)
-    target.zone = Zone.BANISHED
-    target.face_up = True
-    player.banished.append(target)
+    # Banish the trap from graveyard (face-up, uses context helper for BANISH event)
+    ctx.banish_card(target, ctx.controller_index, face_down=False)
     log.info(f"  Under the Trap-Door: banished {target.name} from graveyard")
 
     # Mark as playable from banish this turn
