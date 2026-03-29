@@ -3,7 +3,7 @@
 Registers ability handlers for Ninja and Draconic attack actions,
 attack reactions, and non-attack actions used in the Cindra Blue decklist.
 
-Card texts verified against data/cards.csv functional_text field.
+Card texts verified against data/cards.tsv functional_text field.
 """
 
 from __future__ import annotations

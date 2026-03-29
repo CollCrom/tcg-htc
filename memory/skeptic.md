@@ -81,6 +81,18 @@ Persistent learnings across sessions. Update this after each review.
 - **_process_pending_triggers coverage**: Currently only called after 4 event types. Track which events need trigger processing as more cards are added.
 - **Inconsistent state access in triggers**: Some use `_state_getter` callable, others store direct `_state` reference. Prefer the callable pattern for consistency.
 
+### fix/pre-phase6-cleanup — Pre-Phase 6 Cleanup (2026-03-28)
+- **Round 1 verdict: APPROVE** with 3 test gaps flagged:
+  1. Pitch ordering had no tests (was random shuffle, now player-chosen)
+  2. Pain in the Backside multi-dagger choice untested
+  3. Damage prevention edge cases (LOSE_LIFE vs DEAL_DAMAGE) and Ambush+Overpower untested
+- **Round 2 verdict: APPROVE** — All 3 gaps covered.
+  - Pitch ordering: 3 tests (2-card, 3-card, full end-phase integration)
+  - Multi-dagger: test verifies HIT source attribution to chosen dagger; no-dagger test strengthened
+  - Damage prevention: 4 tests (Kiss of Death bypass, Throw Dagger no-draw, Blood Runs Deep partial, Art of Dragon: Fire full prevention)
+  - Ambush+Overpower: 1 test verifying arsenal bypass
+  - 355 tests all passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*

@@ -140,7 +140,7 @@ def _parse_deck_card_line(line: str) -> DeckEntry | None:
 
 @pytest.fixture(scope="module")
 def card_db() -> CardDatabase:
-    return CardDatabase.load(DATA_DIR / "cards.csv")
+    return CardDatabase.load(DATA_DIR / "cards.tsv")
 
 
 @pytest.fixture(scope="module")

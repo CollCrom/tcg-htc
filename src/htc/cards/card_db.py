@@ -9,7 +9,7 @@ from htc.enums import Color, Keyword, classify_type_string
 
 
 def _parse_int(value: str) -> int | None:
-    """Parse an integer from a CSV field, returning None for blank/non-numeric."""
+    """Parse an integer from a TSV field, returning None for blank/non-numeric."""
     value = value.strip()
     if not value:
         return None
@@ -30,7 +30,7 @@ def _parse_color(value: str) -> Color | None:
 
 
 # Map keyword names (lowered) to Keyword enum. Some keywords have X/N suffixes
-# in the CSV like "Ward 10" or "Arcane Barrier 1" — we strip the number.
+# in the TSV like "Ward 10" or "Arcane Barrier 1" — we strip the number.
 _KEYWORD_BY_NAME: dict[str, Keyword] = {}
 for _kw in Keyword:
     _KEYWORD_BY_NAME[_kw.value.lower()] = _kw
@@ -39,7 +39,7 @@ _KEYWORD_WITH_NUMBER = re.compile(r"^(.+?)\s+\d+$")
 
 
 def _parse_keywords(value: str) -> tuple[frozenset[Keyword], dict[Keyword, int]]:
-    """Parse the 'Card Keywords' CSV field into keywords and their numeric values.
+    """Parse the 'Card Keywords' TSV field into keywords and their numeric values.
 
     Returns (keywords_set, keyword_values) where keyword_values maps
     parameterized keywords to their number, e.g. "Arcane Barrier 2" → {ARCANE_BARRIER: 2}.
@@ -69,16 +69,16 @@ def _parse_keywords(value: str) -> tuple[frozenset[Keyword], dict[Keyword, int]]
 
 
 class CardDatabase:
-    """Loads and indexes card definitions from the FaB Cube CSV."""
+    """Loads and indexes card definitions from the Fabrary card dataset TSV."""
 
     def __init__(self) -> None:
         self._by_id: dict[str, CardDefinition] = {}
         self._by_name: dict[str, list[CardDefinition]] = {}
 
     @classmethod
-    def load(cls, csv_path: str | Path) -> CardDatabase:
+    def load(cls, tsv_path: str | Path) -> CardDatabase:
         db = cls()
-        path = Path(csv_path)
+        path = Path(tsv_path)
         with path.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter="\t")
             for row in reader:

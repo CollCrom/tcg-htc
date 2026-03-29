@@ -56,7 +56,7 @@ Equipment: Crater Fist, Helm of Isen's Peak, Tectonic Plating, Ironrot Legs
 
 def run_game(seed: int = 7, p1_seed: int = 42, p2_seed: int = 123) -> GameResult:
     """Run a complete game between two random players with warrior decks."""
-    db = CardDatabase.load(DATA_DIR / "cards.csv")
+    db = CardDatabase.load(DATA_DIR / "cards.tsv")
     deck1 = parse_deck_list(WARRIOR_DECK)
     deck2 = parse_deck_list(WARRIOR_DECK)
     p1 = RandomPlayer(seed=p1_seed)

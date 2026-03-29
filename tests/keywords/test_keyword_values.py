@@ -72,7 +72,7 @@ def test_keyword_value_accessor():
 
 def test_real_csv_arcane_barrier_values():
     """Cards loaded from CSV should have Arcane Barrier values parsed."""
-    db = CardDatabase.load(DATA_DIR / "cards.csv")
+    db = CardDatabase.load(DATA_DIR / "cards.tsv")
     ab_cards = [c for c in db.all_cards if Keyword.ARCANE_BARRIER in c.keywords]
     assert len(ab_cards) > 0, "Should find cards with Arcane Barrier"
     for card in ab_cards:

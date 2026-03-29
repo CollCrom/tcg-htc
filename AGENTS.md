@@ -46,7 +46,7 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 - **`cards/`** — Card definitions (334 lines)
   - `card.py` — CardDefinition (frozen, from CSV)
   - `instance.py` — CardInstance (mutable per-game state)
-  - `card_db.py` — CardDatabase (4217 cards from FaB Cube CSV)
+  - `card_db.py` — CardDatabase (4562 cards from Fabrary dataset TSV)
 
 - **`decks/`** — Deck management (207 lines)
   - `deck_list.py` — DeckList structure
