@@ -1146,6 +1146,9 @@ class Game:
                     data={"chain_link": link},
                 ))
 
+        # Process triggered effects from defend events (e.g. Mask of Deceit)
+        self._process_pending_triggers()
+
         # 7.3.3: Turn player gets priority after defenders declared
         self._priority_loop_until_pass(allow_actions=False)
 

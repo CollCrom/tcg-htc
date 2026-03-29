@@ -93,6 +93,27 @@ Persistent learnings across sessions. Update this after each review.
   - Ambush+Overpower: 1 test verifying arsenal bypass
   - 355 tests all passing.
 
+### feat/enflame-stalkers-abilities — Enflame the Firebrand + Stalker's Steps (2026-03-28)
+- **Round 1 verdict: REQUEST CHANGES** — 2 critical issues in `_is_keyword_inherent()`:
+  1. "with" prefix too broad — "attack with X, **intimidate**" falsely stripped Intimidate
+  2. Line-level context too coarse — "gets +1{p}. **Go again**" falsely stripped Go Again
+- **Round 2 verdict: APPROVE** — Both fixes verified correct.
+  - Bug 1: "with" removed from `_CONDITIONAL_PREFIXES` regex. Alpha Rampage, Wrecking Ball patterns now correctly keep Intimidate. Tests cover both cases.
+  - Bug 2: Sentence-level splitting (`re.split(r"\.\s", ...)`) replaces line-level context. "gets +1{p}. **Go again**" correctly inherent; "this gets **go again**" correctly conditional. 4 dedicated regression tests.
+  - `_is_keyword_inherent` heuristic: docstring at line 53 still mentions "with" as a conditional word (stale after fix). Non-blocking.
+  - Keyword parsing verified against real dataset: Enflame (no Go Again), Surging Strike (has Go Again), Aggressive Pounce (no Go Again), Ancestral Harmony (has Go Again), Bonds of Ancestry (Combo yes, Go Again no), Captain's Call (has Go Again), Barraging Big Horn (no Go Again). All correct.
+  - Stalker's Steps: Stealth check via effect engine (correct). Destroy + Go Again grant. Equipment found by name at LEGS slot, destroyed via `_destroy_equipment` which iterates all slots by instance_id. Minor: `from htc.enums import EquipmentSlot` inline import could be at module level.
+  - Enflame the Firebrand: Tiered bonuses at 2/3/4 Draconic chain links. `count_draconic_chain_links` now uses `get_modified_supertypes` (effect engine) instead of `definition.supertypes` — correct for Enflame's 3+ tier which grants Draconic.
+  - Supertype grant system: `make_supertype_grant`, `resolve_supertypes`, `get_modified_supertypes` all properly integrated. `ModStage.SUPERTYPES = 5` fits the existing 8-stage layer system.
+  - 408 tests all passing. 28 new tests (keyword parsing unit + integration, Enflame + Stalker's Steps abilities, real card data verification).
+
+### feat/flight-path-mask-of-deceit — Dragonscaler Flight Path + Mask of Deceit + Equipment Activation (2026-03-28)
+- **Round 1 verdict: REQUEST CHANGES** — 1 critical, 2 minor issues.
+- **Critical**: `_process_pending_triggers()` NOT called after `DEFEND_DECLARED` emission in `game.py` line 1147. Mask of Deceit trigger will never fire during actual game play. Tests pass only because they manually call `_process_pending_triggers()`. Must add the call after DEFEND_DECLARED events are emitted (after the defend loop, before priority at line 1149).
+- **Minor**: `ActionBuilder._can_use_equipment_instant()` and `_count_draconic_chain_links()` read `atk.definition.supertypes` directly instead of using `effect_engine.get_modified_supertypes()`. The handler in `equipment.py` (`_dragonscaler_flight_path`) correctly uses the effect engine, but the action builder's precondition/cost checks don't — meaning Enflame's tier-3 Draconic grant would not count for cost reduction or precondition checking. Recurring `definition.X` pattern.
+- **Minor**: Redundant `_add_equipment_instant_options` call in `build_reaction_decision` — called once explicitly (line 148) and once again inside `add_instant_options` (line 151). Deduplication prevents bugs but wastes cycles.
+- Good test coverage: 417 tests passing, ~70 new tests across 2 files. Keyword parsing, cost reduction, hero transformation, blade break, loader auto-include all covered.
+
 ## Talishar Discrepancies
 
 *(None found yet)*

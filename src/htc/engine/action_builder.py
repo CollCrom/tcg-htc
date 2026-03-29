@@ -143,11 +143,7 @@ class ActionBuilder:
         if priority_player == attacker_index and self.ability_registry:
             self._add_equipment_reaction_options(options, state, priority_player)
 
-        # Equipment instants: either player can activate during reactions
-        if self.ability_registry:
-            self._add_equipment_instant_options(options, state, priority_player)
-
-        # Instants: either player can play
+        # Instants (including equipment instants): either player can play
         self.add_instant_options(options, state, priority_player)
         options.append(self.pass_option())
 
@@ -332,12 +328,11 @@ class ActionBuilder:
             if atk.owner_index != player_index:
                 return False
             from htc.enums import SuperType
-            if SuperType.DRACONIC not in atk.definition.supertypes:
+            if SuperType.DRACONIC not in self.effect_engine.get_modified_supertypes(state, atk):
                 return False
         return True
 
-    @staticmethod
-    def _count_draconic_chain_links(state: GameState, player_index: int) -> int:
+    def _count_draconic_chain_links(self, state: GameState, player_index: int) -> int:
         """Count Draconic chain links controlled by a player on the combat chain."""
         from htc.enums import SuperType
         count = 0
@@ -349,7 +344,7 @@ class ActionBuilder:
                 continue
             if atk.owner_index != player_index:
                 continue
-            if SuperType.DRACONIC in atk.definition.supertypes:
+            if SuperType.DRACONIC in self.effect_engine.get_modified_supertypes(state, atk):
                 count += 1
         return count
 

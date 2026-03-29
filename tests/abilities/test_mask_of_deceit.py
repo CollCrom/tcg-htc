@@ -34,6 +34,7 @@ from htc.enums import (
 from htc.state.combat_state import ChainLink
 from htc.state.game_state import GameState
 from htc.state.player_state import PlayerState
+from htc.engine.actions import PlayerResponse
 from tests.conftest import make_card, make_equipment, make_game_shell, make_state
 
 
@@ -492,3 +493,52 @@ class TestBladeBreak:
         assert state.players[0].equipment[EquipmentSlot.HEAD] is None
         assert mask in state.players[0].graveyard
         assert mask.zone == Zone.GRAVEYARD
+
+
+# ---------------------------------------------------------------------------
+# Integration: _defend_step triggers Mask of Deceit
+# ---------------------------------------------------------------------------
+
+
+class TestMaskOfDeceitDefendStepIntegration:
+    """Verify Mask of Deceit triggers through the real _defend_step path."""
+
+    def test_defend_step_triggers_mask_transformation(self):
+        """Calling _defend_step with Mask of Deceit as a defender triggers
+        the Agent of Chaos transformation via _process_pending_triggers."""
+        game, mask, dh_list, link = _setup_mask_test(attacker_marked=False)
+        state = game.state
+        state.rng = Random(42)
+
+        # Register equipment triggers (as the real game setup does)
+        register_equipment_triggers(
+            event_bus=game.events,
+            effect_engine=game.effect_engine,
+            state_getter=lambda: state,
+            player_index=0,
+            player_state=state.players[0],
+            game=game,
+        )
+
+        # Mock _ask: first call is the defend decision — choose Mask of Deceit;
+        # all subsequent calls (priority loops) pass.
+        call_count = [0]
+
+        def mock_ask(decision: Decision) -> PlayerResponse:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Defend with Mask of Deceit
+                return PlayerResponse(
+                    selected_option_ids=[f"defend_{mask.instance_id}"]
+                )
+            return PlayerResponse(selected_option_ids=["pass"])
+
+        game._ask = mock_ask
+
+        # Run the actual defend step
+        game._defend_step()
+
+        # Hero should have been transformed to one of the Agents of Chaos
+        assert state.players[0].hero.name in [dh.name for dh in dh_list]
+        assert state.players[0].original_hero is not None
+        assert state.players[0].original_hero.name == "Arakni, Marionette"
