@@ -71,7 +71,6 @@ class Game:
         self.stack_mgr = StackManager()
         self.effect_engine = EffectEngine()
         self.combat_mgr = CombatManager(self.effect_engine)
-        self.action_builder = ActionBuilder(self.effect_engine)
         self.cost_manager = CostManager(self.effect_engine, lambda d: self._ask(d))
         self.events = EventBus()
         self.keyword_engine = KeywordEngine(
@@ -79,6 +78,7 @@ class Game:
         )
         self.ability_registry = AbilityRegistry()
         self._register_abilities()
+        self.action_builder = ActionBuilder(self.effect_engine, self.ability_registry)
         self._register_event_handlers()
 
     def _register_abilities(self) -> None:
@@ -533,9 +533,13 @@ class Game:
                 self._play_card(player_index, card)
         elif action_id.startswith("activate_"):
             instance_id = int(action_id.split("_", 1)[1])
-            weapon = self.state.find_card(instance_id)
-            if weapon:
-                self._activate_weapon(player_index, weapon)
+            card = self.state.find_card(instance_id)
+            if card:
+                # Check if it's an equipment with a registered ability
+                if self._is_equipment_activation(card):
+                    self._activate_equipment(player_index, card)
+                else:
+                    self._activate_weapon(player_index, card)
 
     def _play_card(self, player_index: int, card: CardInstance) -> None:
         """Play a card from hand/arsenal onto the stack (rules 5.1).
@@ -695,6 +699,54 @@ class Game:
     def _apply_spellvoid(self, player_index: int, damage: int) -> int:
         """Let the player use Spellvoid to prevent arcane damage."""
         return self.keyword_engine.apply_spellvoid(self.state, player_index, damage)
+
+    # --- Equipment Activation ---
+
+    def _is_equipment_activation(self, card: CardInstance) -> bool:
+        """Check if an activate action targets equipment (not a weapon)."""
+        player = self.state.players[card.owner_index]
+        for _slot, eq in player.equipment.items():
+            if eq is not None and eq.instance_id == card.instance_id:
+                return True
+        return False
+
+    def _activate_equipment(self, player_index: int, equipment: CardInstance) -> None:
+        """Activate an equipment ability (attack reaction or instant).
+
+        Looks up the handler from the ability registry, builds an AbilityContext,
+        pays any resource cost, and calls the handler.
+        """
+        # Try equipment_instant_effect first, then attack_reaction_effect
+        handler = self.ability_registry.lookup("equipment_instant_effect", equipment.name)
+        timing = "equipment_instant_effect"
+        if handler is None:
+            handler = self.ability_registry.lookup("attack_reaction_effect", equipment.name)
+            timing = "attack_reaction_effect"
+        if handler is None:
+            log.warning(f"  No equipment ability handler for {equipment.name}")
+            return
+
+        # Pay resource cost for equipment instants
+        if timing == "equipment_instant_effect":
+            cost = self.action_builder._get_equipment_instant_cost(
+                self.state, player_index, equipment,
+            )
+            if cost is not None and cost > 0:
+                self._pitch_to_pay(player_index, cost)
+
+        ctx = AbilityContext(
+            state=self.state,
+            source_card=equipment,
+            controller_index=player_index,
+            chain_link=self.state.combat_chain.active_link,
+            effect_engine=self.effect_engine,
+            events=self.events,
+            ask=lambda d: self._ask(d),
+            keyword_engine=self.keyword_engine,
+            combat_mgr=self.combat_mgr,
+        )
+        handler(ctx)
+        log.info(f"  Equipment activated: {equipment.name} ({timing})")
 
     # --- Weapon Activation (rules 1.4.3) ---
 
