@@ -1078,9 +1078,9 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
 #  this gets go again, 3 or more, your attacks are Draconic this combat
 #  chain, 4 or more, this gets +2{p}."
 #
-# NOTE: Fabrary data incorrectly lists Go Again as inherent; stripped via
-# _KEYWORD_OVERRIDES_REMOVE in card_db.py. Go Again is only granted
-# conditionally at 2+ Draconic chain links.
+# NOTE: Fabrary card_keywords lists Go Again, but the keyword parser
+# correctly identifies it as conditional (preceded by "gets") and
+# excludes it from the card's inherent keywords.
 # ---------------------------------------------------------------------------
 
 

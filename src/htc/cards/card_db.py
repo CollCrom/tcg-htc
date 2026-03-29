@@ -7,17 +7,6 @@ from pathlib import Path
 from htc.cards.card import CardDefinition
 from htc.enums import Color, Keyword, classify_type_string
 
-# ---------------------------------------------------------------------------
-# Data overrides — corrections to known errors in the external Fabrary dataset
-# ---------------------------------------------------------------------------
-# Map card name -> set of keywords to REMOVE from the parsed keyword set.
-# Enflame the Firebrand: Fabrary incorrectly lists Go Again as an inherent
-# keyword. Go Again is only conditionally granted by the card's ability text
-# when there are 2+ Draconic chain links.
-_KEYWORD_OVERRIDES_REMOVE: dict[str, set[Keyword]] = {
-    "Enflame the Firebrand": {Keyword.GO_AGAIN},
-}
-
 
 def _parse_int(value: str) -> int | None:
     """Parse an integer from a TSV field, returning None for blank/non-numeric."""
@@ -48,14 +37,90 @@ for _kw in Keyword:
 
 _KEYWORD_WITH_NUMBER = re.compile(r"^(.+?)\s+\d+$")
 
+# Words that precede a keyword to indicate it is conditional (granted by an
+# ability), not inherent to the card.
+_CONDITIONAL_PREFIXES = re.compile(
+    r"\b(?:gets?|gains?|has|with|lose[s]?)\b",
+    re.IGNORECASE,
+)
 
-def _parse_keywords(value: str) -> tuple[frozenset[Keyword], dict[Keyword, int]]:
-    """Parse the 'Card Keywords' TSV field into keywords and their numeric values.
+
+def _is_keyword_inherent(keyword: Keyword, functional_text: str) -> bool:
+    """Determine if a keyword from card_keywords is inherent on the card.
+
+    A keyword is inherent if it appears in the functional_text as a standalone
+    bold keyword (``**Keyword**`` or ``**Keyword N**``) that is NOT preceded
+    in its sentence by conditional words like "gets", "gains", "has", "with".
+
+    If the keyword does not appear in bold in the text at all, we conservatively
+    treat it as inherent (the dataset may have keywords for cards with no
+    functional_text, like heroes/equipment with only keyword abilities).
+    """
+    if not functional_text:
+        # No text to check — trust the card_keywords field.
+        return True
+
+    kw_name = keyword.value  # e.g. "Go again", "Arcane Barrier"
+
+    # Build pattern to find **Keyword** or **Keyword N** in text.
+    # Case-insensitive because text varies (e.g. "**Go again**" vs "**go again**").
+    escaped = re.escape(kw_name)
+    # Match the bold keyword, optionally followed by a space and digits (for
+    # parameterized keywords like **Arcane Barrier 1**).
+    pattern = re.compile(
+        r"\*\*" + escaped + r"(?:\s+\d+)?" + r"\*\*",
+        re.IGNORECASE,
+    )
+
+    found_inherent = False
+    found_conditional = False
+
+    for match in pattern.finditer(functional_text):
+        start = match.start()
+        # Look backwards from the match to the start of the line to find
+        # the sentence context.
+        line_start = functional_text.rfind("\n", 0, start)
+        if line_start == -1:
+            line_start = 0
+        else:
+            line_start += 1  # skip the newline char
+
+        preceding = functional_text[line_start:start].strip()
+
+        if not preceding:
+            # Keyword is at the start of a line — inherent.
+            found_inherent = True
+        elif _CONDITIONAL_PREFIXES.search(preceding):
+            # Preceded by a conditional word — this is a conditional grant.
+            found_conditional = True
+        else:
+            # Preceded by other text but not conditional words.
+            # Examples: "**Combo** - When this attacks..." (Combo at start of
+            # ability text is inherent), or "**Viserai Specialization**\n"
+            found_inherent = True
+
+    if not found_inherent and not found_conditional:
+        # Keyword wasn't found in bold in text at all — trust card_keywords.
+        return True
+
+    # If there's at least one inherent occurrence, the keyword is inherent.
+    return found_inherent
+
+
+def _parse_keywords(
+    value: str,
+    functional_text: str = "",
+) -> tuple[frozenset[Keyword], dict[Keyword, int]]:
+    """Parse the 'Card Keywords' TSV field into inherent keywords and values.
+
+    Cross-references ``functional_text`` to distinguish inherent keywords
+    (standalone bold text like ``**Go again**``) from conditional ones
+    (preceded by "gets", "gains", etc.).
 
     Returns (keywords_set, keyword_values) where keyword_values maps
     parameterized keywords to their number, e.g. "Arcane Barrier 2" → {ARCANE_BARRIER: 2}.
     """
-    result: set[Keyword] = set()
+    candidates: set[Keyword] = set()
     values: dict[Keyword, int] = {}
     for raw in value.split(","):
         raw = raw.strip()
@@ -63,7 +128,7 @@ def _parse_keywords(value: str) -> tuple[frozenset[Keyword], dict[Keyword, int]]
             continue
         key = raw.lower()
         if key in _KEYWORD_BY_NAME:
-            result.add(_KEYWORD_BY_NAME[key])
+            candidates.add(_KEYWORD_BY_NAME[key])
             continue
         # Try stripping a trailing number (e.g. "Ward 10" -> "Ward", value=10)
         m = _KEYWORD_WITH_NUMBER.match(raw)
@@ -71,11 +136,21 @@ def _parse_keywords(value: str) -> tuple[frozenset[Keyword], dict[Keyword, int]]
             key2 = m.group(1).strip().lower()
             if key2 in _KEYWORD_BY_NAME:
                 kw = _KEYWORD_BY_NAME[key2]
-                result.add(kw)
+                candidates.add(kw)
                 try:
                     values[kw] = int(raw[len(m.group(1)):].strip())
                 except ValueError:
                     pass
+
+    # Filter to only inherent keywords by cross-referencing functional_text.
+    result: set[Keyword] = set()
+    for kw in candidates:
+        if _is_keyword_inherent(kw, functional_text):
+            result.add(kw)
+        else:
+            # Drop the keyword value too if the keyword is conditional.
+            values.pop(kw, None)
+
     return frozenset(result), values
 
 
@@ -138,13 +213,11 @@ class CardDatabase:
             return None
 
         card_types, sub_types, super_types = classify_type_string(types_str)
-        keywords, keyword_values = _parse_keywords(row.get("Card Keywords", ""))
-
-        # Apply data overrides for known dataset errors
-        name = row["Name"]
-        removals = _KEYWORD_OVERRIDES_REMOVE.get(name)
-        if removals:
-            keywords = frozenset(keywords - removals)
+        functional_text = row.get("Functional Text", "")
+        keywords, keyword_values = _parse_keywords(
+            row.get("Card Keywords", ""),
+            functional_text,
+        )
 
         return CardDefinition(
             unique_id=row["Unique ID"],
@@ -161,7 +234,7 @@ class CardDatabase:
             subtypes=frozenset(sub_types),
             supertypes=frozenset(super_types),
             keywords=keywords,
-            functional_text=row.get("Functional Text", ""),
+            functional_text=functional_text,
             type_text=row.get("Type Text", ""),
             keyword_values=keyword_values,
         )
