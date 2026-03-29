@@ -290,6 +290,9 @@ class ActionBuilder:
             # Already in options?
             if any(o.card_instance_id == eq.instance_id for o in options):
                 continue
+            # Check preconditions (e.g. Dragonscaler needs active Draconic attack)
+            if not self._can_use_equipment_instant(state, player_index, eq):
+                continue
             # Check affordability via the equipment cost checker (if registered)
             cost = self._get_equipment_instant_cost(state, player_index, eq)
             if cost is not None and not self._can_afford_resource_cost(state, player_index, cost):
@@ -311,6 +314,27 @@ class ActionBuilder:
             draconic_count = self._count_draconic_chain_links(state, player_index)
             return max(0, 3 - draconic_count)
         return None
+
+    def _can_use_equipment_instant(
+        self, state: GameState, player_index: int, equipment: CardInstance,
+    ) -> bool:
+        """Check additional preconditions for equipment instant activation.
+
+        Beyond cost affordability, some equipment instants require specific
+        game state (e.g. Dragonscaler needs an active Draconic attack).
+        """
+        if equipment.name == "Dragonscaler Flight Path":
+            # Must have an active Draconic attack on the chain
+            link = state.combat_chain.active_link
+            if link is None or link.active_attack is None:
+                return False
+            atk = link.active_attack
+            if atk.owner_index != player_index:
+                return False
+            from htc.enums import SuperType
+            if SuperType.DRACONIC not in atk.definition.supertypes:
+                return False
+        return True
 
     @staticmethod
     def _count_draconic_chain_links(state: GameState, player_index: int) -> int:

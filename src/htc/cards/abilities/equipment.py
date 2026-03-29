@@ -12,7 +12,7 @@ Equipment abilities implemented:
 - Fyendal's Spring Tunic (Chest) — energy counter at start of turn, spend 3 for resource
 - Tide Flippers (Legs) — attack reaction: destroy to grant go again to <=2 power attack
 - Blacktek Whisperers (Legs) — attack reaction: destroy to grant on-hit go again
-- Dragonscaler Flight Path (Legs) — instant: destroy to grant go again to Draconic attack
+- Dragonscaler Flight Path (Legs) — instant: cost 3 minus Draconic links, destroy to grant go again + weapon untap
 - Mask of Deceit (Head) — deferred (Agent of Chaos mechanic not yet in engine)
 
 Weapon abilities implemented:
@@ -588,8 +588,45 @@ def _stalkers_steps(ctx: AbilityContext) -> None:
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Stalker's Steps")
 
 
-# Dragonscaler Flight Path is deferred — requires instant activation
-# during priority windows, which the engine doesn't support for equipment yet.
+def _dragonscaler_flight_path(ctx: AbilityContext) -> None:
+    """Dragonscaler Flight Path instant: grant go again to Draconic attack.
+
+    Cost (3 - Draconic chain links) is paid by the game engine before this
+    handler is called.  This handler:
+    1. Validates the active attack is Draconic
+    2. Destroys the equipment
+    3. Grants Go Again to the active attack
+    4. If it's a weapon attack (proxy), untaps the weapon for additional attack
+    """
+    link = ctx.chain_link
+    if link is None or link.active_attack is None:
+        return
+
+    attack = link.active_attack
+    # Must be a Draconic attack — check via effect engine for modified supertypes
+    supertypes = ctx.effect_engine.get_modified_supertypes(ctx.state, attack)
+    if SuperType.DRACONIC not in supertypes:
+        log.info(f"  Dragonscaler Flight Path: no effect — {attack.name} is not Draconic")
+        return
+
+    # Must be our attack
+    if attack.owner_index != ctx.controller_index:
+        return
+
+    # Destroy Dragonscaler Flight Path
+    _destroy_equipment(ctx.state, ctx.source_card)
+
+    # Grant Go Again to the active Draconic attack
+    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Dragonscaler Flight Path")
+
+    # If it's a weapon attack (proxy), untap the source weapon for additional attack
+    if attack.is_proxy and link.attack_source is not None:
+        weapon = link.attack_source
+        weapon.is_tapped = False
+        log.info(
+            f"  Dragonscaler Flight Path: Untapped {weapon.name} "
+            f"for additional attack this turn"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -767,6 +804,9 @@ def register_equipment_abilities(registry: AbilityRegistry) -> None:
     registry.register("attack_reaction_effect", "Tide Flippers", _tide_flippers)
     registry.register("attack_reaction_effect", "Blacktek Whisperers", _blacktek_whisperers)
     registry.register("attack_reaction_effect", "Stalker's Steps", _stalkers_steps)
+
+    # Equipment instants
+    registry.register("equipment_instant_effect", "Dragonscaler Flight Path", _dragonscaler_flight_path)
 
     # Weapon on-hit (proxy names include " (attack)" suffix)
     registry.register("on_hit", "Hunter's Klaive (attack)", _hunters_klaive_on_hit)
