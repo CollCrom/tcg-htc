@@ -585,8 +585,9 @@ class TestOrbWeaverSpinneret:
         card = _make_non_attack_action("Orb-Weaver Spinneret", color=Color.RED)
         game._apply_card_ability(card, 0, "on_play")
 
-        tokens = [p for p in game.state.players[0].permanents if p.name == "Graphene Chelicera"]
-        assert len(tokens) == 1
+        # Graphene Chelicera is now a weapon, not a permanent
+        weapons = [w for w in game.state.players[0].weapons if w.name == "Graphene Chelicera"]
+        assert len(weapons) == 1
 
 
 class TestSavorBloodshed:
@@ -642,8 +643,9 @@ class TestWhittleFromBone:
 
         game._apply_card_ability(attack, 0, "on_attack")
 
-        tokens = [p for p in game.state.players[0].permanents if p.name == "Graphene Chelicera"]
-        assert len(tokens) == 1
+        # Graphene Chelicera is now a weapon, not a permanent
+        weapons = [w for w in game.state.players[0].weapons if w.name == "Graphene Chelicera"]
+        assert len(weapons) == 1
 
     def test_no_equip_when_not_marked(self):
         game = make_game_shell()
