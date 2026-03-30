@@ -14,14 +14,17 @@ How agents operate on TCG Hyperbolic Time Chamber. For architecture, see `AGENTS
 
 The core workflow is: **Builder builds, Orchestrator gates, Skeptic reviews.**
 
+- **Always start from clean main**: `git checkout main && git pull origin main`, then create the feature branch
 - Builder implements engine features on a feature branch
 - **Builder must NOT create PRs.** Builder implements, runs tests, and stops.
 - Orchestrator spawns the Skeptic to review all proposed changes for rules correctness
 - Skeptic outputs a structured review (correct / issues / missing tests / ambiguous) with a verdict (approve or request changes)
 - Critical issues block the PR — Orchestrator sends Builder back to fix, then re-runs Skeptic
 - Loop continues until Skeptic returns APPROVE
+- **Rebase onto latest main** before pushing: `git fetch origin main && git rebase origin/main`
 - **Only the Orchestrator creates PRs**, and only after the Skeptic has approved
 - PR description includes skeptic status (e.g., "Skeptic: CLEAN after N rounds")
+- **PRs auto-merge** (squash + delete branch) — do not manually merge or ask about merging
 
 ## Communication
 
