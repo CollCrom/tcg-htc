@@ -7,7 +7,6 @@ for the cards in the Cindra Blue decklist.
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
 from htc.cards.abilities.ninja import count_draconic_chain_links
-from htc.engine.abilities import AbilityContext
 from htc.engine.actions import PlayerResponse
 from htc.engine.events import EventType, GameEvent
 from htc.enums import (
@@ -21,6 +20,7 @@ from htc.enums import (
 )
 from tests.conftest import make_card, make_equipment, make_game_shell, make_mock_ask, make_weapon
 from tests.abilities.conftest import (
+    make_ability_context,
     make_ninja_attack as _make_ninja_attack,
     make_draconic_ninja_attack as _make_draconic_ninja_attack,
     make_draconic_attack as _make_draconic_attack,
@@ -59,17 +59,7 @@ def test_count_draconic_chain_links_empty():
     # Build a minimal context
     attack = _make_ninja_attack()
     link = game.combat_mgr.add_chain_link(game.state, attack, 1)
-    ctx = AbilityContext(
-        state=game.state,
-        source_card=attack,
-        controller_index=0,
-        chain_link=link,
-        effect_engine=game.effect_engine,
-        events=game.events,
-        ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-        keyword_engine=game.keyword_engine,
-        combat_mgr=game.combat_mgr,
-    )
+    ctx = make_ability_context(game, attack, 0, chain_link=link)
     # Ninja (not Draconic) -> 0
     assert count_draconic_chain_links(ctx) == 0
 
@@ -85,17 +75,7 @@ def test_count_draconic_chain_links_with_draconic():
     atk3 = _make_ninja_attack(instance_id=3)  # not Draconic
     link3 = game.combat_mgr.add_chain_link(game.state, atk3, 1)
 
-    ctx = AbilityContext(
-        state=game.state,
-        source_card=atk3,
-        controller_index=0,
-        chain_link=link3,
-        effect_engine=game.effect_engine,
-        events=game.events,
-        ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-        keyword_engine=game.keyword_engine,
-        combat_mgr=game.combat_mgr,
-    )
+    ctx = make_ability_context(game, atk3, 0, chain_link=link3)
     assert count_draconic_chain_links(ctx) == 2
 
 

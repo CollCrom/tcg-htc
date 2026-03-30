@@ -14,8 +14,7 @@ from __future__ import annotations
 
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
-from htc.engine.actions import ActionOption, PlayerResponse
+from htc.engine.actions import PlayerResponse
 from htc.engine.events import EventType, GameEvent, ReplacementEffect
 from htc.enums import (
     CardType,
@@ -29,6 +28,7 @@ from htc.enums import (
 from htc.state.combat_state import ChainLink, CombatChainState
 from tests.conftest import make_card, make_equipment, make_game_shell, make_state
 from tests.abilities.conftest import (
+    make_ability_context,
     make_dagger_attack,
     make_draconic_ninja_attack,
     make_dagger_weapon,
@@ -43,17 +43,7 @@ from tests.abilities.conftest import (
 
 def _make_ctx(game, source_card, link, controller_index=0):
     """Build an AbilityContext wired to the game shell."""
-    return AbilityContext(
-        state=game.state,
-        source_card=source_card,
-        controller_index=controller_index,
-        chain_link=link,
-        effect_engine=game.effect_engine,
-        events=game.events,
-        ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-        keyword_engine=game.keyword_engine,
-        combat_mgr=game.combat_mgr,
-    )
+    return make_ability_context(game, source_card, controller_index, chain_link=link)
 
 
 # ---------------------------------------------------------------------------

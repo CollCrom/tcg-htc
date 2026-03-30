@@ -8,8 +8,7 @@ Covers:
 
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
-from htc.engine.actions import ActionOption, PlayerResponse
+from htc.engine.actions import ActionOption
 from htc.enums import (
     ActionType,
     CardType,
@@ -153,18 +152,9 @@ def test_cnc_on_attack_sets_defense_reactions_blocked():
 
     # Fire on_attack handler
     from htc.cards.abilities.ninja import _command_and_conquer_on_attack
+    from tests.abilities.conftest import make_ability_context
 
-    ctx = AbilityContext(
-        state=game.state,
-        source_card=attack,
-        controller_index=0,
-        chain_link=link,
-        effect_engine=game.effect_engine,
-        events=game.events,
-        ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-        keyword_engine=game.keyword_engine,
-        combat_mgr=game.combat_mgr,
-    )
+    ctx = make_ability_context(game, attack, 0, chain_link=link)
     _command_and_conquer_on_attack(ctx)
 
     assert link.defense_reactions_blocked is True
