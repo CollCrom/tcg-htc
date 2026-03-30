@@ -32,6 +32,11 @@ class TurnCounters:
     # same name this turn").
     card_names_played: list[str] = field(default_factory=list)
 
+    # Track Fealty token creation and Draconic card plays for Fealty's
+    # end-phase self-destruct condition.
+    fealty_created_this_turn: bool = False
+    draconic_card_played_this_turn: bool = False
+
     def has_duplicate_card_name(self) -> bool:
         """Return True if any card name appears 2+ times this turn."""
         seen: set[str] = set()
