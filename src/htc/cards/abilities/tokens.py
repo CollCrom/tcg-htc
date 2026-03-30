@@ -485,16 +485,21 @@ def _fealty_instant(ctx: AbilityContext) -> None:
 
     # Grant Draconic supertype to the next card played this turn
     controller = ctx.controller_index
-    consumed = [False]
+    # Track which instance_id was granted Draconic.  On first match the ID is
+    # recorded; all subsequent evaluations keep matching the same card so the
+    # grant is stable across multiple effect-engine queries (cost reduction,
+    # supertype resolution, Draconic tracking, etc.).
+    granted_id: list[int | None] = [None]
 
     def next_card_filter(card: CardInstance) -> bool:
-        if consumed[0]:
-            return False
         if card.owner_index != controller:
             return False
-        # Apply to any card on the stack/combat chain that was just played
+        # Already granted — keep matching the same card idempotently.
+        if granted_id[0] is not None:
+            return card.instance_id == granted_id[0]
+        # Match the first card that reaches the stack or combat chain.
         if card.zone in (Zone.COMBAT_CHAIN, Zone.STACK):
-            consumed[0] = True
+            granted_id[0] = card.instance_id
             return True
         return False
 
@@ -505,8 +510,6 @@ def _fealty_instant(ctx: AbilityContext) -> None:
         duration=EffectDuration.END_OF_TURN,
         target_filter=next_card_filter,
     )
-    # Note: uses_remaining only works for cost modifiers, not supertype grants.
-    # The closure-based `consumed` flag handles single-use correctly.
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  Fealty: Next card played this turn is Draconic")
 
