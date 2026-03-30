@@ -38,12 +38,21 @@ Persistent learnings across sessions. Update this as you go.
 - **Full codebase re-review: CLEAN.** No critical issues. 540 tests passing.
 - **Don't use parallel worktrees** for Python builds — causes import path confusion. Build PRs sequentially.
 
+### 2026-03-30: TODO Cleanup + DRY Refactor + Full Audit + Phase 6 (PRs #63-#68)
+
+- **Actionable TODOs fixed** (PR #63): Playable-from-banish (Devotion Never Dies, Rising Resentment), instant discard (Reaper's Call), Warmonger's Diplomacy enforcement, Stains of the Redback cost reduction, Art of the Dragon: Fire target choice.
+- **Skeptic followups** (PR #64): `_is_draconic()` now uses effect engine for all 5 callers. Stains cost reduction moved to extensible `register_intrinsic_cost_modifier()` pattern.
+- **New infrastructure TODOs** (PR #65): Pitch trigger system (Authority of Ataya), damage prevention via ReplacementEffect (Shelter from the Storm), card copy via `definition_override` (Take Up the Mantle).
+- **DRY refactor** (PR #66): -488 lines. Guard decorators (`@require_active_attack`/`@require_chain_link`), shared helpers (choose_dagger, deal_dagger_damage, destroy_arsenal, MarkOnHitTrigger), BanishPlayability namedtuple, test fixture consolidation.
+- **Full audit fixes** (PR #67): Spreading Flames dynamic filter uses effect engine, Blood Runs Deep cost reduction implemented, Contract keyword (Leave No Witnesses + Silver tokens), Amulet of Echoes permanent instant activation, Spring Tunic player agency restored.
+- **Phase 6 complete** (PR #68): All 7 token abilities implemented — Fealty (instant + conditional end-phase), Frailty (continuous -1 power + end-phase destroy), Inertia (end-phase deck bottom), Bloodrot Pox (end-phase pay-or-damage), Ponder (end-phase draw), Silver (action activation), Graphene Chelicera (weapon token). New `permanent_action_effect` timing. 658 tests passing.
+- **Recurring pattern**: `definition.supertypes` / `definition.keywords` bypasses continue to be the #1 bug class. Every new feature needs skeptic verification on this.
+
 ## Open TODOs
 
-- Phase 6 (permanents, tokens, Runechant, arcane from tokens) is next. Token abilities (Fealty, Frailty, Inertia, Bloodrot Pox, Ponder) are deferred here.
-- Phase 7 (Talishar verification for Cindra vs Arakni) follows.
-- Minor: Devotion Never Dies `_is_draconic()` call doesn't use effect engine (Enflame edge case).
-- Minor: Several card abilities partially implemented with TODOs (Warmonger's Diplomacy, Authority of Ataya, etc).
+- Phase 7 (Talishar verification for Cindra vs Arakni) is next.
+- Minor: Frailty -1 power applies to all attack actions, not just those played from arsenal (no `played_from_zone` tracking exists).
+- Minor: Contract keyword scoped to on-hit banishes only (should be global trigger for any banish of opponent's red card).
 - Minor: `Layer.has_go_again` is dead code, cleanup candidate.
 
 ## Process Notes
