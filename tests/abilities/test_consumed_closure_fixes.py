@@ -15,7 +15,6 @@ import unittest
 from htc.cards.abilities._helpers import create_token
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
 from htc.engine.actions import PlayerResponse
 from htc.engine.events import EventType, GameEvent
 from htc.enums import (
@@ -28,6 +27,7 @@ from htc.enums import (
 )
 from tests.conftest import make_card, make_game_shell
 from tests.abilities.conftest import (
+    make_ability_context,
     make_dagger_attack,
     make_non_attack_action,
 )
@@ -40,17 +40,7 @@ from tests.abilities.conftest import (
 
 def _make_ctx(game, card, link=None):
     """Build an AbilityContext for the given game and card."""
-    return AbilityContext(
-        state=game.state,
-        source_card=card,
-        controller_index=card.owner_index,
-        chain_link=link,
-        effect_engine=game.effect_engine,
-        events=game.events,
-        ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-        keyword_engine=game.keyword_engine,
-        combat_mgr=game.combat_mgr,
-    )
+    return make_ability_context(game, card, card.owner_index, chain_link=link)
 
 
 def _make_overpower_attack(instance_id=1, owner_index=0):
@@ -280,17 +270,7 @@ class TestFealtyDraconicGrantMultipleEvaluations(unittest.TestCase):
         handler = game.ability_registry.lookup("permanent_instant_effect", "Fealty")
         assert handler is not None
 
-        ctx = AbilityContext(
-            state=game.state,
-            source_card=token,
-            controller_index=0,
-            chain_link=None,
-            effect_engine=game.effect_engine,
-            events=game.events,
-            ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-            keyword_engine=game.keyword_engine,
-            combat_mgr=game.combat_mgr,
-        )
+        ctx = make_ability_context(game, token, 0)
         handler(ctx)
 
         # Create a non-Draconic card and put it on the stack
@@ -319,17 +299,7 @@ class TestFealtyDraconicGrantMultipleEvaluations(unittest.TestCase):
         )
 
         handler = game.ability_registry.lookup("permanent_instant_effect", "Fealty")
-        ctx = AbilityContext(
-            state=game.state,
-            source_card=token,
-            controller_index=0,
-            chain_link=None,
-            effect_engine=game.effect_engine,
-            events=game.events,
-            ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-            keyword_engine=game.keyword_engine,
-            combat_mgr=game.combat_mgr,
-        )
+        ctx = make_ability_context(game, token, 0)
         handler(ctx)
 
         # First card on the stack gets Draconic
@@ -354,17 +324,7 @@ class TestFealtyDraconicGrantMultipleEvaluations(unittest.TestCase):
         )
 
         handler = game.ability_registry.lookup("permanent_instant_effect", "Fealty")
-        ctx = AbilityContext(
-            state=game.state,
-            source_card=token,
-            controller_index=0,
-            chain_link=None,
-            effect_engine=game.effect_engine,
-            events=game.events,
-            ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-            keyword_engine=game.keyword_engine,
-            combat_mgr=game.combat_mgr,
-        )
+        ctx = make_ability_context(game, token, 0)
         handler(ctx)
 
         # Opponent's card on the stack should not get Draconic

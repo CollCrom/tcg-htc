@@ -351,6 +351,50 @@ def make_dagger_weapon(
     )
 
 
+def make_mock_interfaces(ask_fn):
+    """Create mock player interfaces that delegate to *ask_fn*.
+
+    Returns a two-element list of mock players whose ``decide`` method
+    calls ``ask_fn(decision)`` for every decision.
+    """
+    _MockPlayer = type("P", (), {"decide": lambda s, state, d: ask_fn(d)})
+    return [_MockPlayer(), _MockPlayer()]
+
+
+def make_weapon_proxy(
+    weapon: CardInstance,
+    instance_id: int,
+    owner_index: int = 0,
+) -> CardInstance:
+    """Create an attack proxy for a weapon, mimicking engine behaviour."""
+    defn = CardDefinition(
+        unique_id=f"proxy-{weapon.definition.unique_id}",
+        name=f"{weapon.name} (attack)",
+        color=None,
+        pitch=None,
+        cost=None,
+        power=weapon.definition.power,
+        defense=None,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ATTACK}),
+        supertypes=weapon.definition.supertypes,
+        keywords=weapon.definition.keywords,
+        functional_text="",
+        type_text="Weapon attack proxy",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.COMBAT_CHAIN,
+        is_proxy=True,
+        proxy_source_id=weapon.instance_id,
+    )
+
+
 # ---------------------------------------------------------------------------
 # AbilityContext construction helper
 # ---------------------------------------------------------------------------

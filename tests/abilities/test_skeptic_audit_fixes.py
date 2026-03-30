@@ -31,6 +31,7 @@ from tests.conftest import (
 )
 from tests.abilities.conftest import (
     make_draconic_ninja_attack,
+    make_mock_interfaces as _make_mock_interfaces,
     make_ninja_attack,
     make_dagger_weapon,
     setup_draconic_chain,
@@ -40,12 +41,6 @@ from tests.abilities.conftest import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_mock_interfaces(ask_fn):
-    """Create mock player interfaces that delegate to ask_fn."""
-    _MockPlayer = type("P", (), {"decide": lambda s, state, d: ask_fn(d)})
-    return [_MockPlayer(), _MockPlayer()]
 
 
 def _make_blood_runs_deep(

@@ -31,6 +31,7 @@ from tests.abilities.conftest import (
     make_ability_context,
     make_draconic_ninja_attack,
     make_ninja_attack,
+    make_weapon_proxy,
     setup_draconic_chain,
 )
 
@@ -72,35 +73,6 @@ def _make_dragonscaler(instance_id: int = 60, owner_index: int = 0):
         zone=Zone.LEGS,
     )
 
-
-def _make_weapon_proxy(weapon: CardInstance, instance_id: int, owner_index: int = 0):
-    """Create an attack proxy for a weapon."""
-    proxy_def = CardDefinition(
-        unique_id=f"proxy-{weapon.definition.unique_id}",
-        name=f"{weapon.name} (attack)",
-        color=None,
-        pitch=None,
-        cost=None,
-        power=weapon.definition.power,
-        defense=None,
-        health=None,
-        intellect=None,
-        arcane=None,
-        types=frozenset({CardType.ACTION}),
-        subtypes=frozenset({SubType.ATTACK}),
-        supertypes=weapon.definition.supertypes,
-        keywords=weapon.definition.keywords,
-        functional_text="",
-        type_text="Weapon attack proxy",
-    )
-    return CardInstance(
-        instance_id=instance_id,
-        definition=proxy_def,
-        owner_index=owner_index,
-        zone=Zone.COMBAT_CHAIN,
-        is_proxy=True,
-        proxy_source_id=weapon.instance_id,
-    )
 
 
 def _make_draconic_weapon(instance_id: int = 100, owner_index: int = 0, name: str = "Claw of Vynserakai"):
@@ -382,7 +354,7 @@ class TestDragonscalerFlightPath:
         weapon.is_tapped = True
         game.state.players[0].weapons.append(weapon)
 
-        proxy = _make_weapon_proxy(weapon, instance_id=101)
+        proxy = make_weapon_proxy(weapon, instance_id=101)
         game.combat_mgr.open_chain(game.state)
         link = game.combat_mgr.add_chain_link(game.state, proxy, 1)
         link.attack_source = weapon
