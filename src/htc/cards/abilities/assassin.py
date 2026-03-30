@@ -1017,8 +1017,8 @@ def _death_touch_on_hit(ctx: AbilityContext) -> None:
      When this hits a hero, create a Frailty, Inertia, or Bloodrot Pox token
      under their control.'
 
-    NOTE: "can't be played from hand" is a play restriction, not an on-hit
-    effect. TODO: Implement play restriction.
+    NOTE: "can't be played from hand" is enforced in ActionBuilder.can_play_card()
+    (arsenal-only restriction).
     The controller chooses which token to create.
     """
     link = ctx.chain_link

@@ -145,6 +145,103 @@ Persistent learnings across sessions. Update this after each review.
 - **Play-from-banish must cover ALL decision builders**: When adding play-from-banish support, check `build_action_decision`, `build_reaction_decision`, AND `build_resolution_decision`. Defense reactions are played during reaction step, not action step.
 - **Chain close redirect must cover ALL card positions**: `close_chain` handles active_attack and defending_cards separately. Any graveyard redirect must cover both paths.
 
+### fix/cost-reduction-counters — Usage-Limited Cost Reduction Counters (2026-03-29)
+- **Round 1 verdict: APPROVE** — No critical issues. 1 minor issue.
+- **Core fix**: `ContinuousEffect` gains `uses_remaining: int | None` field (default `None`). `EffectEngine.consume_limited_cost_effects()` decrements matching cost effects after cost payment and removes them at 0. Correct.
+- **Timing**: `consume_limited_cost_effects()` called in `_play_card()` AFTER `calculate_play_cost()` and `_pitch_to_pay()`, so the Nth (last) card still benefits from the reduction before the effect is removed. Correct per FaB rules.
+- **Filter matching**: `consume_limited_cost_effects` pre-resolves supertypes via `_resolver.resolve_supertypes()` before calling `target_filter`, matching the same pattern used in `_resolve_numeric_property` and `get_modified_keywords`. Filters use `getattr(c, '_resolved_supertypes', c.definition.supertypes)`. Consistent. Correct.
+- **Cleanup**: `_resolved_supertypes` cleaned in `finally` block with `hasattr` guard. Correct.
+- **Art of the Dragon: Blood**: `uses_remaining = 3` set on the cost effect. Matches card text ("next 3 Draconic cards cost {r} less"). Correct.
+- **Ignite**: `uses_remaining = 1` set on the cost effect. Matches card text ("next Draconic card costs {r} less"). Correct.
+- **Multiple cost effects stacking**: If both Blood and Ignite cost effects are active, `consume_limited_cost_effects` iterates all active effects and decrements each matching one independently. Correct — a Draconic card would consume one use from each.
+- **Minor**: No test for the stacking scenario (Blood + Ignite both active, single Draconic card played consumes from both). Not blocking since the loop logic is straightforward.
+- **Minor**: No integration test that exercises `_play_card` end-to-end (card played via `Game._play_card`, verifying that the Nth+1 card pays full cost). All tests call `consume_limited_cost_effects` directly. The wiring in game.py is a single line and unlikely to break, but an end-to-end test would catch ordering regressions.
+- 504 tests all passing. 14 new tests across 3 classes (5 unit, 5 Blood integration, 4 Ignite integration). Good coverage of happy path, boundary (last use), non-matching cards, and post-exhaustion.
+
+### test/multi-turn-integration — Multi-Turn Integration Tests (2026-03-29)
+- **Round 1 verdict: APPROVE** — No critical issues. Test-only change (36 new tests, no engine code).
+- 36 tests across 7 test classes: multi-seed games, intermediate state invariants, zone accounting, mechanics firing, hero-specific mechanics, game termination, determinism.
+- **31 tests with real assertions**: event counts > 0, life non-negative, combat chain closed, stack empty, no duplicate IDs, deterministic replay, winner/loser life validation. All good.
+- **5 "soft check" tests are trivially true** (assert `isinstance(x, bool)`, assert `len >= 0`): `test_mark_applied_at_least_once`, `test_weapon_attacks_happen`, `test_fealty_tokens_created_in_some_games`, `test_banish_zone_used_arakni`, `test_pitch_zone_used`. These provide crash-detection only, not mechanic validation.
+- **Minor**: `test_arakni_stealth_attacks_occur` runs a wasted `game.play()`, computes `stealth_attacks` list but never asserts on it. Only asserts attacks > 0.
+- **Minor**: `test_cindra_draconic_chain_builds` claims to verify multi-link Draconic chains but only asserts attacks > 0. Identical in substance to `test_attacks_happen`.
+- **Minor**: `test_hand_refills_each_turn` has operator precedence issue on `intellect` fallback (works but fragile).
+- **Missing**: No assertion on mark actually firing, no defense-reaction-from-banish, no Draconic chain length check, no equipment activation check, no total card count conservation.
+- **Determinism test is strong**: `test_same_seed_same_result` and `test_different_seeds_differ` are well-designed.
+- 36 tests all passing in ~1 second.
+
+### Full Codebase Re-Review (Post-Audit, 2026-03-29)
+- **Scope**: All source files in `src/htc/` — engine, cards, abilities, state, events, effects.
+- **Context**: Re-review after fixes in PRs #54-#61. 540 tests passing.
+- **Verdict: APPROVE** — No critical issues. 4 minor issues, all pre-existing patterns.
+
+#### Minor Issues Found (non-blocking)
+
+1. **`_is_draconic()` called without ctx in 5 places** (ninja.py lines 291, 312, 349, 384, 705):
+   `_is_draconic(attack)` falls back to `definition.supertypes` instead of effect engine.
+   Dragon Power, Art of the Dragon: Blood/Fire/Scale, and Devotion Never Dies will NOT see
+   effect-granted Draconic supertype (e.g. from Enflame tier 3). These are attack cards
+   checking *themselves*, so in practice they have Draconic in their definition if they
+   need it, BUT Devotion Never Dies checks the *previous* chain link's attack, which could
+   be a non-Draconic card granted Draconic by Enflame. **Potential incorrect outcome** for
+   Devotion Never Dies only (miss triggering when previous attack was granted Draconic).
+   Severity: minor (edge case, requires specific Enflame+Devotion combo).
+
+2. **Phantasm supertype check uses `definition.supertypes`** (keyword_engine.py line 165):
+   `SuperType.ILLUSIONIST not in card.definition.supertypes` — should use effect engine.
+   If a card ever gained Illusionist supertype through effects, Phantasm would incorrectly
+   pop. Currently no cards grant Illusionist, so not a real-world issue yet.
+
+3. **`_is_assassin_attack()` uses `definition.supertypes`** (assassin.py line 54):
+   Same pattern — Shred checks if attack is Assassin via definition instead of effect engine.
+   Not a current issue since no effects grant Assassin supertype.
+
+4. **`Ancestral Empowerment` checks `definition.supertypes` for Ninja** (generic.py line 41):
+   Same pattern. Not a current issue since no effects grant Ninja supertype.
+
+5. **`definition.subtypes` reads throughout ability files** (pre-existing, noted in prior reviews):
+   No `get_modified_subtypes` exists. All subtype checks (Dagger, Trap, Aura, Attack) use
+   `definition.subtypes`. Consistent with no subtype-granting effects existing.
+
+#### Verified Fixes from Prior Audit (all confirmed landed correctly)
+
+- **Relentless Pursuit deck-bottom redirect**: `_redirect_to_deck_bottom` flag on card, checked in `_move_to_graveyard_or_banish()`. Priority: deck-bottom > banish > graveyard. Correct.
+- **Command and Conquer defense reaction block**: `defense_reactions_blocked` flag on ChainLink, checked in `build_reaction_decision()`. Correct.
+- **Exposed play restriction**: `if card.name == "Exposed" and player.is_marked: continue` in reaction decision builder line 158-159. Correct.
+- **Death Touch arsenal-only**: `if card.name == "Death Touch" and card.zone != Zone.ARSENAL: return False` in `can_play_card()` line 251. Correct.
+- **Direct state mutations routed through events**: draw via `DRAW_CARD`, life gain via `GAIN_LIFE`, life loss via `LOSE_LIFE`, banish via `BANISH`. All in event handlers. Correct.
+- **Go Again at resolution time**: Both attack Go Again (resolution step) and non-attack Go Again (`_resolve_stack`) query effect engine at resolution, not at play time. Correct.
+- **`_resolved_supertypes` for target filters**: Pre-resolved in `_resolve_numeric_property`, `get_modified_keywords`, and `consume_limited_cost_effects`. Correctly cleaned up in `finally` blocks. Correct.
+- **Cost reduction counters**: `uses_remaining` on ContinuousEffect, consumed by `consume_limited_cost_effects()` after cost payment. Art of the Dragon: Blood (3 uses), Ignite (1 use). Correct.
+- **Banish redirect per-card**: 3-tuple `(instance_id, expiry, redirect_to_banish)`. Trap-Door sets `redirect=False`, Under the Trap-Door sets `redirect=True`. Correct.
+- **Defense reactions from banish**: `_get_playable_from_banish()` called in `build_reaction_decision()` for defender. Correct.
+- **Chain close redirect covers defending cards**: `_redirect_banish_on_chain_close()` iterates both `active_attack` and `defending_cards`. Correct.
+- **`_process_pending_triggers()` after DEFEND_DECLARED**: Called at line 1343 after defend events loop. Correct.
+- **Multi-turn integration tests**: 36 tests covering zone invariants, determinism, mechanics. All pass.
+
+#### Remaining Deferred Items (known, not blocking)
+- Token abilities (Fealty, Frailty, Inertia, Bloodrot Pox, Ponder, Graphene Chelicera) are inert — created but effects not implemented. Deferred to Phase 6.
+- Warmonger's Diplomacy war/peace restriction not enforced.
+- Authority of Ataya pitch trigger not implemented.
+- Shelter from the Storm instant-discard prevention not implemented.
+- Amulet of Echoes instant-destroy ability not implemented.
+- Reaper's Call instant-discard mark ability not implemented.
+- Take Up the Mantle copy effect not implemented.
+- Rising Resentment / Devotion Never Dies playable-from-banish tracked but not fully wired (Rising Resentment TODO remains at line 1029).
+- Orb-Weaver Spinneret creates Graphene Chelicera as permanent, not proper equipment token.
+- Blood Runs Deep / Stains of the Redback cost reductions noted as TODO.
+- `Layer.has_go_again` field is dead for attacks (Go Again resolved dynamically). Still set for weapon proxies at line 1042 but not read on the attack path.
+- `_is_keyword_inherent` docstring still mentions "with" as conditional word (stale after fix in PR #57).
+- No `get_modified_subtypes` method exists — all subtype checks use definition directly.
+
+#### Observations
+- **Turn structure**: Start phase -> Action phase -> End phase. All three emit events and process triggers. Correct per rules 4.1-4.4.
+- **Combat steps**: Layer -> Attack -> Defend -> Phantasm -> Reaction -> Damage -> Resolution -> Close. All steps implemented with correct priority loops. Correct per rules 7.1-7.7.
+- **Effect cleanup**: End-of-turn and end-of-combat durations cleaned at the right points. Zone-based effects cleaned in end phase.
+- **Banish playability expiry**: End-of-turn entries cleared in `_run_end_phase`, start-of-next-turn entries cleared at start of turn player's turn. Correct.
+- **Equipment degradation**: Applied BEFORE `close_chain` but AFTER `COMBAT_CHAIN_CLOSES` event. Battleworn, Blade Break, Temper all handled correctly.
+- **540 tests passing** in ~4 seconds. Good coverage of core mechanics, card abilities, and multi-turn integration.
+
 ## Talishar Discrepancies
 
 *(None found yet)*

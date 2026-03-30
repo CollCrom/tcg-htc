@@ -24,16 +24,33 @@ Persistent learnings across sessions. Update this as you go.
 - **Graphene Chelicera cost reduction** for Orb-Weaver.
 - **459 tests passing** on main after all merges.
 
+### 2026-03-29: Full Codebase Audit + Fixes (PRs #52-#61)
+
+- **Trap-Door banish redirect bug** (PR #52). Only Under the Trap-Door should redirect to banish, not Trap-Door demi-hero. Extended `playable_from_banish` tuple to `(id, expiry, redirect_to_banish)`.
+- **Git workflow docs** (PR #53). Codified: start from clean main, rebase before push, PRs auto-merge.
+- **Relentless Pursuit deck-bottom redirect** (PR #54). Flag was set but engine never read it. Added check in `_move_to_graveyard_or_banish`.
+- **Play restrictions** (PR #55, #58). Command and Conquer blocks defense reactions, Exposed blocked when marked, Death Touch arsenal-only (user corrected: not banish).
+- **Direct state mutations** (PR #56). Routed draw, life gain, banish through event system across 7 ability handlers.
+- **Go Again snapshot** (PR #57). Non-attack cards now query effect engine at resolution, matching attack card pattern.
+- **Target filter context** (PR #59). Pre-resolves supertypes so cost/power filters see Enflame's Draconic grant.
+- **Cost reduction counters** (PR #60). Art of the Dragon: Blood (3 uses), Ignite (1 use) via `uses_remaining` on ContinuousEffect.
+- **Multi-turn integration tests** (PR #61). 36 tests running full Arakni vs Cindra games.
+- **Full codebase re-review: CLEAN.** No critical issues. 540 tests passing.
+- **Don't use parallel worktrees** for Python builds — causes import path confusion. Build PRs sequentially.
+
 ## Open TODOs
 
-- No major deferred items remaining. All equipment, agents, and card abilities are implemented.
-- Minor: Orb-Weaver Chelicerae cost reduction done. Trap-Door play-from-banish done.
-- Phase 6 (permanents, tokens, Runechant, arcane from tokens) is next.
+- Phase 6 (permanents, tokens, Runechant, arcane from tokens) is next. Token abilities (Fealty, Frailty, Inertia, Bloodrot Pox, Ponder) are deferred here.
 - Phase 7 (Talishar verification for Cindra vs Arakni) follows.
+- Minor: Devotion Never Dies `_is_draconic()` call doesn't use effect engine (Enflame edge case).
+- Minor: Several card abilities partially implemented with TODOs (Warmonger's Diplomacy, Authority of Ataya, etc).
+- Minor: `Layer.has_go_again` is dead code, cleanup candidate.
 
 ## Process Notes
 
 - Skeptic CI workflows intentionally disabled (`if: false`) due to API token cost. Skeptic runs manually via agent spawns.
-- Auto-merge doesn't check for approval — acceptable since skeptic runs pre-PR.
-- Always rebase onto latest main between skeptic approval and PR creation (prevents merge conflicts).
+- Auto-merge handles squash + branch delete — don't ask about merging.
+- Always start from clean main (`git checkout main && git pull`) before creating branches.
+- Always rebase onto latest main between skeptic approval and PR creation.
+- Build PRs sequentially, not in parallel worktrees (Python import issues).
 - All PRs should include "Skeptic: CLEAN after N rounds" or "Skeptic: N/A" in the test plan.
