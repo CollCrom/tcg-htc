@@ -377,7 +377,11 @@ class SpringTunicTrigger(TriggeredEffect):
         return energy < 3
 
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        """Add an energy counter. Auto-spend if we hit 3."""
+        """Add an energy counter at the start of turn (if fewer than 3).
+
+        The player chooses when to spend 3 counters for 1 resource via the
+        instant activation registered as an equipment_instant_effect.
+        """
         state = self._get_state()
         if state is None:
             return None
@@ -394,18 +398,6 @@ class SpringTunicTrigger(TriggeredEffect):
             f"  Fyendal's Spring Tunic: Player {self.controller_index} "
             f"adds energy counter ({energy}/3)"
         )
-
-        # Auto-spend 3 counters for 1 resource (simplified — in real FaB
-        # this is an instant the player chooses to activate)
-        if energy >= 3:
-            tunic.counters["energy"] = 0
-            state.resource_points[self.controller_index] = (
-                state.resource_points.get(self.controller_index, 0) + 1
-            )
-            log.info(
-                f"  Fyendal's Spring Tunic: Player {self.controller_index} "
-                f"spends 3 energy counters, gains 1 resource"
-            )
 
         return None
 
@@ -901,6 +893,44 @@ def register_weapon_triggers(
 
 
 # ---------------------------------------------------------------------------
+# Fyendal's Spring Tunic — Instant Activation
+# ---------------------------------------------------------------------------
+# "Instant - Remove 3 energy counters from this: Gain {r}"
+# Registered as equipment_instant_effect.  Precondition (3+ energy counters)
+# is checked in ActionBuilder._can_use_equipment_instant().
+# ---------------------------------------------------------------------------
+
+
+def _fyendals_spring_tunic_instant(ctx: AbilityContext) -> None:
+    """Fyendal's Spring Tunic instant: remove 3 energy counters, gain 1 resource.
+
+    Preconditions (3+ energy counters) are checked by the ActionBuilder before
+    this handler is offered. No resource cost — the cost is removing counters.
+    """
+    from htc.enums import EquipmentSlot
+
+    player = ctx.state.players[ctx.controller_index]
+    tunic = player.equipment.get(EquipmentSlot.CHEST)
+    if tunic is None or tunic.instance_id != ctx.source_card.instance_id:
+        log.warning("  Spring Tunic: equipment not found")
+        return
+
+    energy = tunic.counters.get("energy", 0)
+    if energy < 3:
+        log.warning(f"  Spring Tunic: only {energy} energy counters (need 3)")
+        return
+
+    tunic.counters["energy"] = energy - 3
+    ctx.state.resource_points[ctx.controller_index] = (
+        ctx.state.resource_points.get(ctx.controller_index, 0) + 1
+    )
+    log.info(
+        f"  Fyendal's Spring Tunic: Player {ctx.controller_index} "
+        f"removes 3 energy counters, gains 1 resource"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Registration — Ability Registry (equipment using attack_reaction_effect)
 # ---------------------------------------------------------------------------
 
@@ -916,6 +946,7 @@ def register_equipment_abilities(registry: AbilityRegistry) -> None:
 
     # Equipment instants
     registry.register("equipment_instant_effect", "Dragonscaler Flight Path", _dragonscaler_flight_path)
+    registry.register("equipment_instant_effect", "Fyendal's Spring Tunic", _fyendals_spring_tunic_instant)
 
     # Weapon on-hit (proxy names include " (attack)" suffix)
     registry.register("on_hit", "Hunter's Klaive (attack)", _hunters_klaive_on_hit)

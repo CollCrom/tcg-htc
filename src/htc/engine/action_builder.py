@@ -402,6 +402,9 @@ class ActionBuilder:
         if equipment.name == "Dragonscaler Flight Path":
             draconic_count = self._count_draconic_chain_links(state, player_index)
             return max(0, 3 - draconic_count)
+        # Fyendal's Spring Tunic: no resource cost (counter removal is the cost)
+        if equipment.name == "Fyendal's Spring Tunic":
+            return 0
         return None
 
     def _can_use_equipment_instant(
@@ -422,6 +425,11 @@ class ActionBuilder:
                 return False
             from htc.enums import SuperType
             if SuperType.DRACONIC not in self.effect_engine.get_modified_supertypes(state, atk):
+                return False
+        elif equipment.name == "Fyendal's Spring Tunic":
+            # Must have 3+ energy counters
+            energy = equipment.counters.get("energy", 0)
+            if energy < 3:
                 return False
         return True
 

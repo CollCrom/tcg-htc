@@ -512,3 +512,153 @@ class TestAmuletOfEchoes:
         tc.card_names_played.append("Pummel")
         tc.card_names_played.append("Crush")
         assert tc.has_duplicate_card_name() is False
+
+
+# ===========================================================================
+# 5. Fyendal's Spring Tunic — player agency (instant activation)
+# ===========================================================================
+
+
+def _make_spring_tunic(instance_id: int = 70, owner_index: int = 0) -> CardInstance:
+    """Create a Fyendal's Spring Tunic equipment."""
+    from htc.enums import EquipmentSlot
+    defn = CardDefinition(
+        unique_id=f"tunic-{instance_id}",
+        name="Fyendal's Spring Tunic",
+        color=None,
+        pitch=None,
+        cost=None,
+        power=None,
+        defense=1,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.EQUIPMENT}),
+        subtypes=frozenset({SubType.CHEST}),
+        supertypes=frozenset(),
+        keywords=frozenset({Keyword.BLADE_BREAK}),
+        functional_text="",
+        type_text="Generic Equipment - Chest",
+    )
+    card = CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.CHEST,
+    )
+    return card
+
+
+class TestSpringTunicPlayerAgency:
+    """Fyendal's Spring Tunic: instant activation instead of auto-spend."""
+
+    def test_handler_registered(self):
+        """Spring Tunic is registered as an equipment_instant_effect."""
+        game = make_game_shell()
+        handler = game.ability_registry.lookup(
+            "equipment_instant_effect", "Fyendal's Spring Tunic"
+        )
+        assert handler is not None
+
+    def test_precondition_needs_3_counters(self):
+        """Activation blocked when tunic has fewer than 3 energy counters."""
+        game = make_game_shell()
+        from htc.enums import EquipmentSlot
+        tunic = _make_spring_tunic()
+        tunic.counters["energy"] = 2
+        game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
+
+        can_use = game.action_builder._can_use_equipment_instant(game.state, 0, tunic)
+        assert can_use is False
+
+    def test_precondition_met_with_3_counters(self):
+        """Activation allowed when tunic has 3+ energy counters."""
+        game = make_game_shell()
+        from htc.enums import EquipmentSlot
+        tunic = _make_spring_tunic()
+        tunic.counters["energy"] = 3
+        game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
+
+        can_use = game.action_builder._can_use_equipment_instant(game.state, 0, tunic)
+        assert can_use is True
+
+    def test_activation_removes_counters_gains_resource(self):
+        """Activation removes 3 energy counters and grants 1 resource."""
+        game = make_game_shell()
+        from htc.enums import EquipmentSlot
+        tunic = _make_spring_tunic()
+        tunic.counters["energy"] = 3
+        game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
+        game.state.resource_points[0] = 0
+
+        game._activate_equipment(0, tunic)
+
+        assert tunic.counters["energy"] == 0
+        assert game.state.resource_points[0] == 1
+
+    def test_no_auto_spend_at_3_counters(self):
+        """Energy counters reaching 3 does NOT auto-spend anymore."""
+        from htc.cards.abilities.equipment import SpringTunicTrigger
+        from htc.engine.events import EventType, GameEvent
+
+        game = make_game_shell()
+        from htc.enums import EquipmentSlot
+        tunic = _make_spring_tunic()
+        tunic.counters["energy"] = 2
+        game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
+        game.state.resource_points[0] = 0
+
+        trigger = SpringTunicTrigger(
+            controller_index=0,
+            _state_getter=lambda: game.state,
+            _equipment_instance_id=tunic.instance_id,
+        )
+
+        # Simulate start-of-turn event
+        event = GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=0,
+        )
+
+        # Should add counter but NOT auto-spend
+        assert trigger.condition(event) is True
+        trigger.create_triggered_event(event)
+
+        assert tunic.counters["energy"] == 3
+        # Resource should NOT have been gained (no auto-spend)
+        assert game.state.resource_points[0] == 0
+
+    def test_trigger_stops_at_3(self):
+        """Trigger does not add counter when already at 3."""
+        from htc.cards.abilities.equipment import SpringTunicTrigger
+        from htc.engine.events import EventType, GameEvent
+
+        game = make_game_shell()
+        from htc.enums import EquipmentSlot
+        tunic = _make_spring_tunic()
+        tunic.counters["energy"] = 3
+        game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
+
+        trigger = SpringTunicTrigger(
+            controller_index=0,
+            _state_getter=lambda: game.state,
+            _equipment_instance_id=tunic.instance_id,
+        )
+
+        event = GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=0,
+        )
+
+        # Condition should fail when already at 3 counters
+        assert trigger.condition(event) is False
+
+    def test_cost_is_zero(self):
+        """Spring Tunic equipment instant cost is 0 (no resource cost)."""
+        game = make_game_shell()
+        from htc.enums import EquipmentSlot
+        tunic = _make_spring_tunic()
+        game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
+
+        cost = game.action_builder._get_equipment_instant_cost(game.state, 0, tunic)
+        assert cost == 0
