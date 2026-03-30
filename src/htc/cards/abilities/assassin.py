@@ -1032,7 +1032,7 @@ def _create_silver_token(state, controller_index: int) -> CardInstance:
         controller_index,
         name="Silver",
         subtype=SubType.ITEM,
-        functional_text="Action - Destroy Silver: Gain {r}",
+        functional_text="Action - {r}{r}{r}, destroy Silver: Draw a card. Go again.",
         type_text="Token - Item",
     )
     return token
