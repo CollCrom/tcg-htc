@@ -86,7 +86,10 @@ class Game:
     def _register_abilities(self) -> None:
         """Register card abilities with the ability registry."""
         from htc.cards.abilities import register_generic_abilities
-        from htc.cards.abilities.assassin import register_assassin_abilities
+        from htc.cards.abilities.assassin import (
+            register_assassin_abilities,
+            register_assassin_cost_modifiers,
+        )
         from htc.cards.abilities.ninja import register_ninja_abilities
         from htc.cards.abilities.equipment import register_equipment_abilities
         from htc.cards.abilities.agents import register_agent_abilities
@@ -95,6 +98,8 @@ class Game:
         register_ninja_abilities(self.ability_registry)
         register_equipment_abilities(self.ability_registry)
         register_agent_abilities(self.ability_registry)
+        # Intrinsic cost modifiers (card-text cost adjustments)
+        register_assassin_cost_modifiers(self.effect_engine)
 
     def _register_hero_abilities(self) -> None:
         """Register hero abilities as triggered effects on the EventBus.
