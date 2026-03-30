@@ -317,10 +317,6 @@ def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Art of the Dragon: Blood")
 
     # Next 3 Draconic cards cost {r} less
-    # TODO: This requires a "next N cards" cost reduction tracker that
-    # decrements as Draconic cards are played. For now, apply a broad
-    # cost reduction that applies to all Draconic cards this turn.
-    # A proper implementation would track a counter.
     cost_effect = make_cost_modifier(
         -1,
         ctx.controller_index,
@@ -330,10 +326,10 @@ def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
             c, '_resolved_supertypes', c.definition.supertypes
         ),
     )
+    cost_effect.uses_remaining = 3
     ctx.effect_engine.add_continuous_effect(ctx.state, cost_effect)
     log.info(
-        "  Art of the Dragon: Blood: next Draconic cards cost 1 less "
-        "(simplified — should be next 3 only)"
+        "  Art of the Dragon: Blood: next 3 Draconic cards cost 1 less"
     )
 
 
@@ -868,10 +864,10 @@ def _ignite_on_attack(ctx: AbilityContext) -> None:
             c, '_resolved_supertypes', c.definition.supertypes
         ),
     )
+    cost_effect.uses_remaining = 1
     ctx.effect_engine.add_continuous_effect(ctx.state, cost_effect)
     log.info(
-        "  Ignite: next Draconic card costs 1 less "
-        "(simplified — should be next 1 only)"
+        "  Ignite: next 1 Draconic card costs 1 less"
     )
 
 

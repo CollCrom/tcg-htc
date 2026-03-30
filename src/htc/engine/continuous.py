@@ -117,6 +117,11 @@ class ContinuousEffect:
     # Optional condition — effect only active when this returns True
     condition: Callable[[GameState], bool] | None = None
 
+    # Usage limit — when set, effect only applies to the next N matching cards.
+    # Decremented by EffectEngine.consume_limited_cost_effects() after a card
+    # is played; removed when it hits 0.  None = unlimited.
+    uses_remaining: int | None = None
+
 
 # ---------------------------------------------------------------------------
 # StagingResolver
