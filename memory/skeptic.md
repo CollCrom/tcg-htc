@@ -271,6 +271,27 @@ Persistent learnings across sessions. Update this after each review.
 - **Missing test**: No test for Authority of Ataya effect expiring at end of turn (duration is `END_OF_TURN` but no test verifies the effect is removed after the turn ends).
 - 595 tests all passing. 20 new tests across 4 categories (2 Pain in the Backside, 5 Authority of Ataya, 5 Shelter from the Storm, 5 Take Up the Mantle, 3 definition_override infrastructure).
 
+### refactor/dry-pass (round 2) — DRY Refactor (2026-03-30)
+- **Round 1 verdict: REQUEST CHANGES** — 1 critical issue (4 guard downgrades).
+- **Critical**: 4 functions changed from `@require_active_attack` to `@require_chain_link`, losing the `link.active_attack is None` guard. All 4 access `link.active_attack` in their body and will crash with `AttributeError` if `active_attack` is `None`:
+  1. `_overcrowded_on_attack` (assassin.py line 1152)
+  2. `_devotion_never_dies_on_hit` (ninja.py line 633)
+  3. `_enlightened_strike_on_attack` (ninja.py line 784)
+  4. `_enflame_the_firebrand_on_attack` (ninja.py line 1005)
+  All 4 must use `@require_active_attack` to match the original behavior.
+- **Minor (non-blocking)**: `_ScarTissueMarkOnHit` had `isinstance(state, GameState)` defensive check; the shared `MarkOnHitTrigger` drops it. In practice `_state` is always `GameState` (passed as `ctx.state`). The ninja `_MarkOnHitTrigger` also lacked this check. Consistent with ninja version, acceptable.
+- **Correct**: All other extractions verified 1:1 with original behavior:
+  - `require_active_attack` / `require_chain_link` decorators match the original guard patterns for all other call sites.
+  - `choose_dagger` / `deal_dagger_damage` / `destroy_arsenal` helpers preserve exact behavior (event emission, logging, dagger selection).
+  - `MarkOnHitTrigger` shared class correctly parameterized by `card_name`.
+  - `_draconic_devotion_handler` factory preserves Demonstrate Devotion / Display Loyalty behavior exactly.
+  - `BanishPlayability` NamedTuple is backward-compatible with tuple unpacking.
+  - Expiry constants replace string literals consistently.
+  - `_all_zone_lists()` / `_expire_playable()` / `_redirect_to_banish()` helpers preserve exact behavior.
+  - Validation `_check_legendary_copies` inner function preserves logic.
+  - Test refactoring (`make_ability_context`, `setup_draconic_chain`, parametrized hero tests) preserve all assertions.
+- 598 tests passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
