@@ -902,10 +902,9 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
      If damage is dealt this way, the dagger has hit.'
     Go again (keyword).
 
-    TODO: "target dagger you control" means the dagger weapon, and "the dagger
-    has hit" triggers on-hit effects for that dagger. This requires selecting
-    a weapon and emitting a separate HIT event for it. Simplified for now:
-    deal 1 damage.
+    Implementation: player chooses a dagger, DEAL_DAMAGE event is emitted
+    through the event pipeline (so prevention/replacement effects apply),
+    and if damage is dealt, a HIT event is emitted for the dagger.
     """
     link = ctx.chain_link
     if link is None:
