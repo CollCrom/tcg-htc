@@ -319,6 +319,22 @@ Persistent learnings across sessions. Update this after each review.
 - **Missing test**: No end-to-end test for permanent instant activation through `_handle_action_phase_decision` (all tests call `_activate_permanent_instant` directly). The routing in game.py line 727 (`_is_permanent_instant_activation` check) is untested.
 - 624 tests all passing. 26 new tests across 5 categories.
 
+### fix/final-skeptic-cleanup — Consumed-Closure Fixes + Overpower (2026-03-30)
+- **Round 2 verdict: REQUEST CHANGES** — 1 critical issue found in Part B sweep.
+- **Part A (3 prior fixes verified correct)**:
+  - **Dagger attack bonus** (assassin.py `_grant_next_dagger_attack_bonus`): `applied_to: set[int]` pattern correctly records first matching instance_id, returns True idempotently for same card, returns False for new cards. Multiple evaluation safe. Correct.
+  - **Fealty Draconic grant** (tokens.py `_fealty_instant`): `granted_id: list[int | None]` pattern correctly locks to first matching instance_id, checks `card.instance_id == granted_id[0]` for all subsequent evaluations. Multiple evaluation safe. Correct.
+  - **Overpower arsenal restriction** (game.py `_defend_step`): Arsenal Ambush action cards now checked against `action_cards_defended >= 1` and incremented if `is_action`. Correct per rule 8.3.9 — no "from hand" qualifier.
+  - All 3 fixes have comprehensive test coverage (516 new lines in test_consumed_closure_fixes.py, updated test in test_post_phase5_audit.py).
+  - No remaining `consumed = [False]` patterns in codebase (verified via grep).
+- **Part B (full sweep, new findings)**:
+  - **Critical**: Orb-Weaver Spinneret (`assassin.py` lines 754-771) — card text says "Your **next** attack with stealth this turn gets +N{p}" but `stealth_attack_filter` matches ALL stealth attacks on the combat chain, not just the first. No single-use tracking (no `applied_to`/`granted_id` pattern, no `uses_remaining`). Multiple stealth attacks after Orb-Weaver Spinneret all get the bonus instead of just the first. Same class of bug as the original consumed-closure issue.
+  - **Trigger cleanup**: No leaks. One-shot triggers auto-remove via `_check_triggers`. Permanent triggers (hero abilities, equipment) correctly persist. `EventBus.clear_expired()` exists as infrastructure but isn't needed with current trigger lifetimes. `EventBus.clear()` available for full reset. No turn-scoped non-one-shot triggers exist to leak.
+  - **Combat chain close sequence**: Correct ordering — COMBAT_CHAIN_CLOSES event -> process triggers -> equipment degradation -> banish redirect -> close_chain -> cleanup END_OF_COMBAT effects.
+  - **Resource/pitch handling**: Resource points reset at action phase start (line 573-574) and end phase (line 1830-1831). Pitch-to-pay correctly loops until sufficient resources. `pay_resource_cost` correctly deducts. No edge cases found.
+  - **Action builder**: Correct offering of hand + arsenal + banish cards for actions. Reactions correctly limited (attack reactions to attacker, defense reactions to defender). Equipment instants, permanent instants, instant-discard all offered. No illegal actions offered.
+- 669 tests all passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
