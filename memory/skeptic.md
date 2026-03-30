@@ -114,6 +114,37 @@ Persistent learnings across sessions. Update this after each review.
 - **Minor**: Redundant `_add_equipment_instant_options` call in `build_reaction_decision` — called once explicitly (line 148) and once again inside `add_instant_options` (line 151). Deduplication prevents bugs but wastes cycles.
 - Good test coverage: 417 tests passing, ~70 new tests across 2 files. Keyword parsing, cost reduction, hero transformation, blade break, loader auto-include all covered.
 
+### feat/banish-zone-trap-infra — Banish Zone Infrastructure + Trap-Door + Under the Trap-Door (2026-03-28)
+- **Round 1 verdict: REQUEST CHANGES** — 2 critical, 3 minor issues.
+- **Critical 1**: `_redirect_banish_on_chain_close()` only handles `link.active_attack`, not `link.defending_cards`. Traps (defense reactions) played from banish will go to graveyard instead of banish when combat chain closes. Card text says "if it would be put into the graveyard this turn, instead banish it."
+- **Critical 2**: `build_reaction_decision()` only iterates `player.hand` for defense reactions, not `_get_playable_from_banish()`. Traps banished by Trap-Door/Under the Trap-Door can never be offered as defense reactions during combat — the core gameplay loop is broken.
+- **Minor**: `_banish_card` helper defined but never called by production code (dead code). Trap-Door handler does zone transition manually.
+- **Minor**: `definition.subtypes` read directly in agents.py and assassin.py handlers (recurring pattern).
+- 453 tests passing. 36 new tests cover infrastructure, helpers, cost reduction, and ability registration well. Missing: defense-reaction-from-banish and chain-close-redirect integration tests.
+- **Round 2 verdict: APPROVE** — Both critical fixes verified correct.
+  - Critical 1 fix: `_redirect_banish_on_chain_close()` now iterates `link.defending_cards` (lines 474-481 in game.py). 3 new tests cover: banish redirect, normal graveyard, mixed defending cards.
+  - Critical 2 fix: `build_reaction_decision()` now calls `_get_playable_from_banish()` for defense reactions, gated by `priority_player == defender_index` (lines 165-174 in action_builder.py). 3 new tests cover: offered to defender, not to attacker, not when unmarked.
+  - Round 1 minor (`_banish_card` dead code): resolved. Ability handlers use `ctx.banish_card()` (AbilityContext), `Game._banish_card()` is used by tests and available for engine-level calls.
+  - Round 1 minor (`definition.subtypes`): pre-existing pattern, no `get_modified_subtypes` exists. Consistent with rest of codebase.
+  - `_banish_instead_of_graveyard` set is self-cleaning (entries consumed on use). No stale state risk.
+  - `_play_card` zone removal ordering (hand > arsenal > banish) is correct; `played_from_banish` check evaluated before any removal.
+  - Expiry logic covers both `end_of_turn` and `start_of_next_turn` correctly, wired into end phase and start phase respectively.
+  - 459 tests all passing.
+- **Round 3 (targeted bug fix review) verdict: APPROVE** — Banish redirect bug fix (commit dfbc35c) verified correct.
+  - `playable_from_banish` tuple extended from `(instance_id, expiry)` to `(instance_id, expiry, redirect_to_banish)`. All 38 references across 5 files updated consistently (zero stale 2-tuple references).
+  - Trap-Door (`agents.py`): sets `redirect_to_banish=False` -- correct per card text ("you may play it until the start of your next turn", no graveyard redirect).
+  - Under the Trap-Door (`assassin.py`): sets `redirect_to_banish=True` -- correct per card text ("if it would be put into the graveyard this turn, instead banish it").
+  - `_play_card` in `game.py` now checks the redirect flag before adding to `_banish_instead_of_graveyard` set. Only adds when `redirect=True`.
+  - Both ability handlers now use `ctx.banish_card()` instead of manual zone manipulation (resolves prior dead-code minor).
+  - `_mark_playable_from_banish` defaults `redirect_to_banish=True` -- safe default since Under the Trap-Door is the more restrictive case. Not called by ability handlers directly (they append to the list), so the default only affects future callers.
+  - 5 new tests: `TestTrapDoorNoRedirect` (2 tests verifying redirect flag for both cards), plus 3 existing Trap-Door/Under the Trap-Door tests updated with redirect flag assertions.
+  - 461 tests all passing.
+
+## Patterns to Watch For (Updated 2)
+
+- **Play-from-banish must cover ALL decision builders**: When adding play-from-banish support, check `build_action_decision`, `build_reaction_decision`, AND `build_resolution_decision`. Defense reactions are played during reaction step, not action step.
+- **Chain close redirect must cover ALL card positions**: `close_chain` handles active_attack and defending_cards separately. Any graveyard redirect must cover both paths.
+
 ## Talishar Discrepancies
 
 *(None found yet)*

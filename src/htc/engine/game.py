@@ -418,23 +418,26 @@ class Game:
 
     def _mark_playable_from_banish(
         self, card: CardInstance, player_index: int, expiry: str,
+        *, redirect_to_banish: bool = True,
     ) -> None:
         """Mark a banished card as playable until the given expiry.
 
         expiry is "end_of_turn" or "start_of_next_turn".
+        redirect_to_banish: if True, the card goes to banish instead of
+        graveyard after being played. If False, it goes to graveyard normally.
         """
         player = self.state.players[player_index]
-        player.playable_from_banish.append((card.instance_id, expiry))
+        player.playable_from_banish.append((card.instance_id, expiry, redirect_to_banish))
         log.info(
             f"  Playable from banish: {card.name} until {expiry} "
-            f"for Player {player_index}"
+            f"(redirect={redirect_to_banish}) for Player {player_index}"
         )
 
     def _expire_playable_from_banish_end_of_turn(self) -> None:
         """Remove end_of_turn entries from playable_from_banish for all players."""
         for player in self.state.players:
             player.playable_from_banish = [
-                (iid, exp) for iid, exp in player.playable_from_banish
+                (iid, exp, redir) for iid, exp, redir in player.playable_from_banish
                 if exp != "end_of_turn"
             ]
 
@@ -442,14 +445,14 @@ class Game:
         """Remove start_of_next_turn entries for the given player."""
         player = self.state.players[player_index]
         player.playable_from_banish = [
-            (iid, exp) for iid, exp in player.playable_from_banish
+            (iid, exp, redir) for iid, exp, redir in player.playable_from_banish
             if exp != "start_of_next_turn"
         ]
 
     def _is_playable_from_banish(self, card: CardInstance, player_index: int) -> bool:
         """Check if a banished card is currently marked as playable."""
         player = self.state.players[player_index]
-        return any(iid == card.instance_id for iid, _ in player.playable_from_banish)
+        return any(iid == card.instance_id for iid, _, _ in player.playable_from_banish)
 
     def _redirect_banish_on_chain_close(self) -> None:
         """Before combat chain close, redirect cards that should go to banish.
@@ -711,13 +714,19 @@ class Game:
             player.arsenal.remove(card)
         elif played_from_banish:
             player.banished.remove(card)
+            # Check redirect flag before removing tracking entry
+            redirect = any(
+                iid == card.instance_id and redir
+                for iid, _, redir in player.playable_from_banish
+            )
             # Remove playable-from-banish tracking entry
             player.playable_from_banish = [
-                (iid, exp) for iid, exp in player.playable_from_banish
+                (iid, exp, redir) for iid, exp, redir in player.playable_from_banish
                 if iid != card.instance_id
             ]
-            # Mark: if this card would go to graveyard, it goes to banish instead
-            self._banish_instead_of_graveyard.add(card.instance_id)
+            # Only redirect to banish if the flag was set (e.g. Under the Trap-Door)
+            if redirect:
+                self._banish_instead_of_graveyard.add(card.instance_id)
 
         layer = self.stack_mgr.add_card_layer(
             self.state, card, player_index,

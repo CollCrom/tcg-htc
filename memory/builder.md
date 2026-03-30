@@ -148,3 +148,20 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **BECOME_AGENT EventType** — New event for hero transformation.
 - **CHOOSE_AGENT DecisionType** — New decision for marked-attacker choice.
 - **417 tests passing** — 18 new tests for Mask of Deceit, Demi-Hero loading, hero transformation, Blade Break.
+
+## Banish Zone + Trap Infrastructure (2026-03-28)
+
+- **Banish zone** — `PlayerState.banished` list already existed. Added `playable_from_banish: list[tuple[int, str, bool]]` tracking (instance_id, expiry, redirect_to_banish). Expiry types: `"end_of_turn"` and `"start_of_next_turn"`. The `redirect_to_banish` flag controls whether the card goes to banish instead of graveyard after being played: True for Under the Trap-Door (explicit redirect text), False for Trap-Door (no redirect text). Cleared in `_run_end_phase` and `_run_turn` respectively.
+- **`CardInstance.face_up`** — Already existed on CardInstance. Face-down banish sets `face_up=False`.
+- **`Game._banish_card()`** — Moves card to banish zone, sets face_up, emits BANISH event.
+- **Play-from-banish** — ActionBuilder's `build_action_decision` and `build_resolution_decision` include playable-from-banish cards. `_play_card` handles removal from banish and tracks `_banish_instead_of_graveyard` for graveyard redirect.
+- **Graveyard redirect** — `_move_to_graveyard_or_banish()` checks `_banish_instead_of_graveyard` set. `_redirect_banish_on_chain_close()` pre-moves attack cards before `close_chain()` runs.
+- **`on_become` timing** — New AbilityRegistry timing for demi-hero transformation abilities. Called from `_become_agent_of_chaos()`.
+- **`instant_discard_effect` timing** — New timing for cards with "Instant - Discard this:" text. ActionBuilder offers these as ACTIVATE_ABILITY alongside normal play options.
+- **Trap-Door on_become** — Search deck, banish face-down, shuffle. If Trap subtype, mark playable from banish until start of next turn.
+- **Under the Trap-Door** — Instant-discard from hand: banish trap from graveyard, mark playable this turn.
+- **Orb-Weaver cost reduction** — `ActionBuilder._apply_weapon_cost_reduction()` checks hero name. `Game._weapon_activation_cost()` is now instance method calling the static reducer.
+- **Graphene Chelicera** — Name in CSV is "Graphene Chelicera" (not Chelicerae). Token weapon, Dagger 1H, costs {r} to activate.
+- **Frailty Trap + Inertia Trap** — Already fully implemented in prior phase as defense_reaction_effect handlers.
+- **`_weapon_activation_cost` signature change** — Was static, now instance method taking `(self, weapon, player_index)`. Old static method renamed to `_base_weapon_activation_cost`.
+- **453 tests passing** — 35 new tests for banish zone, play-from-banish, trap abilities, weapon cost reduction.

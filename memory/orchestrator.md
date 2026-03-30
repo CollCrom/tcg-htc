@@ -13,11 +13,23 @@ Persistent learnings across sessions. Update this as you go.
 - **Phase 5 complete.** Ability registry, hero abilities, 48 card abilities (assassin + ninja), equipment abilities, full game integration tests. 334 tests passing. Both decks run end-to-end.
 - **Forum dropped.** Agents don't use it in practice — communication is synchronous via spawn prompts and skeptic reviews. Can re-add later for async work.
 
+### 2026-03-28: Pre-Phase 6 Cleanup + Deferred Items Complete
+
+- **Switched card data to Fabrary dataset** (PR #47). 4,562 cards (up from 4,217). Refresh script: `python3 -m htc.cards`.
+- **Keyword parsing fix**: `card_keywords` in Fabrary means "keywords mentioned on card", not inherent. `_is_keyword_inherent()` parses functional_text to distinguish. Squash merges can lose commits — verify after merge.
+- **Equipment activation infrastructure** (PR #49). Equipment instants and attack reactions now offered in action builder. Fixes previously dead-code abilities (Flick Knives, Tide Flippers, etc).
+- **All deferred equipment done**: Dragonscaler Flight Path (instant, cost reduction, bonus weapon attacks), Mask of Deceit (Agent of Chaos transformation), Stalker's Steps, Enflame the Firebrand.
+- **Agent of Chaos system**: 6 demi-heroes, hero transformation, return-to-brood, once-per-turn enforcement, registry cleanup.
+- **Banish zone + play-from-banish** (PR #50). Trap-Door on-become search/banish, Under the Trap-Door instant-discard, graveyard redirect, defense reactions from banish.
+- **Graphene Chelicera cost reduction** for Orb-Weaver.
+- **459 tests passing** on main after all merges.
+
 ## Open TODOs
 
-- **Pitch order** (game.py ~line 1215): Player should choose pitch-to-bottom order per rules. Currently randomized. Low priority for AI play but matters for pitch-stacking strategies.
-- **Deferred equipment**: Dragonscaler Flight Path (instant activation), Mask of Deceit (Agent of Chaos mechanic), Stalker's Steps (not in CSV).
-- **Card ability TODOs**: Several cards have partial implementations with TODOs noted in code (instant activations, cost reductions, play restrictions). See builder memory for details.
+- No major deferred items remaining. All equipment, agents, and card abilities are implemented.
+- Minor: Orb-Weaver Chelicerae cost reduction done. Trap-Door play-from-banish done.
+- Phase 6 (permanents, tokens, Runechant, arcane from tokens) is next.
+- Phase 7 (Talishar verification for Cindra vs Arakni) follows.
 
 ## Process Notes
 
