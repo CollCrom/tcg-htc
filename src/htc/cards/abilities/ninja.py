@@ -849,7 +849,7 @@ def _ignite_on_attack(ctx: AbilityContext) -> None:
      Go again'
 
     Simplified: apply a cost reduction to Draconic cards for the combat chain.
-    TODO: Should only apply to the NEXT Draconic card (needs a counter).
+    Counter-limited via uses_remaining on the ContinuousEffect.
     """
     link = ctx.chain_link
     if link is None:
