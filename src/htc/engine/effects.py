@@ -73,7 +73,19 @@ class EffectEngine:
 
     def get_modified_cost(self, state: GameState, card: CardInstance) -> int:
         base = card.cost if card.cost is not None else 0
-        return self._resolve_numeric_property(state, card, base, NumericProperty.COST)
+        result = self._resolve_numeric_property(state, card, base, NumericProperty.COST)
+
+        # Stains of the Redback: costs {r} less if defending hero is marked.
+        # This is an intrinsic cost modifier on the card itself.
+        if card.name == "Stains of the Redback":
+            opponent_index = 1 - card.owner_index
+            if (
+                0 <= opponent_index < len(state.players)
+                and state.players[opponent_index].is_marked
+            ):
+                result = max(0, result - 1)
+
+        return result
 
     def get_modified_supertypes(
         self, state: GameState, card: CardInstance

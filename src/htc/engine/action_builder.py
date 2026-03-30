@@ -251,6 +251,18 @@ class ActionBuilder:
         if card.name == "Death Touch" and card.zone != Zone.ARSENAL:
             return False
 
+        # Warmonger's Diplomacy restriction
+        restriction = state.players[player_index].diplomacy_restriction
+        if restriction is not None:
+            if restriction == "war":
+                # War: only attack action cards allowed (weapons handled separately)
+                if not defn.is_attack:
+                    return False
+            elif restriction == "peace":
+                # Peace: only non-attack actions allowed
+                if defn.is_attack:
+                    return False
+
         # Action cards need action points
         if not can_pay_action_cost(state, player_index, card):
             return False
@@ -277,6 +289,9 @@ class ActionBuilder:
     @staticmethod
     def _can_activate_weapon(state: GameState, player_index: int, weapon: CardInstance) -> bool:
         """Check if a weapon can be activated (untapped, has AP, can pay cost)."""
+        # Peace restriction blocks weapon activations
+        if state.players[player_index].diplomacy_restriction == "peace":
+            return False
         if weapon.is_tapped:
             return False
         # Weapons need an action point to activate

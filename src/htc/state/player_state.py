@@ -48,6 +48,12 @@ class PlayerState:
     # Marked condition (rules 9.3): hero is marked until hit by opponent's source
     is_marked: bool = False
 
+    # Warmonger's Diplomacy restriction: "war" or "peace" or None.
+    # War: only weapon attacks and attack action cards next turn.
+    # Peace: only non-weapon, non-attack actions next turn.
+    # Cleared at end of the restricted player's turn.
+    diplomacy_restriction: str | None = None
+
     # Banished cards that are currently playable.
     # Each entry is (instance_id, expiry, redirect_to_banish) where:
     #   expiry is "end_of_turn" or "start_of_next_turn"
