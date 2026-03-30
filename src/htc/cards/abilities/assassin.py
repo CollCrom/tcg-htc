@@ -751,15 +751,27 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     controller = ctx.controller_index
     source_id = ctx.source_card.instance_id
 
+    # Track which instance_id has been granted the bonus (at most one).
+    applied_to: set[int] = set()
+
     def stealth_attack_filter(card):
+        # Already granted — keep matching the same card idempotently.
+        if card.instance_id in applied_to:
+            return True
+        # Only grant once.
+        if applied_to:
+            return False
         if card.zone != Zone.COMBAT_CHAIN:
             return False
         if card.owner_index != controller:
             return False
-        return Keyword.STEALTH in card.definition.keywords
-    # Note: ideally check via effect engine, but continuous effect target_filter
-    # doesn't have access to state/effect_engine. Using definition keywords as
-    # approximation (Stealth is innate, not typically granted by effects).
+        if Keyword.STEALTH not in card.definition.keywords:
+            return False
+        # Record this card so subsequent evaluations keep matching it.
+        applied_to.add(card.instance_id)
+        return True
+    # Note: ideally check Stealth via effect engine, but target_filter
+    # doesn't have access to state/effect_engine. Stealth is innate.
 
     effect = make_power_modifier(
         bonus,
