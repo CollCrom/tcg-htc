@@ -174,3 +174,10 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Banish fixes** — Mark of the Black Widow, Meet Madness, Leave No Witnesses, and Persuasive Prognosis all use `ctx.banish_card()` instead of direct zone manipulation. This emits `BANISH` events properly.
 - **Pattern**: For deck-top banish, use `deck[0]` (not `deck.pop(0)`) and let `ctx.banish_card()` -> `player.remove_card()` handle removal. For TriggeredEffects that need draw/life, return the appropriate GameEvent from `create_triggered_event()`.
 - **461 tests passing** after all changes.
+
+## Fix: Target Filter Supertype Visibility (2026-03-29)
+
+- **Problem** — `ContinuousEffect.target_filter` lambdas only receive `(card)`, so they check `card.definition.supertypes` directly and miss supertypes granted by other continuous effects (e.g. Enflame's tier-3 Draconic grant is invisible to Ignite's cost filter and Spreading Flames' power filter).
+- **Solution** — `EffectEngine._resolve_numeric_property()` and `get_modified_keywords()` now pre-resolve supertypes via `StagingResolver.resolve_supertypes()` and set `card._resolved_supertypes` before evaluating target filters. The attribute is cleaned up in a `finally` block to prevent stale state.
+- **Filter pattern** — Target filters that need effect-aware supertypes use `getattr(c, '_resolved_supertypes', c.definition.supertypes)` instead of `c.definition.supertypes`. Updated in ninja.py: Art of the Dragon Blood (line 329), Ignite (line 865), Spreading Flames (lines 1052, 1062).
+- **490 tests passing** — 11 new tests verify: granted Draconic seen by cost/power/defense filters, inherent Draconic still works, non-Draconic correctly excluded, `_resolved_supertypes` cleaned up after each query, Enflame+Ignite and Enflame+Spreading Flames end-to-end scenarios.
