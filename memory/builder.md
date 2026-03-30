@@ -165,3 +165,12 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Frailty Trap + Inertia Trap** — Already fully implemented in prior phase as defense_reaction_effect handlers.
 - **`_weapon_activation_cost` signature change** — Was static, now instance method taking `(self, weapon, player_index)`. Old static method renamed to `_base_weapon_activation_cost`.
 - **453 tests passing** — 35 new tests for banish zone, play-from-banish, trap abilities, weapon cost reduction.
+
+## Fix: Direct State Mutations (2026-03-29)
+
+- **`draw_card` helper** — `_helpers.py` now emits `DRAW_CARD` event via `ctx.events.emit()` instead of direct `deck.pop(0)` + zone manipulation. This routes draws through the event pipeline (replacement/prevention effects).
+- **`gain_life` helper** — New helper in `_helpers.py` that emits `GAIN_LIFE` event via `ctx.events.emit()`. Used by Persuasive Prognosis.
+- **`SavorBloodshedDrawOnHit`** — `create_triggered_event()` now returns a `DRAW_CARD` GameEvent instead of mutating state directly. The event bus processes it through the full pipeline.
+- **Banish fixes** — Mark of the Black Widow, Meet Madness, Leave No Witnesses, and Persuasive Prognosis all use `ctx.banish_card()` instead of direct zone manipulation. This emits `BANISH` events properly.
+- **Pattern**: For deck-top banish, use `deck[0]` (not `deck.pop(0)`) and let `ctx.banish_card()` -> `player.remove_card()` handle removal. For TriggeredEffects that need draw/life, return the appropriate GameEvent from `create_triggered_event()`.
+- **461 tests passing** after all changes.
