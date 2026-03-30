@@ -1638,6 +1638,9 @@ class Game:
             target_player=tp.index,
         ))
 
+        # Clear diplomacy restriction at end of the restricted player's turn
+        tp.diplomacy_restriction = None
+
         # Expire "end_of_turn" banish playability
         self._expire_playable_from_banish_end_of_turn()
 

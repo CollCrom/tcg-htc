@@ -121,9 +121,8 @@ def _stains_of_the_redback(ctx: AbilityContext) -> None:
      Target attack with stealth gets +N{p} and go again.'
     Red=+3, Yellow=+2, Blue=+1.
 
-    NOTE: Cost reduction is a play-cost modifier, not an on-resolve effect.
-    TODO: Implement cost reduction as a continuous effect during play.
-    For now, we implement the +power and go again effect.
+    Cost reduction handled in EffectEngine.get_modified_cost() as a static
+    card-specific modifier (costs {r} less when opponent is marked).
     """
     link = ctx.chain_link
     if link is None or link.active_attack is None:
@@ -890,8 +889,7 @@ def _under_the_trap_door_on_hit(ctx: AbilityContext) -> None:
 
     On-hit: No on-hit effect. The card's main ability is an Instant discard
     activation that banishes a trap from graveyard and lets you play it.
-
-    TODO: Implement the Instant discard activation ability.
+    The instant discard is implemented in _under_the_trap_door_instant().
     """
     # No on-hit effect for this card.
     pass
@@ -1097,12 +1095,24 @@ def _reapers_call_on_hit(ctx: AbilityContext) -> None:
     """Reaper's Call (Assassin, Attack Action):
 
     No on-hit effect. Main body is Stealth (keyword).
-    The card has an Instant discard activation: 'Discard this: Mark target
-    opposing hero.'
-
-    TODO: Implement Instant discard activation ability.
+    The Instant discard activation is registered separately.
     """
     pass
+
+
+def _reapers_call_instant(ctx: AbilityContext) -> None:
+    """Reaper's Call (Assassin, Attack Action):
+
+    'Instant - Discard this: Mark target opposing hero.'
+
+    The card is already discarded (moved to graveyard) before this handler
+    runs. We just need to mark the opposing hero.
+    """
+    opponent_index = 1 - ctx.controller_index
+    ctx.state.players[opponent_index].is_marked = True
+    log.info(
+        f"  Reaper's Call: Marked Player {opponent_index} (instant discard)"
+    )
 
 
 def _amulet_of_echoes_on_play(ctx: AbilityContext) -> None:
@@ -1336,4 +1346,5 @@ def register_assassin_abilities(registry: AbilityRegistry) -> None:
     registry.register("on_hit", "Persuasive Prognosis", _persuasive_prognosis_on_hit)
 
     # Instant-from-hand (discard to activate)
+    registry.register("instant_discard_effect", "Reaper's Call", _reapers_call_instant)
     registry.register("instant_discard_effect", "Under the Trap-Door", _under_the_trap_door_instant)

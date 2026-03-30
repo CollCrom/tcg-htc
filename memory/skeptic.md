@@ -225,11 +225,11 @@ Persistent learnings across sessions. Update this after each review.
 - Authority of Ataya pitch trigger not implemented.
 - Shelter from the Storm instant-discard prevention not implemented.
 - Amulet of Echoes instant-destroy ability not implemented.
-- Reaper's Call instant-discard mark ability not implemented.
+- Reaper's Call instant-discard mark ability: IMPLEMENTED (fix/implement-existing-todos).
 - Take Up the Mantle copy effect not implemented.
-- Rising Resentment / Devotion Never Dies playable-from-banish tracked but not fully wired (Rising Resentment TODO remains at line 1029).
+- Rising Resentment / Devotion Never Dies playable-from-banish: IMPLEMENTED (fix/implement-existing-todos).
 - Orb-Weaver Spinneret creates Graphene Chelicera as permanent, not proper equipment token.
-- Blood Runs Deep / Stains of the Redback cost reductions noted as TODO.
+- Blood Runs Deep cost reduction noted as TODO. Stains of the Redback: IMPLEMENTED (fix/implement-existing-todos).
 - `Layer.has_go_again` field is dead for attacks (Go Again resolved dynamically). Still set for weapon proxies at line 1042 but not read on the attack path.
 - `_is_keyword_inherent` docstring still mentions "with" as conditional word (stale after fix in PR #57).
 - No `get_modified_subtypes` method exists — all subtype checks use definition directly.
@@ -241,6 +241,22 @@ Persistent learnings across sessions. Update this after each review.
 - **Banish playability expiry**: End-of-turn entries cleared in `_run_end_phase`, start-of-next-turn entries cleared at start of turn player's turn. Correct.
 - **Equipment degradation**: Applied BEFORE `close_chain` but AFTER `COMBAT_CHAIN_CLOSES` event. Battleworn, Blade Break, Temper all handled correctly.
 - **540 tests passing** in ~4 seconds. Good coverage of core mechanics, card abilities, and multi-turn integration.
+
+### fix/implement-existing-todos — Implement Existing TODOs (2026-03-30)
+- **Round 1 verdict: APPROVE** — No critical issues. 2 minor issues, 2 missing tests.
+- **7 changes reviewed**: Devotion Never Dies, Rising Resentment, Art of the Dragon: Fire, Warmonger's Diplomacy, Stains of the Redback, Reaper's Call, Under the Trap-Door (stale TODO).
+- **Devotion Never Dies**: Banish + playable-from-banish with `redirect_to_banish=False` — correct per card text ("may play it this turn", no graveyard redirect). Previous-link Draconic check uses `_is_draconic()` without ctx (pre-existing minor, not introduced here).
+- **Rising Resentment**: Banish from hand, mark playable, -1 cost reduction via `make_cost_modifier` with instance-specific `target_filter`. All correct per card text. `redirect_to_banish=False` correct.
+- **Art of the Dragon: Fire**: "any target" in 1v1 = either hero. Decision presented, default to opponent on invalid response. Correct.
+- **Warmonger's Diplomacy**: War blocks non-attack actions, allows weapons + attack actions. Peace blocks attack actions + weapons, allows non-attack actions. Restriction stored on opponent's PlayerState, cleared at end of opponent's own turn. All correct per card text.
+- **Stains of the Redback**: Cost reduction of 1 when opponent (`1 - owner_index`) is marked. Hardcoded name check in `get_modified_cost`. Correct per card text ("if the defending hero is marked, this costs {r} less").
+- **Reaper's Call**: Instant discard marks opposing hero. Registered as `instant_discard_effect`. Correct per card text.
+- **Under the Trap-Door**: Stale TODO removed. No behavior change. Correct.
+- **Minor (pre-existing)**: `_is_draconic(prev_link.active_attack)` in Devotion Never Dies (line 733) does not pass `ctx`, falls back to `definition.supertypes`. Would miss effect-granted Draconic on previous chain link (Enflame tier 3 edge case). Same issue noted in full codebase review.
+- **Minor**: Stains of the Redback cost reduction hardcoded by card name in `EffectEngine.get_modified_cost()` — works but doesn't scale. Should be a registered intrinsic modifier pattern if more cards need similar treatment.
+- **Missing test**: No test for diplomacy restriction clearing at end of turn (wiring in `_run_end_phase`).
+- **Missing test**: No test for war restriction allowing weapon activations (only tests peace-blocks-weapons).
+- 566 tests all passing.
 
 ## Talishar Discrepancies
 

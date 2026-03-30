@@ -222,9 +222,8 @@ def _warmongers_diplomacy(ctx: AbilityContext) -> None:
      War: only weapon and attack actions next turn.
      Peace: only non-weapon non-attack actions next turn.'
 
-    TODO: Full implementation requires turn-lasting restrictions on legal
-    actions for the opponent. For now, ask the opponent for their choice
-    and log it. The actual restriction enforcement is a future task.
+    Stores the choice on the opponent's PlayerState. ActionBuilder enforces
+    the restriction during their next turn. Cleared at end of their turn.
     """
     opponent_index = 1 - ctx.controller_index
     options = [
@@ -246,11 +245,14 @@ def _warmongers_diplomacy(ctx: AbilityContext) -> None:
         options=options,
     )
     response = ctx.ask(decision)
-    choice = response.first if response.first else "peace"
+    choice = response.first if response.first in ("war", "peace") else "peace"
+
+    # Store restriction on the opponent — enforced by ActionBuilder next turn
+    ctx.state.players[opponent_index].diplomacy_restriction = choice
     log.info(
-        f"  Warmonger's Diplomacy: Player {opponent_index} chose {choice}"
+        f"  Warmonger's Diplomacy: Player {opponent_index} chose {choice} "
+        "(restriction active next turn)"
     )
-    # TODO: enforce war/peace restriction during opponent's next turn
 
 
 def _authority_of_ataya(ctx: AbilityContext) -> None:
@@ -338,8 +340,7 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
 
     'When this attacks, if it is Draconic, deal 2 damage to any target.'
 
-    For simplicity, deals 2 damage to the defending hero.
-    TODO: Allow choosing any target (including self/other objects).
+    In 1v1, "any target" means the defending hero or your own hero.
     """
     link = ctx.chain_link
     if link is None or link.active_attack is None:
@@ -350,12 +351,43 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
         log.info("  Art of the Dragon: Fire: not Draconic, no effect")
         return
 
-    # Deal 2 damage via DEAL_DAMAGE event (so prevention/replacement can apply)
+    # Ask the player which hero to target (opponent or self)
     defender_index = link.attack_target_index
+    options = [
+        ActionOption(
+            action_id=f"target_{defender_index}",
+            description=f"Deal 2 damage to opponent (Player {defender_index})",
+            action_type=ActionType.ACTIVATE_ABILITY,
+        ),
+        ActionOption(
+            action_id=f"target_{ctx.controller_index}",
+            description=f"Deal 2 damage to yourself (Player {ctx.controller_index})",
+            action_type=ActionType.ACTIVATE_ABILITY,
+        ),
+    ]
+    decision = Decision(
+        player_index=ctx.controller_index,
+        decision_type=DecisionType.CHOOSE_TARGET,
+        prompt="Art of the Dragon: Fire: Choose a target for 2 damage",
+        options=options,
+    )
+    response = ctx.ask(decision)
+
+    # Default to opponent if no valid response
+    target_index = defender_index
+    if response.first and response.first.startswith("target_"):
+        try:
+            chosen = int(response.first.replace("target_", ""))
+            if chosen in (0, 1):
+                target_index = chosen
+        except ValueError:
+            pass
+
+    # Deal 2 damage via DEAL_DAMAGE event (so prevention/replacement can apply)
     damage_event = ctx.events.emit(GameEvent(
         event_type=EventType.DEAL_DAMAGE,
         source=attack,
-        target_player=defender_index,
+        target_player=target_index,
         amount=2,
         data={"chain_link": link, "is_combat": False},
     ))
@@ -363,7 +395,7 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
     actual_damage = damage_event.amount if not damage_event.cancelled else 0
     if actual_damage > 0:
         log.info(
-            f"  Art of the Dragon: Fire: deals {actual_damage} damage to Player {defender_index}"
+            f"  Art of the Dragon: Fire: deals {actual_damage} damage to Player {target_index}"
         )
     else:
         log.info("  Art of the Dragon: Fire: Damage was prevented")
@@ -685,10 +717,6 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
     'When this hits, if a Draconic attack was the last attack this combat
      chain, banish this. If you do, you may play it this turn.
      Go again'
-
-    TODO: "may play it this turn" from banished zone requires additional
-    infrastructure (playable-from-banish tracking). For now we banish the
-    card and log the TODO.
     """
     link = ctx.chain_link
     if link is None or link.active_attack is None:
@@ -706,14 +734,16 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
         log.info("  Devotion Never Dies: previous attack was not Draconic")
         return
 
-    # Banish the attack card
+    # Banish the attack card via ctx.banish_card (emits BANISH event)
     attack = link.active_attack
-    attack.zone = Zone.BANISHED
+    ctx.banish_card(attack, ctx.controller_index)
+
+    # Mark as playable from banish this turn (goes to graveyard normally)
     player = ctx.state.players[ctx.controller_index]
-    player.banished.append(attack)
+    player.playable_from_banish.append((attack.instance_id, "end_of_turn", False))
     log.info(
-        f"  Devotion Never Dies: banished {attack.name} "
-        "(may play it this turn — TODO: track playable from banish)"
+        f"  Devotion Never Dies: banished {attack.name}, "
+        "may play it this turn from banish"
     )
 
 
@@ -967,9 +997,6 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
      control. If you do, it costs {r} less to play and you may play it this
      turn.
      Go again'
-
-    TODO: "may play it this turn" from banish requires playable-from-banish
-    tracking. For now, banish the card and log the effect.
     """
     link = ctx.chain_link
     if link is None:
@@ -1024,9 +1051,23 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
         card = next((c for c in eligible if c.instance_id == card_id), None)
         if card:
             ctx.banish_card(card, ctx.controller_index)
+
+            # Mark as playable from banish this turn (goes to graveyard normally)
+            player.playable_from_banish.append((card.instance_id, "end_of_turn", False))
+
+            # "it costs {r} less to play" — continuous cost reduction for this card
+            cost_effect = make_cost_modifier(
+                -1,
+                ctx.controller_index,
+                source_instance_id=ctx.source_card.instance_id,
+                duration=EffectDuration.END_OF_TURN,
+                target_filter=lambda c, _id=card.instance_id: c.instance_id == _id,
+            )
+            ctx.effect_engine.add_continuous_effect(ctx.state, cost_effect)
+
             log.info(
-                f"  Rising Resentment: banished {card.name} "
-                "(may play it this turn for 1 less — TODO: track playable from banish)"
+                f"  Rising Resentment: banished {card.name}, "
+                "may play it this turn for 1 less"
             )
 
 

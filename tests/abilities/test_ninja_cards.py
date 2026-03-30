@@ -19,7 +19,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from tests.conftest import make_card, make_equipment, make_game_shell, make_weapon
+from tests.conftest import make_card, make_equipment, make_game_shell, make_mock_ask, make_weapon
 from tests.abilities.conftest import (
     make_ninja_attack as _make_ninja_attack,
     make_draconic_ninja_attack as _make_draconic_ninja_attack,
@@ -209,8 +209,13 @@ def test_art_blood_not_draconic_no_effect():
 
 
 def test_art_fire_draconic_deals_2_damage():
-    """Art of the Dragon: Fire deals 2 damage when Draconic."""
+    """Art of the Dragon: Fire deals 2 damage when Draconic (opponent target)."""
     game = make_game_shell(life=20)
+    # Mock player that picks the opponent (target_1)
+    mock_ask = make_mock_ask({"Art of the Dragon: Fire": ["target_1"]})
+    _MockPlayer = type("P", (), {"decide": lambda s, state, d: mock_ask(d)})
+    game.interfaces = [_MockPlayer(), _MockPlayer()]
+
     attack = _make_draconic_ninja_attack(
         instance_id=1, name="Art of the Dragon: Fire", power=5,
     )
