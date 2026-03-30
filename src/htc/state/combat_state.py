@@ -16,6 +16,7 @@ class ChainLink:
     defending_cards: list[CardInstance] = field(default_factory=list)
     damage_dealt: int = 0
     hit: bool = False
+    defense_reactions_blocked: bool = False
 
 
 @dataclass

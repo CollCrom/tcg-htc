@@ -588,16 +588,24 @@ def _breaking_point_on_hit(ctx: AbilityContext) -> None:
         )
 
 
+def _command_and_conquer_on_attack(ctx: AbilityContext) -> None:
+    """Command and Conquer on_attack: block defense reactions this chain link.
+
+    Sets defense_reactions_blocked on the active chain link so that
+    build_reaction_decision() won't offer defense reactions to the defender.
+    """
+    link = ctx.chain_link
+    if link is None:
+        return
+    link.defense_reactions_blocked = True
+    log.info("  Command and Conquer: defense reactions blocked this chain link")
+
+
 def _command_and_conquer_on_hit(ctx: AbilityContext) -> None:
     """Command and Conquer (Generic, Attack Action):
 
     'Defense reaction cards can't be played this chain link.
      When this hits a hero, destroy all cards in their arsenal.'
-
-    NOTE: The defense reaction restriction should be enforced at the
-    action-building level during the defend step. The on_hit handler
-    destroys the arsenal.
-    TODO: Enforce "defense reactions can't be played this chain link."
     """
     link = ctx.chain_link
     if link is None:
@@ -1167,6 +1175,10 @@ def register_ninja_abilities(registry: AbilityRegistry) -> None:
     )
     registry.register(
         "on_attack", "Enflame the Firebrand", _enflame_the_firebrand_on_attack
+    )
+
+    registry.register(
+        "on_attack", "Command and Conquer", _command_and_conquer_on_attack
     )
 
     # Attack actions — on_hit
