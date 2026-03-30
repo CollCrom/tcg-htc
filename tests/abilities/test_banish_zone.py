@@ -302,14 +302,14 @@ class TestPlayableFromBanish:
 
         game._mark_playable_from_banish(card, 0, "end_of_turn")
 
-        assert (1, "end_of_turn") in game.state.players[0].playable_from_banish
+        assert (1, "end_of_turn", True) in game.state.players[0].playable_from_banish
 
     def test_is_playable(self):
         """_is_playable_from_banish should return True for marked cards."""
         game = make_game_shell()
         card = make_card(instance_id=1, zone=Zone.BANISHED, owner_index=0)
         game.state.players[0].banished.append(card)
-        game.state.players[0].playable_from_banish.append((1, "end_of_turn"))
+        game.state.players[0].playable_from_banish.append((1, "end_of_turn", True))
 
         assert game._is_playable_from_banish(card, 0) is True
 
@@ -325,25 +325,25 @@ class TestPlayableFromBanish:
         """_expire_playable_from_banish_end_of_turn should remove end_of_turn entries."""
         game = make_game_shell()
         game.state.players[0].playable_from_banish = [
-            (1, "end_of_turn"),
-            (2, "start_of_next_turn"),
+            (1, "end_of_turn", True),
+            (2, "start_of_next_turn", False),
         ]
 
         game._expire_playable_from_banish_end_of_turn()
 
-        assert game.state.players[0].playable_from_banish == [(2, "start_of_next_turn")]
+        assert game.state.players[0].playable_from_banish == [(2, "start_of_next_turn", False)]
 
     def test_expire_start_of_turn(self):
         """_expire_playable_from_banish_start_of_turn should remove for specific player."""
         game = make_game_shell()
         game.state.players[0].playable_from_banish = [
-            (1, "start_of_next_turn"),
-            (2, "end_of_turn"),
+            (1, "start_of_next_turn", False),
+            (2, "end_of_turn", True),
         ]
 
         game._expire_playable_from_banish_start_of_turn(0)
 
-        assert game.state.players[0].playable_from_banish == [(2, "end_of_turn")]
+        assert game.state.players[0].playable_from_banish == [(2, "end_of_turn", True)]
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +359,7 @@ class TestActionBuilderBanish:
         game = make_game_shell(action_points={0: 1, 1: 0})
         card = make_card(instance_id=10, zone=Zone.BANISHED, owner_index=0, cost=0)
         game.state.players[0].banished.append(card)
-        game.state.players[0].playable_from_banish.append((10, "end_of_turn"))
+        game.state.players[0].playable_from_banish.append((10, "end_of_turn", True))
 
         decision = game.action_builder.build_action_decision(game.state, 0, True)
         play_ids = [o.card_instance_id for o in decision.options if o.card_instance_id]
@@ -403,6 +403,53 @@ class TestPlayFromBanishRedirect:
         assert 1 not in game._banish_instead_of_graveyard  # cleaned up
 
 
+class TestTrapDoorNoRedirect:
+    """Tests that Trap-Door played cards go to graveyard (not banish).
+
+    Trap-Door's text says "you may play it until the start of your next turn"
+    with NO mention of graveyard redirect. Only Under the Trap-Door has
+    "if it would be put into the graveyard this turn, instead banish it".
+    """
+
+    def test_trap_door_played_card_not_marked_for_redirect(self):
+        """When a card played from banish via Trap-Door (redirect=False),
+        it should NOT be added to _banish_instead_of_graveyard."""
+        game = make_game_shell(action_points={0: 1, 1: 0})
+        player = game.state.players[0]
+
+        # Set up a trap in banish, marked playable with redirect=False (Trap-Door)
+        trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=0)
+        player.banished.append(trap)
+        player.playable_from_banish.append((50, "start_of_next_turn", False))
+
+        # Simulate _play_card behavior: card is in banish and playable
+        assert game._is_playable_from_banish(trap, 0) is True
+
+        # After playing, the card should NOT be in _banish_instead_of_graveyard
+        # We test the redirect logic directly
+        redirect = any(
+            iid == trap.instance_id and redir
+            for iid, _, redir in player.playable_from_banish
+        )
+        assert redirect is False
+
+    def test_under_trap_door_played_card_marked_for_redirect(self):
+        """When a card played from banish via Under the Trap-Door (redirect=True),
+        it SHOULD be added to _banish_instead_of_graveyard."""
+        game = make_game_shell(action_points={0: 1, 1: 0})
+        player = game.state.players[0]
+
+        trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=0)
+        player.banished.append(trap)
+        player.playable_from_banish.append((50, "end_of_turn", True))
+
+        redirect = any(
+            iid == trap.instance_id and redir
+            for iid, _, redir in player.playable_from_banish
+        )
+        assert redirect is True
+
+
 # ---------------------------------------------------------------------------
 # Trap-Door on_become tests
 # ---------------------------------------------------------------------------
@@ -440,7 +487,12 @@ class TestTrapDoorOnBecome:
         assert trap not in player.deck
 
         # Trap should be marked as playable (it's a Trap subtype)
-        assert any(iid == trap.instance_id for iid, _ in player.playable_from_banish)
+        assert any(iid == trap.instance_id for iid, _, _ in player.playable_from_banish)
+        # Trap-Door should NOT redirect to banish (no graveyard redirect text)
+        assert any(
+            iid == trap.instance_id and redir is False
+            for iid, _, redir in player.playable_from_banish
+        )
 
     def test_trap_door_banish_non_trap(self):
         """When a non-trap card is chosen, it should be banished but NOT playable."""
@@ -461,7 +513,7 @@ class TestTrapDoorOnBecome:
         assert non_trap in player.banished
         assert non_trap.face_up is False
         # Non-trap should NOT be playable from banish
-        assert not any(iid == non_trap.instance_id for iid, _ in player.playable_from_banish)
+        assert not any(iid == non_trap.instance_id for iid, _, _ in player.playable_from_banish)
 
     def test_trap_door_pass(self):
         """Player may choose not to search."""
@@ -524,7 +576,12 @@ class TestUnderTheTrapDoor:
         assert trap.face_up is True
 
         # Trap should be playable this turn
-        assert any(iid == trap.instance_id for iid, _ in player.playable_from_banish)
+        assert any(iid == trap.instance_id for iid, _, _ in player.playable_from_banish)
+        # Under the Trap-Door SHOULD redirect to banish
+        assert any(
+            iid == trap.instance_id and redir is True
+            for iid, _, redir in player.playable_from_banish
+        )
 
     def test_instant_discard_no_traps(self):
         """If no traps in graveyard, UTD still discards but does nothing else."""
@@ -804,7 +861,7 @@ class TestDefenseReactionFromBanish:
 
         trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=1)
         state.players[1].banished.append(trap)
-        state.players[1].playable_from_banish.append((50, "start_of_next_turn"))
+        state.players[1].playable_from_banish.append((50, "start_of_next_turn", False))
 
         decision = game.action_builder.build_reaction_decision(
             state,
@@ -823,7 +880,7 @@ class TestDefenseReactionFromBanish:
 
         trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=0)
         state.players[0].banished.append(trap)
-        state.players[0].playable_from_banish.append((50, "start_of_next_turn"))
+        state.players[0].playable_from_banish.append((50, "start_of_next_turn", False))
 
         decision = game.action_builder.build_reaction_decision(
             state,

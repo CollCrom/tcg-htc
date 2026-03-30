@@ -1297,7 +1297,7 @@ def _under_the_trap_door_instant(ctx: AbilityContext) -> None:
     log.info(f"  Under the Trap-Door: banished {target.name} from graveyard")
 
     # Mark as playable from banish this turn
-    player.playable_from_banish.append((target.instance_id, "end_of_turn"))
+    player.playable_from_banish.append((target.instance_id, "end_of_turn", True))
     log.info(f"  Under the Trap-Door: {target.name} playable from banish this turn")
 
 

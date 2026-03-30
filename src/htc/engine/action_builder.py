@@ -414,7 +414,7 @@ class ActionBuilder:
     def _get_playable_from_banish(state: GameState, player_index: int) -> list[CardInstance]:
         """Get banished cards that are currently marked as playable for this player."""
         player = state.players[player_index]
-        playable_ids = {iid for iid, _ in player.playable_from_banish}
+        playable_ids = {iid for iid, _, _ in player.playable_from_banish}
         return [c for c in player.banished if c.instance_id in playable_ids]
 
     @staticmethod

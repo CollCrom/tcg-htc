@@ -49,10 +49,12 @@ class PlayerState:
     is_marked: bool = False
 
     # Banished cards that are currently playable.
-    # Each entry is (instance_id, expiry) where expiry is:
-    #   "end_of_turn" — playable until end of this turn
-    #   "start_of_next_turn" — playable until start of controller's next turn
-    playable_from_banish: list[tuple[int, str]] = field(default_factory=list)
+    # Each entry is (instance_id, expiry, redirect_to_banish) where:
+    #   expiry is "end_of_turn" or "start_of_next_turn"
+    #   redirect_to_banish: if True, the card goes to banish instead of graveyard
+    #     after being played (e.g. Under the Trap-Door). If False, it goes to
+    #     graveyard normally (e.g. Trap-Door).
+    playable_from_banish: list[tuple[int, str, bool]] = field(default_factory=list)
 
     def get_zone_cards(self, zone: Zone) -> list[CardInstance]:
         """Get the list of cards in a given zone for this player."""
