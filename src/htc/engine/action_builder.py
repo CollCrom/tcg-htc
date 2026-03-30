@@ -111,6 +111,10 @@ class ActionBuilder:
         if self.ability_registry:
             self._add_equipment_instant_options(options, state, player_index)
 
+        # Permanent instants (e.g. Amulet of Echoes) — activated from permanents
+        if self.ability_registry:
+            self._add_permanent_instant_options(options, state, player_index)
+
     def build_combat_priority_decision(
         self, state: GameState, player_index: int, allow_actions: bool = False
     ) -> Decision:
@@ -398,6 +402,9 @@ class ActionBuilder:
         if equipment.name == "Dragonscaler Flight Path":
             draconic_count = self._count_draconic_chain_links(state, player_index)
             return max(0, 3 - draconic_count)
+        # Fyendal's Spring Tunic: no resource cost (counter removal is the cost)
+        if equipment.name == "Fyendal's Spring Tunic":
+            return 0
         return None
 
     def _can_use_equipment_instant(
@@ -419,6 +426,11 @@ class ActionBuilder:
             from htc.enums import SuperType
             if SuperType.DRACONIC not in self.effect_engine.get_modified_supertypes(state, atk):
                 return False
+        elif equipment.name == "Fyendal's Spring Tunic":
+            # Must have 3+ energy counters
+            energy = equipment.counters.get("energy", 0)
+            if energy < 3:
+                return False
         return True
 
     def _count_draconic_chain_links(self, state: GameState, player_index: int) -> int:
@@ -436,6 +448,42 @@ class ActionBuilder:
             if SuperType.DRACONIC in self.effect_engine.get_modified_supertypes(state, atk):
                 count += 1
         return count
+
+    def _add_permanent_instant_options(
+        self, options: list[ActionOption], state: GameState, player_index: int
+    ) -> None:
+        """Add permanent instant activation options (e.g. Amulet of Echoes).
+
+        Permanents with registered permanent_instant_effect handlers are offered
+        as activate options whenever the player has priority and preconditions are met.
+        """
+        if not self.ability_registry:
+            return
+        player = state.players[player_index]
+        for perm in player.permanents:
+            handler = self.ability_registry.lookup("permanent_instant_effect", perm.name)
+            if handler is None:
+                continue
+            if any(o.card_instance_id == perm.instance_id for o in options):
+                continue
+            if not self._can_use_permanent_instant(state, player_index, perm):
+                continue
+            options.append(ActionOption.activate(
+                perm.instance_id,
+                f"Activate {perm.name} (instant — destroy)",
+            ))
+
+    def _can_use_permanent_instant(
+        self, state: GameState, player_index: int, permanent: CardInstance,
+    ) -> bool:
+        """Check preconditions for permanent instant activation."""
+        if permanent.name == "Amulet of Echoes":
+            # Opponent must have played 2+ cards with the same name this turn
+            opponent_index = 1 - player_index
+            if 0 <= opponent_index < len(state.players):
+                return state.players[opponent_index].turn_counters.has_duplicate_card_name()
+            return False
+        return True
 
     @staticmethod
     def _get_playable_from_banish(state: GameState, player_index: int) -> list[CardInstance]:

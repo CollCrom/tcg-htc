@@ -504,8 +504,8 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
      If damage is dealt this way, the dagger has hit. Destroy the daggers.
      Go again'
 
-    NOTE: Cost reduction is handled separately (should be a continuous effect
-    on this card while in hand). The on_attack handler deals the dagger damage.
+    Cost reduction is implemented via an intrinsic cost modifier registered
+    in register_ninja_cost_modifiers(). The on_attack handler deals the dagger damage.
     """
     link = ctx.chain_link
 
@@ -947,6 +947,7 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
 
     state = ctx.state
     controller = ctx.controller_index
+    effect_engine = ctx.effect_engine
 
     def _spreading_filter(card):
         """Match Draconic attacks with base power < draconic chain link count (dynamic)."""
@@ -958,14 +959,15 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
         base_power = card.definition.power
         if base_power is None:
             return False
-        # Recount dynamically each evaluation — chain grows as more attacks are played
+        # Recount dynamically each evaluation — chain grows as more attacks are played.
+        # Use the effect engine to check supertypes so effect-granted Draconic
+        # (e.g. from Enflame tier 3) is visible.
         dcount = sum(
             1 for lnk in state.combat_chain.chain_links
             if lnk.active_attack
             and lnk.active_attack.owner_index == controller
-            and SuperType.DRACONIC in getattr(
-                lnk.active_attack, '_resolved_supertypes',
-                lnk.active_attack.definition.supertypes
+            and SuperType.DRACONIC in effect_engine.get_modified_supertypes(
+                state, lnk.active_attack
             )
         )
         return base_power < dcount
@@ -1090,3 +1092,37 @@ def register_ninja_abilities(registry: AbilityRegistry) -> None:
     registry.register("on_hit", "Command and Conquer", _command_and_conquer_on_hit)
     registry.register("on_hit", "Devotion Never Dies", _devotion_never_dies_on_hit)
     registry.register("on_hit", "Rising Resentment", _rising_resentment_on_hit)
+
+
+def _make_blood_runs_deep_cost_modifier(effect_engine):
+    """Create a cost modifier for Blood Runs Deep that captures the effect engine.
+
+    Blood Runs Deep costs {r} less for each Draconic chain link you control.
+    The effect engine is needed to check supertypes (including effect-granted
+    Draconic from e.g. Enflame tier 3).
+    """
+
+    def _blood_runs_deep_cost_modifier(state, card, current_cost: int) -> int:
+        chain = state.combat_chain
+        controller = card.owner_index
+        draconic_count = 0
+        for link in chain.chain_links:
+            if link.active_attack is None:
+                continue
+            if link.active_attack.owner_index != controller:
+                continue
+            supertypes = effect_engine.get_modified_supertypes(
+                state, link.active_attack,
+            )
+            if SuperType.DRACONIC in supertypes:
+                draconic_count += 1
+        return current_cost - draconic_count
+
+    return _blood_runs_deep_cost_modifier
+
+
+def register_ninja_cost_modifiers(effect_engine) -> None:
+    """Register intrinsic cost modifiers for Ninja/Draconic cards."""
+    effect_engine.register_intrinsic_cost_modifier(
+        "Blood Runs Deep", _make_blood_runs_deep_cost_modifier(effect_engine)
+    )

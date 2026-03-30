@@ -980,29 +980,62 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
 def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     """Leave No Witnesses (Assassin, Attack Action):
 
-    'When this hits a hero, banish the top card of their deck and up to 1
+    'Contract - You are contracted to banish opponents' red cards.
+     Whenever you complete this contract, create a Silver token.
+     When this hits a hero, banish the top card of their deck and up to 1
      card in their arsenal.'
 
-    Contract keyword effect (banish opponents' red cards -> create Silver
-    token) is tracked separately.
-    TODO: Implement Contract tracking and Silver token creation.
+    Contract: when a banished card is red, create a Silver token for the
+    controller.
     """
     link = ctx.chain_link
 
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
 
+    banished_cards = []
+
     # Banish top card of deck
     if target.deck:
         card = target.deck[0]
         ctx.banish_card(card, target_index)
+        banished_cards.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from top of P{target_index}'s deck")
 
     # Banish up to 1 card in their arsenal
     if target.arsenal:
         card = target.arsenal[0]
         ctx.banish_card(card, target_index)
+        banished_cards.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from P{target_index}'s arsenal")
+
+    # Contract: create a Silver token for each red card banished
+    for card in banished_cards:
+        if card.definition.color == Color.RED:
+            _create_silver_token(ctx.state, ctx.controller_index)
+            log.info(
+                f"  Leave No Witnesses: Contract completed — {card.name} is red, "
+                f"created Silver token for P{ctx.controller_index}"
+            )
+
+
+def _create_silver_token(state, controller_index: int) -> CardInstance:
+    """Create a Silver token as a permanent for the given player.
+
+    Silver tokens are resource tokens. In the full game they have:
+    "Action - {r}{r}{r}, destroy Silver: Draw a card. Go again"
+    For now, they are simple permanents that can be destroyed for 1 resource
+    (activation infrastructure is Phase 6).
+    """
+    token = create_token(
+        state,
+        controller_index,
+        name="Silver",
+        subtype=SubType.ITEM,
+        functional_text="Action - {r}{r}{r}, destroy Silver: Draw a card. Go again.",
+        type_text="Token - Item",
+    )
+    return token
 
 
 @require_chain_link
@@ -1119,12 +1152,80 @@ def _amulet_of_echoes_on_play(ctx: AbilityContext) -> None:
      the same name this turn.'
 
     The Go Again is a keyword handled by the stack layer.
-    The Instant destroy ability requires activation infrastructure.
-    TODO: Implement activation ability for Amulet of Echoes.
+    The Instant destroy ability is registered as a permanent_instant_effect.
     """
     # Item enters as a permanent (handled by _resolve_stack).
     # No on-play effect beyond Go Again (keyword).
-    log.info(f"  Amulet of Echoes: Enters the arena (instant activation TODO)")
+    log.info(f"  Amulet of Echoes: Enters the arena")
+
+
+def _amulet_of_echoes_instant(ctx: AbilityContext) -> None:
+    """Amulet of Echoes instant activation:
+
+    'Instant - Destroy Amulet of Echoes: Target hero discards 2 cards.
+     Activate this ability only if they have played 2 or more cards with
+     the same name this turn.'
+
+    Preconditions are checked by ActionBuilder._can_use_permanent_instant().
+    This handler destroys the Amulet and forces the target to discard 2 cards.
+    """
+    player = ctx.state.players[ctx.controller_index]
+    # Choose target hero (opponent by default for competitive play)
+    opponent_index = 1 - ctx.controller_index
+
+    # Destroy the Amulet
+    amulet = ctx.source_card
+    if amulet in player.permanents:
+        player.permanents.remove(amulet)
+        amulet.zone = Zone.GRAVEYARD
+        player.graveyard.append(amulet)
+        log.info(f"  Amulet of Echoes: Destroyed")
+
+    # Target hero discards 2 cards
+    target = ctx.state.players[opponent_index]
+    cards_to_discard = min(2, len(target.hand))
+    if cards_to_discard == 0:
+        log.info(f"  Amulet of Echoes: P{opponent_index} has no cards to discard")
+        return
+
+    for _ in range(cards_to_discard):
+        if not target.hand:
+            break
+        # Let the opponent choose which card to discard
+        if len(target.hand) == 1:
+            chosen = target.hand[0]
+        else:
+            discard_options = [
+                ActionOption(
+                    action_id=f"discard_{c.instance_id}",
+                    description=f"Discard {c.name}",
+                    action_type=ActionType.PLAY_CARD,
+                    card_instance_id=c.instance_id,
+                )
+                for c in target.hand
+            ]
+            decision = Decision(
+                player_index=opponent_index,
+                decision_type=DecisionType.CHOOSE_TARGET,
+                prompt="Amulet of Echoes: Choose a card to discard",
+                options=discard_options,
+            )
+            response = ctx.ask(decision)
+            chosen_id_str = response.selected_option_ids[0] if response.selected_option_ids else None
+            chosen = None
+            if chosen_id_str and chosen_id_str.startswith("discard_"):
+                try:
+                    chosen_id = int(chosen_id_str.split("_", 1)[1])
+                    chosen = next((c for c in target.hand if c.instance_id == chosen_id), None)
+                except (ValueError, StopIteration):
+                    pass
+            if chosen is None:
+                chosen = target.hand[0]
+
+        target.hand.remove(chosen)
+        chosen.zone = Zone.GRAVEYARD
+        target.graveyard.append(chosen)
+        log.info(f"  Amulet of Echoes: P{opponent_index} discards {chosen.name}")
 
 
 @require_active_attack
@@ -1315,6 +1416,9 @@ def register_assassin_abilities(registry: AbilityRegistry) -> None:
     # Instant-from-hand (discard to activate)
     registry.register("instant_discard_effect", "Reaper's Call", _reapers_call_instant)
     registry.register("instant_discard_effect", "Under the Trap-Door", _under_the_trap_door_instant)
+
+    # Permanent instants (destroy to activate)
+    registry.register("permanent_instant_effect", "Amulet of Echoes", _amulet_of_echoes_instant)
 
 
 def _stains_of_the_redback_cost_modifier(state, card, current_cost: int) -> int:

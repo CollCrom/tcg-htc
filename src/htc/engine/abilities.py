@@ -32,6 +32,7 @@ TIMINGS = (
     "attack_reaction_effect",
     "defense_reaction_effect",
     "equipment_instant_effect",
+    "permanent_instant_effect",
     "on_become",
     "instant_discard_effect",
     "on_pitch",
@@ -105,6 +106,7 @@ class AbilityRegistry:
         self.attack_reaction_effect: dict[str, AbilityHandler] = {}
         self.defense_reaction_effect: dict[str, AbilityHandler] = {}
         self.equipment_instant_effect: dict[str, AbilityHandler] = {}
+        self.permanent_instant_effect: dict[str, AbilityHandler] = {}
         self.on_become: dict[str, AbilityHandler] = {}
         self.instant_discard_effect: dict[str, AbilityHandler] = {}
         self.on_pitch: dict[str, AbilityHandler] = {}

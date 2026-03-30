@@ -292,6 +292,21 @@ Persistent learnings across sessions. Update this after each review.
   - Test refactoring (`make_ability_context`, `setup_draconic_chain`, parametrized hero tests) preserve all assertions.
 - 598 tests passing.
 
+### fix/skeptic-audit-findings — Skeptic Audit Fixes (2026-03-30)
+- **Round 1 verdict: APPROVE** — No critical issues. 2 minor issues, 2 missing tests.
+- **5 changes reviewed**: Spreading Flames (effect engine for supertypes), Blood Runs Deep (intrinsic cost modifier), Leave No Witnesses (Contract + Silver token), Amulet of Echoes (permanent instant activation), Fyendal's Spring Tunic (player agency).
+- **Spreading Flames**: Closure correctly captures `effect_engine` from `ctx.effect_engine`. Uses `effect_engine.get_modified_supertypes(state, lnk.active_attack)` instead of `getattr(_resolved_supertypes, definition.supertypes)`. Correct — effect-granted Draconic (e.g. Enflame tier 3) is now visible to the filter.
+- **Blood Runs Deep**: Intrinsic cost modifier registered via `register_ninja_cost_modifiers(effect_engine)`. Modifier iterates chain links, counts Draconic via `effect_engine.get_modified_supertypes()`, subtracts count from cost. `get_modified_cost` applies `max(0, result)` after intrinsic modifiers — cost floor is correct. Card data shows cost=2, test helper defaults to cost=3 — acceptable for testing.
+- **Leave No Witnesses Contract**: On-hit collects banished cards, checks `card.definition.color == Color.RED`, creates Silver token for controller. Correct for on-hit scope. Silver token `functional_text` is wrong: code says "Action - Destroy Silver: Gain {r}" but actual Silver token text is "Action - {r}{r}{r}, destroy Silver: Draw a card. Go again". Non-blocking since token abilities are inert (Phase 6 deferred).
+- **Amulet of Echoes**: New `permanent_instant_effect` timing added to AbilityRegistry. `_add_permanent_instant_options` iterates player permanents with registered handlers. Precondition checks `state.players[opponent_index].turn_counters.has_duplicate_card_name()`. `card_names_played` tracked in `_play_card` and cleared by `TurnCounters.reset()` (via `__init__` re-invocation with `field(default_factory=list)`). Handler destroys amulet, forces opponent to discard 2 (with choice). All correct.
+- **Fyendal's Spring Tunic**: Auto-spend removed from `SpringTunicTrigger.create_triggered_event()`. New `equipment_instant_effect` handler removes 3 energy counters and grants 1 resource. Precondition checks `energy >= 3`. Resource cost is 0 (counter removal is the cost). Trigger `condition()` returns `False` at 3+ counters (won't add beyond 3). All correct per card text.
+- **Infrastructure**: `_is_permanent_instant_activation` + `_activate_permanent_instant` in game.py correctly route activate actions through the new permanent instant path. Decision routing in `_handle_action_phase_decision` checks equipment first, then permanent instant, then weapon. Correct priority.
+- **Minor**: Silver token `functional_text` does not match actual card text (see above). Non-blocking — token abilities are Phase 6 deferred.
+- **Minor**: Contract implementation is scoped to on-hit banishes only. The Contract keyword in FaB is a global trigger ("whenever you banish an opponent's red card by any means"). Other cards that banish opponent cards (e.g. Trap-Door, Under the Trap-Door) would not trigger the contract. Acceptable simplification for 1v1 with current card pool — Leave No Witnesses' own on-hit is the primary banish source.
+- **Missing test**: No test for `card_names_played` being cleared at turn reset (TurnCounters.reset()). The `__init__` re-invocation pattern is correct but a regression test would catch if new fields with default_factory are added incorrectly.
+- **Missing test**: No end-to-end test for permanent instant activation through `_handle_action_phase_decision` (all tests call `_activate_permanent_instant` directly). The routing in game.py line 727 (`_is_permanent_instant_activation` check) is untested.
+- 624 tests all passing. 26 new tests across 5 categories.
+
 ## Talishar Discrepancies
 
 *(None found yet)*

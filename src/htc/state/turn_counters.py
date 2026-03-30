@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -26,6 +26,20 @@ class TurnCounters:
     num_weapon_attacks: int = 0
     has_boosted: bool = False
     has_attacked: bool = False
+
+    # Track card names played this turn for effects that check duplicate plays
+    # (e.g. Amulet of Echoes: "if they have played 2 or more cards with the
+    # same name this turn").
+    card_names_played: list[str] = field(default_factory=list)
+
+    def has_duplicate_card_name(self) -> bool:
+        """Return True if any card name appears 2+ times this turn."""
+        seen: set[str] = set()
+        for name in self.card_names_played:
+            if name in seen:
+                return True
+            seen.add(name)
+        return False
 
     def reset(self) -> None:
         self.__init__()  # type: ignore[misc]
