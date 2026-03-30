@@ -66,6 +66,10 @@ class ActionBuilder:
                         desc = f"Attack with {weapon.name} (power={weapon.base_power or 0})"
                     options.append(ActionOption.activate(weapon.instance_id, desc))
 
+            # Permanent action activations (e.g. Silver token)
+            if self.ability_registry:
+                self._add_permanent_action_options(options, state, player_index)
+
         # Instants can be played when you have priority
         self.add_instant_options(options, state, player_index)
         options.append(self.pass_option())
@@ -484,6 +488,40 @@ class ActionBuilder:
                 return state.players[opponent_index].turn_counters.has_duplicate_card_name()
             return False
         return True
+
+    def _add_permanent_action_options(
+        self, options: list[ActionOption], state: GameState, player_index: int,
+    ) -> None:
+        """Add permanent action activation options (e.g. Silver token).
+
+        Permanents with registered permanent_action_effect handlers are offered
+        as action options when the turn player has an action point and can afford
+        the resource cost.
+        """
+        if not self.ability_registry:
+            return
+        player = state.players[player_index]
+        for perm in player.permanents:
+            handler = self.ability_registry.lookup("permanent_action_effect", perm.name)
+            if handler is None:
+                continue
+            if any(o.card_instance_id == perm.instance_id for o in options):
+                continue
+            # Check resource cost (Silver costs 3)
+            cost = self._get_permanent_action_cost(perm)
+            if not self._can_afford_resource_cost(state, player_index, cost):
+                continue
+            options.append(ActionOption.activate(
+                perm.instance_id,
+                f"Activate {perm.name} (action — cost {cost}, destroy)",
+            ))
+
+    @staticmethod
+    def _get_permanent_action_cost(permanent: CardInstance) -> int:
+        """Get the resource cost for a permanent action activation."""
+        if permanent.name == "Silver":
+            return 3
+        return 0
 
     @staticmethod
     def _get_playable_from_banish(state: GameState, player_index: int) -> list[CardInstance]:

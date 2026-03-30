@@ -319,7 +319,7 @@ def _create_fealty_token_simple(state: GameState, controller_index: int) -> None
         subtypes=frozenset({SubType.AURA}),
         supertypes=frozenset(),
         keywords=frozenset(),
-        functional_text="Instant - Destroy this: The next card you play this turn is Draconic.",
+        functional_text="Instant - Destroy this: The next card you play this turn is Draconic. At the beginning of your end phase, if you haven't created a Fealty token or played a Draconic card this turn, destroy this.",
         type_text="Draconic Token - Aura",
     )
     token = CardInstance(

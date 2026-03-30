@@ -100,11 +100,13 @@ class Game:
         from htc.cards.abilities.ninja import register_ninja_abilities, register_ninja_cost_modifiers
         from htc.cards.abilities.equipment import register_equipment_abilities
         from htc.cards.abilities.agents import register_agent_abilities
+        from htc.cards.abilities.tokens import register_token_abilities
         register_generic_abilities(self.ability_registry)
         register_assassin_abilities(self.ability_registry)
         register_ninja_abilities(self.ability_registry)
         register_equipment_abilities(self.ability_registry)
         register_agent_abilities(self.ability_registry)
+        register_token_abilities(self.ability_registry)
         # Intrinsic cost modifiers (card-text cost adjustments)
         register_assassin_cost_modifiers(self.effect_engine)
         register_ninja_cost_modifiers(self.effect_engine)
@@ -376,6 +378,8 @@ class Game:
             card=token,
             data={"token_name": "Fealty"},
         ))
+        # Track for Fealty end-phase condition
+        self.state.players[controller_index].turn_counters.fealty_created_this_turn = True
         return token
 
     def _become_agent_of_chaos(self, player_index: int, agent_card: CardInstance) -> None:
@@ -728,6 +732,9 @@ class Game:
                 # Check if it's a permanent with an instant activation
                 elif self._is_permanent_instant_activation(card, player_index):
                     self._activate_permanent_instant(player_index, card)
+                # Check if it's a permanent with an action activation
+                elif self._is_permanent_action_activation(card, player_index):
+                    self._activate_permanent_action(player_index, card)
                 else:
                     self._activate_weapon(player_index, card)
 
@@ -791,6 +798,11 @@ class Game:
 
         # Track card name for duplicate-play checks (e.g. Amulet of Echoes)
         player.turn_counters.card_names_played.append(card.name)
+
+        # Track Draconic card plays for Fealty end-phase condition
+        from htc.enums import SuperType as _ST
+        if _ST.DRACONIC in self.effect_engine.get_modified_supertypes(self.state, card):
+            player.turn_counters.draconic_card_played_this_turn = True
 
         # Emit play event
         self.events.emit(GameEvent(
@@ -1035,6 +1047,53 @@ class Game:
         )
         handler(ctx)
         log.info(f"  Permanent instant activated: {permanent.name}")
+
+    def _is_permanent_action_activation(self, card: CardInstance, player_index: int) -> bool:
+        """Check if an activate action targets a permanent with an action ability."""
+        player = self.state.players[player_index]
+        for perm in player.permanents:
+            if perm.instance_id == card.instance_id:
+                handler = self.ability_registry.lookup("permanent_action_effect", perm.name)
+                return handler is not None
+        return False
+
+    def _activate_permanent_action(self, player_index: int, permanent: CardInstance) -> None:
+        """Activate a permanent's action ability (e.g. Silver token).
+
+        Pays the resource cost and calls the handler. The handler is
+        responsible for destroying the permanent if required.
+        Uses an action point (actions require AP).
+        """
+        handler = self.ability_registry.lookup("permanent_action_effect", permanent.name)
+        if handler is None:
+            log.warning(f"  No permanent action handler for {permanent.name}")
+            return
+
+        # Pay resource cost
+        cost = self.action_builder._get_permanent_action_cost(permanent)
+        if cost > 0:
+            self.cost_manager.pay_resource_cost(
+                self.state, player_index, cost,
+            )
+
+        # Consume action point
+        self.state.action_points[player_index] = max(
+            0, self.state.action_points.get(player_index, 0) - 1
+        )
+
+        ctx = AbilityContext(
+            state=self.state,
+            source_card=permanent,
+            controller_index=player_index,
+            chain_link=self.state.combat_chain.active_link,
+            effect_engine=self.effect_engine,
+            events=self.events,
+            ask=lambda d: self._ask(d),
+            keyword_engine=self.keyword_engine,
+            combat_mgr=self.combat_mgr,
+        )
+        handler(ctx)
+        log.info(f"  Permanent action activated: {permanent.name}")
 
     # --- Weapon Activation (rules 1.4.3) ---
 
@@ -1701,6 +1760,7 @@ class Game:
             event_type=EventType.END_OF_TURN,
             target_player=tp.index,
         ))
+        self._process_pending_triggers()
 
         # Clear diplomacy restriction at end of the restricted player's turn
         tp.diplomacy_restriction = None

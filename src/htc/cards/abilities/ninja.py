@@ -92,8 +92,10 @@ def _create_fealty_token(ctx: AbilityContext) -> None:
     """Create a Fealty token for the controller."""
     create_token(
         ctx.state, ctx.controller_index, "Fealty", SubType.AURA,
+        functional_text="Instant - Destroy this: The next card you play this turn is Draconic. At the beginning of your end phase, if you haven't created a Fealty token or played a Draconic card this turn, destroy this.",
         type_text="Draconic Token - Aura",
         supertypes=frozenset({SuperType.DRACONIC}),
+        event_bus=ctx.events, effect_engine=ctx.effect_engine,
     )
 
 
