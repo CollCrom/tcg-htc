@@ -219,8 +219,20 @@ Persistent learnings across sessions. Update this after each review.
 - **`_process_pending_triggers()` after DEFEND_DECLARED**: Called at line 1343 after defend events loop. Correct.
 - **Multi-turn integration tests**: 36 tests covering zone invariants, determinism, mechanics. All pass.
 
+### feat/phase6-token-abilities — Phase 6 Token Abilities (2026-03-30)
+- **Round 1 verdict: REQUEST CHANGES** — 1 critical issue.
+- **Critical**: `game.py` tracked Draconic card plays for Fealty end-phase condition using `card.definition.supertypes` instead of `self.effect_engine.get_modified_supertypes()`. Cards granted Draconic by Fealty's instant ability would not be recognized as Draconic, breaking Fealty's end-phase survival condition.
+- **Minor**: `_fealty_instant` set `effect.uses_remaining = 1` on a supertype grant, but `uses_remaining` only works for cost modifiers (consumed by `consume_limited_cost_effects`). The closure-based `consumed` flag already handled single-use correctly, so `uses_remaining` was dead/misleading.
+- **Round 2 verdict: APPROVE** — Both fixes verified correct.
+  - Critical fix: `game.py` line 804 now uses `self.effect_engine.get_modified_supertypes(self.state, card)` for Draconic tracking. Correct.
+  - Minor fix: Dead `uses_remaining = 1` replaced with explanatory comment. Correct.
+  - `git diff main..HEAD -- '*.py' | grep 'definition.supertypes'` returns zero hits — no new `definition.supertypes` references introduced by this branch.
+  - Pre-existing `definition.supertypes` references (ninja.py, equipment.py, keyword_engine.py, generic.py, assassin.py) are unchanged and documented in prior review.
+  - `_is_draconic_attack` in equipment.py uses `definition.supertypes` but is dead code (defined, never called).
+  - 658 tests all passing.
+
 #### Remaining Deferred Items (known, not blocking)
-- Token abilities (Fealty, Frailty, Inertia, Bloodrot Pox, Ponder, Graphene Chelicera) are inert — created but effects not implemented. Deferred to Phase 6.
+- Token abilities: ALL 7 tokens now have abilities implemented (Phase 6 complete).
 - Warmonger's Diplomacy war/peace restriction not enforced.
 - Authority of Ataya pitch trigger not implemented.
 - Shelter from the Storm instant-discard prevention not implemented.
