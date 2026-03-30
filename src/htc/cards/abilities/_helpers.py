@@ -24,6 +24,33 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Once-filter factory
+# ---------------------------------------------------------------------------
+
+
+def make_once_filter(condition_fn: Callable[[CardInstance], bool]) -> Callable[[CardInstance], bool]:
+    """Create a target_filter that matches at most one card.
+
+    On the first call where *condition_fn* returns True, the card's
+    ``instance_id`` is recorded.  All subsequent calls return True only
+    for that same card (idempotent across repeated effect-engine queries).
+    """
+    applied_to: set[int] = set()
+
+    def filter_fn(card: CardInstance) -> bool:
+        if card.instance_id in applied_to:
+            return True
+        if applied_to:
+            return False
+        if condition_fn(card):
+            applied_to.add(card.instance_id)
+            return True
+        return False
+
+    return filter_fn
+
+
+# ---------------------------------------------------------------------------
 # Color bonus
 # ---------------------------------------------------------------------------
 
