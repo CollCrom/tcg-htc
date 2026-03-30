@@ -3,6 +3,8 @@
 Covers Arakni, Marionette and Cindra, Dracai of Retribution.
 """
 
+import pytest
+
 from htc.cards.abilities.heroes import (
     ArakniMarionetteTrigger,
     CindraRetributionTrigger,
@@ -32,25 +34,24 @@ def _make_non_stealth_attack(instance_id: int = 2, power: int = 4, owner_index: 
 # ---------------------------------------------------------------------------
 
 
-def test_arakni_stealth_vs_marked_gets_plus_one_power():
-    """Stealth attack vs marked hero gets +1 power from Arakni ability."""
+def _run_arakni_attack(*, stealth: bool, marked: bool, base_power: int = 3):
+    """Helper: set up an Arakni, Marionette attack scenario and return (game, attack, link)."""
     game = make_game_shell()
-    attack = _make_stealth_attack(instance_id=1, power=3, owner_index=0)
+    if stealth:
+        attack = _make_stealth_attack(instance_id=1, power=base_power, owner_index=0)
+    else:
+        attack = _make_non_stealth_attack(instance_id=1, power=base_power, owner_index=0)
 
-    # Mark the opponent
-    game.state.players[1].is_marked = True
+    game.state.players[1].is_marked = marked
 
-    # Register Arakni ability
     register_hero_abilities(
         "Arakni, Marionette", 0, game.events, game.effect_engine,
         lambda: game.state,
     )
 
-    # Open combat chain and add attack
     game.combat_mgr.open_chain(game.state)
     link = game.combat_mgr.add_chain_link(game.state, attack, 1)
 
-    # Emit attack declared event
     game.events.emit(GameEvent(
         event_type=EventType.ATTACK_DECLARED,
         source=attack,
@@ -58,35 +59,45 @@ def test_arakni_stealth_vs_marked_gets_plus_one_power():
         data={"chain_link": link, "attacker_index": 0},
     ))
     game._process_pending_triggers()
+    return game, attack, link
 
-    # Attack should have +1 power (3 + 1 = 4)
+
+@pytest.mark.parametrize(
+    "stealth, marked, base_power, expected_power",
+    [
+        pytest.param(True, True, 3, 4, id="stealth_marked_+1"),
+        pytest.param(True, False, 3, 3, id="stealth_unmarked_no_bonus"),
+        pytest.param(False, True, 4, 4, id="non_stealth_marked_no_bonus"),
+        pytest.param(False, False, 4, 4, id="non_stealth_unmarked_no_bonus"),
+    ],
+)
+def test_arakni_power_bonus(stealth, marked, base_power, expected_power):
+    """Arakni ability only grants +1 power for stealth attacks vs marked hero."""
+    game, attack, _ = _run_arakni_attack(
+        stealth=stealth, marked=marked, base_power=base_power,
+    )
     effective_power = game.effect_engine.get_modified_power(game.state, attack)
-    assert effective_power == 4
+    assert effective_power == expected_power
+
+
+@pytest.mark.parametrize(
+    "stealth, marked",
+    [
+        pytest.param(True, False, id="stealth_unmarked"),
+        pytest.param(False, True, id="non_stealth_marked"),
+        pytest.param(False, False, id="non_stealth_unmarked"),
+    ],
+)
+def test_arakni_no_go_again_without_both_conditions(stealth, marked):
+    """Arakni does not register Go Again trigger without stealth + marked."""
+    game, attack, _ = _run_arakni_attack(stealth=stealth, marked=marked)
+    modified_kws = game.effect_engine.get_modified_keywords(game.state, attack)
+    assert Keyword.GO_AGAIN not in modified_kws
 
 
 def test_arakni_stealth_vs_marked_gets_go_again_on_hit():
     """Stealth attack vs marked hero gets Go Again when it hits."""
-    game = make_game_shell()
-    attack = _make_stealth_attack(instance_id=1, power=3, owner_index=0)
-
-    game.state.players[1].is_marked = True
-
-    register_hero_abilities(
-        "Arakni, Marionette", 0, game.events, game.effect_engine,
-        lambda: game.state,
-    )
-
-    game.combat_mgr.open_chain(game.state)
-    link = game.combat_mgr.add_chain_link(game.state, attack, 1)
-
-    # Emit attack declared — triggers the ability
-    game.events.emit(GameEvent(
-        event_type=EventType.ATTACK_DECLARED,
-        source=attack,
-        target_player=1,
-        data={"chain_link": link, "attacker_index": 0},
-    ))
-    game._process_pending_triggers()
+    game, attack, link = _run_arakni_attack(stealth=True, marked=True)
 
     # Go Again should NOT be present before the hit
     modified_kws = game.effect_engine.get_modified_keywords(game.state, attack)
@@ -105,97 +116,6 @@ def test_arakni_stealth_vs_marked_gets_go_again_on_hit():
     # Now Go Again should be granted
     modified_kws = game.effect_engine.get_modified_keywords(game.state, attack)
     assert Keyword.GO_AGAIN in modified_kws
-
-
-def test_arakni_stealth_vs_unmarked_gets_nothing():
-    """Stealth attack vs unmarked hero gets no bonus from Arakni."""
-    game = make_game_shell()
-    attack = _make_stealth_attack(instance_id=1, power=3, owner_index=0)
-
-    # Opponent is NOT marked
-    game.state.players[1].is_marked = False
-
-    register_hero_abilities(
-        "Arakni, Marionette", 0, game.events, game.effect_engine,
-        lambda: game.state,
-    )
-
-    game.combat_mgr.open_chain(game.state)
-    link = game.combat_mgr.add_chain_link(game.state, attack, 1)
-
-    game.events.emit(GameEvent(
-        event_type=EventType.ATTACK_DECLARED,
-        source=attack,
-        target_player=1,
-        data={"chain_link": link, "attacker_index": 0},
-    ))
-    game._process_pending_triggers()
-
-    # Power should be unchanged
-    effective_power = game.effect_engine.get_modified_power(game.state, attack)
-    assert effective_power == 3
-
-    # No Go Again trigger should be registered
-    modified_kws = game.effect_engine.get_modified_keywords(game.state, attack)
-    assert Keyword.GO_AGAIN not in modified_kws
-
-
-def test_arakni_non_stealth_vs_marked_gets_nothing():
-    """Non-stealth attack vs marked hero gets no bonus from Arakni."""
-    game = make_game_shell()
-    attack = _make_non_stealth_attack(instance_id=1, power=4, owner_index=0)
-
-    game.state.players[1].is_marked = True
-
-    register_hero_abilities(
-        "Arakni, Marionette", 0, game.events, game.effect_engine,
-        lambda: game.state,
-    )
-
-    game.combat_mgr.open_chain(game.state)
-    link = game.combat_mgr.add_chain_link(game.state, attack, 1)
-
-    game.events.emit(GameEvent(
-        event_type=EventType.ATTACK_DECLARED,
-        source=attack,
-        target_player=1,
-        data={"chain_link": link, "attacker_index": 0},
-    ))
-    game._process_pending_triggers()
-
-    # Power should be unchanged — no stealth, no bonus
-    effective_power = game.effect_engine.get_modified_power(game.state, attack)
-    assert effective_power == 4
-
-
-def test_arakni_non_stealth_unmarked_gets_nothing():
-    """Non-stealth attack vs unmarked hero gets nothing from Arakni."""
-    game = make_game_shell()
-    attack = _make_non_stealth_attack(instance_id=1, power=4, owner_index=0)
-
-    game.state.players[1].is_marked = False
-
-    register_hero_abilities(
-        "Arakni, Marionette", 0, game.events, game.effect_engine,
-        lambda: game.state,
-    )
-
-    game.combat_mgr.open_chain(game.state)
-    link = game.combat_mgr.add_chain_link(game.state, attack, 1)
-
-    game.events.emit(GameEvent(
-        event_type=EventType.ATTACK_DECLARED,
-        source=attack,
-        target_player=1,
-        data={"chain_link": link, "attacker_index": 0},
-    ))
-    game._process_pending_triggers()
-
-    effective_power = game.effect_engine.get_modified_power(game.state, attack)
-    assert effective_power == 4
-
-    modified_kws = game.effect_engine.get_modified_keywords(game.state, attack)
-    assert Keyword.GO_AGAIN not in modified_kws
 
 
 # ---------------------------------------------------------------------------

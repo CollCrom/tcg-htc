@@ -736,17 +736,11 @@ class TestIsDraconicUsesEffectEngine:
         assert not _is_draconic(attack)
 
         # _is_draconic with ctx should detect the granted supertype
-        from htc.engine.abilities import AbilityContext
-        ctx = AbilityContext(
-            state=game.state,
-            source_card=attack,
-            controller_index=0,
+        from tests.abilities.conftest import make_ability_context
+        ctx = make_ability_context(
+            game, attack, 0,
             chain_link=game.state.combat_chain.chain_links[-1],
-            effect_engine=game.effect_engine,
-            events=game.events,
             ask=lambda d: None,
-            keyword_engine=game.keyword_engine,
-            combat_mgr=game.combat_mgr,
         )
         assert _is_draconic(attack, ctx)
 

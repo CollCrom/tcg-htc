@@ -15,6 +15,7 @@ from htc.engine.effects import EffectEngine
 from htc.enums import SuperType
 from tests.conftest import make_card, make_game_shell, make_state
 from tests.abilities.conftest import (
+    make_ability_context,
     make_draconic_ninja_attack,
     make_draconic_attack,
     make_ninja_attack,
@@ -162,18 +163,8 @@ class TestArtOfTheDragonBloodCounter:
         state.combat_chain.chain_links.append(link)
 
         # Build ability context and call the handler
-        from htc.engine.abilities import AbilityContext
-        ctx = AbilityContext(
-            state=state,
-            source_card=blood,
-            controller_index=0,
-            chain_link=link,
-            effect_engine=game.effect_engine,
-            events=game.events,
-            ask=lambda d: None,
-            keyword_engine=game.keyword_engine,
-            combat_mgr=game.combat_mgr,
-        )
+        from tests.abilities.conftest import make_ability_context
+        ctx = make_ability_context(game, blood, 0, chain_link=link, ask=lambda d: None)
 
         from htc.cards.abilities.ninja import _art_of_the_dragon_blood_on_attack
         _art_of_the_dragon_blood_on_attack(ctx)
@@ -275,18 +266,7 @@ class TestIgniteCounter:
         )
         state.combat_chain.chain_links.append(link)
 
-        from htc.engine.abilities import AbilityContext
-        ctx = AbilityContext(
-            state=state,
-            source_card=ignite,
-            controller_index=0,
-            chain_link=link,
-            effect_engine=game.effect_engine,
-            events=game.events,
-            ask=lambda d: None,
-            keyword_engine=game.keyword_engine,
-            combat_mgr=game.combat_mgr,
-        )
+        ctx = make_ability_context(game, ignite, 0, chain_link=link, ask=lambda d: None)
 
         from htc.cards.abilities.ninja import _ignite_on_attack
         _ignite_on_attack(ctx)

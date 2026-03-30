@@ -8,8 +8,7 @@ Covers:
 
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
-from htc.engine.actions import ActionOption, PlayerResponse
+from htc.engine.actions import ActionOption
 from htc.enums import (
     ActionType,
     CardType,
@@ -19,6 +18,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
+from htc.state.player_state import BanishPlayability
 from tests.conftest import make_card, make_game_shell
 from tests.abilities.conftest import (
     make_attack_reaction,
@@ -152,18 +152,9 @@ def test_cnc_on_attack_sets_defense_reactions_blocked():
 
     # Fire on_attack handler
     from htc.cards.abilities.ninja import _command_and_conquer_on_attack
+    from tests.abilities.conftest import make_ability_context
 
-    ctx = AbilityContext(
-        state=game.state,
-        source_card=attack,
-        controller_index=0,
-        chain_link=link,
-        effect_engine=game.effect_engine,
-        events=game.events,
-        ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-        keyword_engine=game.keyword_engine,
-        combat_mgr=game.combat_mgr,
-    )
+    ctx = make_ability_context(game, attack, 0, chain_link=link)
     _command_and_conquer_on_attack(ctx)
 
     assert link.defense_reactions_blocked is True
@@ -205,7 +196,7 @@ def test_cnc_blocks_defense_reactions_from_banish():
     dr.zone = Zone.BANISHED
     game.state.players[1].banished.append(dr)
     game.state.players[1].playable_from_banish.append(
-        (dr.instance_id, "end_of_turn", False)
+        BanishPlayability(dr.instance_id, "end_of_turn", False)
     )
 
     # Set up combat with defense_reactions_blocked
@@ -375,7 +366,7 @@ def test_death_touch_blocked_from_banish():
     dt = _make_death_touch(instance_id=20, owner_index=0, zone=Zone.BANISHED)
     game.state.players[0].banished.append(dt)
     game.state.players[0].playable_from_banish.append(
-        (dt.instance_id, "end_of_turn", False)
+        BanishPlayability(dt.instance_id, "end_of_turn", False)
     )
 
     # Give player a pitch card so cost isn't the issue

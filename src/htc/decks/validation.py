@@ -70,28 +70,22 @@ def validate_deck(deck: DeckList, db: CardDatabase) -> list[ValidationError]:
                         ),
                     ))
 
-    # Check weapons for Legendary
-    weapon_counts: dict[str, int] = {}
-    for wname in deck.weapons:
-        weapon_counts[wname] = weapon_counts.get(wname, 0) + 1
-    for wname, count in weapon_counts.items():
-        wdef = db.get_by_name(wname)
-        if wdef and Keyword.LEGENDARY in wdef.keywords and count > 1:
-            errors.append(ValidationError(
-                card_name=wname,
-                message=f"Legendary weapon '{wname}' has {count} copies (max 1)",
-            ))
+    # Check weapons and equipment for Legendary
+    def _check_legendary_copies(
+        names: list[str], category: str,
+    ) -> None:
+        counts: dict[str, int] = {}
+        for name in names:
+            counts[name] = counts.get(name, 0) + 1
+        for name, count in counts.items():
+            defn = db.get_by_name(name)
+            if defn and Keyword.LEGENDARY in defn.keywords and count > 1:
+                errors.append(ValidationError(
+                    card_name=name,
+                    message=f"Legendary {category} '{name}' has {count} copies (max 1)",
+                ))
 
-    # Check equipment for Legendary
-    equip_counts: dict[str, int] = {}
-    for ename in deck.equipment:
-        equip_counts[ename] = equip_counts.get(ename, 0) + 1
-    for ename, count in equip_counts.items():
-        edef = db.get_by_name(ename)
-        if edef and Keyword.LEGENDARY in edef.keywords and count > 1:
-            errors.append(ValidationError(
-                card_name=ename,
-                message=f"Legendary equipment '{ename}' has {count} copies (max 1)",
-            ))
+    _check_legendary_copies(deck.weapons, "weapon")
+    _check_legendary_copies(deck.equipment, "equipment")
 
     return errors

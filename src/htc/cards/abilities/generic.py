@@ -10,7 +10,12 @@ from __future__ import annotations
 
 import logging
 
-from htc.cards.abilities._helpers import color_bonus, draw_card, grant_power_bonus
+from htc.cards.abilities._helpers import (
+    color_bonus,
+    draw_card,
+    grant_power_bonus,
+    require_active_attack,
+)
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.continuous import EffectDuration, make_keyword_grant, make_power_modifier
@@ -25,6 +30,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+@require_active_attack
 def _ancestral_empowerment(ctx: AbilityContext) -> None:
     """Ancestral Empowerment (Red, Attack Reaction):
 
@@ -33,8 +39,6 @@ def _ancestral_empowerment(ctx: AbilityContext) -> None:
     Only applies if the active attack is a Ninja attack action card.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     # Check: must be a Ninja attack action card
@@ -54,6 +58,7 @@ def _ancestral_empowerment(ctx: AbilityContext) -> None:
     draw_card(ctx, "Ancestral Empowerment")
 
 
+@require_active_attack
 def _razor_reflex(ctx: AbilityContext) -> None:
     """Razor Reflex (Generic, Attack Reaction):
 
@@ -70,8 +75,6 @@ def _razor_reflex(ctx: AbilityContext) -> None:
     automatically. If neither is valid, no effect.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
 

@@ -20,6 +20,7 @@ import logging
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.enums import ActionType, DecisionType, SubType, Zone
+from htc.state.player_state import BanishPlayability, EXPIRY_START_OF_NEXT_TURN
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ def _trap_door_on_become(ctx: AbilityContext) -> None:
     # If it's a Trap, mark as playable from banish until start of next turn
     if SubType.TRAP in target.definition.subtypes:
         player.playable_from_banish.append(
-            (target.instance_id, "start_of_next_turn", False),
+            BanishPlayability(target.instance_id, EXPIRY_START_OF_NEXT_TURN, False),
         )
         log.info(f"  Trap-Door: {target.name} is a Trap, playable until start of next turn")
 

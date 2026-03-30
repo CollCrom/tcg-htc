@@ -16,7 +16,6 @@ from htc.cards.abilities.equipment import (
 from htc.cards.abilities.ninja import count_draconic_chain_links
 from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
 from htc.engine.actions import PlayerResponse
 from htc.enums import (
     CardType,
@@ -29,8 +28,10 @@ from htc.enums import (
 )
 from tests.conftest import make_card, make_equipment, make_game_shell
 from tests.abilities.conftest import (
+    make_ability_context,
     make_draconic_ninja_attack,
     make_ninja_attack,
+    setup_draconic_chain,
 )
 
 
@@ -135,30 +136,10 @@ def _equip(game, equipment, player_index=0, slot=EquipmentSlot.LEGS):
     game.state.players[player_index].equipment[slot] = equipment
 
 
-def _setup_draconic_chain(game, num_draconic, owner_index=0):
-    """Set up a combat chain with Draconic chain links."""
-    game.combat_mgr.open_chain(game.state)
-    attacks = []
-    for i in range(num_draconic):
-        atk = make_draconic_ninja_attack(instance_id=i + 1, owner_index=owner_index)
-        game.combat_mgr.add_chain_link(game.state, atk, 1 - owner_index)
-        attacks.append(atk)
-    return attacks
-
-
-def _build_ctx(game, source_card, controller_index=0, chain_link=None):
-    """Build an AbilityContext for testing."""
-    return AbilityContext(
-        state=game.state,
-        source_card=source_card,
-        controller_index=controller_index,
-        chain_link=chain_link or game.state.combat_chain.active_link,
-        effect_engine=game.effect_engine,
-        events=game.events,
-        ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
-        keyword_engine=game.keyword_engine,
-        combat_mgr=game.combat_mgr,
-    )
+# _setup_draconic_chain and _build_ctx are now in conftest as
+# setup_draconic_chain and make_ability_context.
+_setup_draconic_chain = setup_draconic_chain
+_build_ctx = make_ability_context
 
 
 def _add_pitchable_card(game, player_index=0, pitch=3, instance_id=200):

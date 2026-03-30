@@ -30,6 +30,7 @@ from htc.enums import (
     Zone,
 )
 
+from htc.state.player_state import BanishPlayability
 from tests.conftest import make_card, make_game_shell, make_state, make_weapon
 
 
@@ -302,14 +303,14 @@ class TestPlayableFromBanish:
 
         game._mark_playable_from_banish(card, 0, "end_of_turn")
 
-        assert (1, "end_of_turn", True) in game.state.players[0].playable_from_banish
+        assert BanishPlayability(1, "end_of_turn", True) in game.state.players[0].playable_from_banish
 
     def test_is_playable(self):
         """_is_playable_from_banish should return True for marked cards."""
         game = make_game_shell()
         card = make_card(instance_id=1, zone=Zone.BANISHED, owner_index=0)
         game.state.players[0].banished.append(card)
-        game.state.players[0].playable_from_banish.append((1, "end_of_turn", True))
+        game.state.players[0].playable_from_banish.append(BanishPlayability(1, "end_of_turn", True))
 
         assert game._is_playable_from_banish(card, 0) is True
 
@@ -325,25 +326,25 @@ class TestPlayableFromBanish:
         """_expire_playable_from_banish_end_of_turn should remove end_of_turn entries."""
         game = make_game_shell()
         game.state.players[0].playable_from_banish = [
-            (1, "end_of_turn", True),
-            (2, "start_of_next_turn", False),
+            BanishPlayability(1, "end_of_turn", True),
+            BanishPlayability(2, "start_of_next_turn", False),
         ]
 
         game._expire_playable_from_banish_end_of_turn()
 
-        assert game.state.players[0].playable_from_banish == [(2, "start_of_next_turn", False)]
+        assert game.state.players[0].playable_from_banish == [BanishPlayability(2, "start_of_next_turn", False)]
 
     def test_expire_start_of_turn(self):
         """_expire_playable_from_banish_start_of_turn should remove for specific player."""
         game = make_game_shell()
         game.state.players[0].playable_from_banish = [
-            (1, "start_of_next_turn", False),
-            (2, "end_of_turn", True),
+            BanishPlayability(1, "start_of_next_turn", False),
+            BanishPlayability(2, "end_of_turn", True),
         ]
 
         game._expire_playable_from_banish_start_of_turn(0)
 
-        assert game.state.players[0].playable_from_banish == [(2, "end_of_turn", True)]
+        assert game.state.players[0].playable_from_banish == [BanishPlayability(2, "end_of_turn", True)]
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +360,7 @@ class TestActionBuilderBanish:
         game = make_game_shell(action_points={0: 1, 1: 0})
         card = make_card(instance_id=10, zone=Zone.BANISHED, owner_index=0, cost=0)
         game.state.players[0].banished.append(card)
-        game.state.players[0].playable_from_banish.append((10, "end_of_turn", True))
+        game.state.players[0].playable_from_banish.append(BanishPlayability(10, "end_of_turn", True))
 
         decision = game.action_builder.build_action_decision(game.state, 0, True)
         play_ids = [o.card_instance_id for o in decision.options if o.card_instance_id]
@@ -420,7 +421,7 @@ class TestTrapDoorNoRedirect:
         # Set up a trap in banish, marked playable with redirect=False (Trap-Door)
         trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=0)
         player.banished.append(trap)
-        player.playable_from_banish.append((50, "start_of_next_turn", False))
+        player.playable_from_banish.append(BanishPlayability(50, "start_of_next_turn", False))
 
         # Simulate _play_card behavior: card is in banish and playable
         assert game._is_playable_from_banish(trap, 0) is True
@@ -441,7 +442,7 @@ class TestTrapDoorNoRedirect:
 
         trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=0)
         player.banished.append(trap)
-        player.playable_from_banish.append((50, "end_of_turn", True))
+        player.playable_from_banish.append(BanishPlayability(50, "end_of_turn", True))
 
         redirect = any(
             iid == trap.instance_id and redir
@@ -861,7 +862,7 @@ class TestDefenseReactionFromBanish:
 
         trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=1)
         state.players[1].banished.append(trap)
-        state.players[1].playable_from_banish.append((50, "start_of_next_turn", False))
+        state.players[1].playable_from_banish.append(BanishPlayability(50, "start_of_next_turn", False))
 
         decision = game.action_builder.build_reaction_decision(
             state,
@@ -880,7 +881,7 @@ class TestDefenseReactionFromBanish:
 
         trap = _make_trap(instance_id=50, zone=Zone.BANISHED, owner_index=0)
         state.players[0].banished.append(trap)
-        state.players[0].playable_from_banish.append((50, "start_of_next_turn", False))
+        state.players[0].playable_from_banish.append(BanishPlayability(50, "start_of_next_turn", False))
 
         decision = game.action_builder.build_reaction_decision(
             state,

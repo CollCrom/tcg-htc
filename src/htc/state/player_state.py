@@ -1,10 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from htc.cards.instance import CardInstance
 from htc.enums import EquipmentSlot, Zone
 from htc.state.turn_counters import TurnCounters
+
+# Expiry constants for banish playability
+EXPIRY_END_OF_TURN = "end_of_turn"
+EXPIRY_START_OF_NEXT_TURN = "start_of_next_turn"
+
+
+class BanishPlayability(NamedTuple):
+    """Tracks a banished card that is currently playable.
+
+    NamedTuple so it's backward-compatible with the old (int, str, bool) tuple.
+    """
+
+    instance_id: int
+    expiry: str  # EXPIRY_END_OF_TURN or EXPIRY_START_OF_NEXT_TURN
+    redirect_to_banish: bool
 
 
 @dataclass
@@ -55,12 +71,9 @@ class PlayerState:
     diplomacy_restriction: str | None = None
 
     # Banished cards that are currently playable.
-    # Each entry is (instance_id, expiry, redirect_to_banish) where:
-    #   expiry is "end_of_turn" or "start_of_next_turn"
-    #   redirect_to_banish: if True, the card goes to banish instead of graveyard
-    #     after being played (e.g. Under the Trap-Door). If False, it goes to
-    #     graveyard normally (e.g. Trap-Door).
-    playable_from_banish: list[tuple[int, str, bool]] = field(default_factory=list)
+    # Each entry tracks (instance_id, expiry, redirect_to_banish).
+    # See BanishPlayability for field docs.
+    playable_from_banish: list[BanishPlayability] = field(default_factory=list)
 
     def get_zone_cards(self, zone: Zone) -> list[CardInstance]:
         """Get the list of cards in a given zone for this player."""
@@ -82,11 +95,17 @@ class PlayerState:
             case _:
                 return []
 
+    def _all_zone_lists(self) -> list[list[CardInstance]]:
+        """Return all mutable zone lists for iteration."""
+        return [
+            self.hand, self.deck, self.arsenal, self.pitch,
+            self.graveyard, self.banished, self.soul,
+            self.weapons, self.permanents,
+        ]
+
     def remove_card(self, card: CardInstance) -> bool:
         """Remove a card from whichever zone list it's in. Returns True if found."""
-        for zone_list in [self.hand, self.deck, self.arsenal, self.pitch,
-                          self.graveyard, self.banished, self.soul,
-                          self.weapons, self.permanents]:
+        for zone_list in self._all_zone_lists():
             if card in zone_list:
                 zone_list.remove(card)
                 return True
@@ -98,9 +117,7 @@ class PlayerState:
 
     def find_card(self, instance_id: int) -> CardInstance | None:
         """Find a card by instance ID across all zones."""
-        for zone in [self.hand, self.deck, self.arsenal, self.pitch,
-                     self.graveyard, self.banished, self.soul,
-                     self.weapons, self.permanents]:
+        for zone in self._all_zone_lists():
             for card in zone:
                 if card.instance_id == instance_id:
                     return card

@@ -26,7 +26,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from htc.cards.abilities._helpers import draw_card, grant_keyword, grant_power_bonus
+from htc.cards.abilities._helpers import (
+    draw_card,
+    grant_keyword,
+    grant_power_bonus,
+    require_active_attack,
+    require_chain_link,
+)
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.continuous import EffectDuration, make_keyword_grant
 from htc.engine.events import EventType, GameEvent, TriggeredEffect
@@ -186,11 +192,10 @@ class MaskOfMomentumTrigger(TriggeredEffect):
 # ---------------------------------------------------------------------------
 
 
+@require_chain_link
 def _flick_knives(ctx: AbilityContext) -> None:
     """Flick Knives attack reaction: off-chain dagger deals 1 damage."""
     link = ctx.chain_link
-    if link is None:
-        return
 
     player = ctx.state.players[ctx.controller_index]
     target_index = 1 - ctx.controller_index
@@ -421,11 +426,10 @@ class SpringTunicTrigger(TriggeredEffect):
 # ---------------------------------------------------------------------------
 
 
+@require_active_attack
 def _tide_flippers(ctx: AbilityContext) -> None:
     """Tide Flippers: destroy self, grant go again to low-power attack."""
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     # Must be an attack action card (not weapon proxy)
@@ -461,11 +465,10 @@ def _tide_flippers(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_active_attack
 def _blacktek_whisperers(ctx: AbilityContext) -> None:
     """Blacktek Whisperers: destroy self, grant on-hit go again to Assassin attack."""
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     # Must be an Assassin attack action card
@@ -564,11 +567,10 @@ class _BlacktekGoAgainOnHit(TriggeredEffect):
 # ---------------------------------------------------------------------------
 
 
+@require_active_attack
 def _stalkers_steps(ctx: AbilityContext) -> None:
     """Stalker's Steps: destroy self, grant go again to stealth attack."""
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     # Must have Stealth keyword (check via effect engine for modified keywords)
@@ -588,6 +590,7 @@ def _stalkers_steps(ctx: AbilityContext) -> None:
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Stalker's Steps")
 
 
+@require_active_attack
 def _dragonscaler_flight_path(ctx: AbilityContext) -> None:
     """Dragonscaler Flight Path instant: grant go again to Draconic attack.
 
@@ -599,8 +602,6 @@ def _dragonscaler_flight_path(ctx: AbilityContext) -> None:
     4. If it's a weapon attack (proxy), untaps the weapon for additional attack
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     # Must be a Draconic attack — check via effect engine for modified supertypes
@@ -795,11 +796,10 @@ class KunaiDestroyOnChainClose(TriggeredEffect):
 # ---------------------------------------------------------------------------
 
 
+@require_chain_link
 def _hunters_klaive_on_hit(ctx: AbilityContext) -> None:
     """Hunter's Klaive on-hit: mark the target hero."""
     link = ctx.chain_link
-    if link is None:
-        return
 
     target_index = link.attack_target_index
     ctx.state.players[target_index].is_marked = True
