@@ -147,8 +147,16 @@ def create_token(
     functional_text: str = "",
     type_text: str = "",
     supertypes: frozenset = frozenset(),
+    *,
+    event_bus: object = None,
+    effect_engine: object = None,
+    ask: object = None,
 ) -> CardInstance:
-    """Create a token permanent for the given player."""
+    """Create a token permanent for the given player.
+
+    If *event_bus* and *effect_engine* are provided, token abilities (triggers
+    and continuous effects) are registered automatically.
+    """
     from htc.cards.card import CardDefinition
     from htc.cards.instance import CardInstance
 
@@ -177,7 +185,18 @@ def create_token(
         zone=Zone.PERMANENT,
     )
     state.players[controller_index].permanents.append(token)
+    # Track Fealty creation for end-phase condition
+    if name == "Fealty":
+        state.players[controller_index].turn_counters.fealty_created_this_turn = True
     log.info(f"  Created {name} token for Player {controller_index}")
+
+    # Register token abilities if the event bus is provided
+    if event_bus is not None and effect_engine is not None:
+        from htc.cards.abilities.tokens import register_token_triggers
+        register_token_triggers(
+            event_bus, effect_engine, state, controller_index, token, ask=ask,
+        )
+
     return token
 
 

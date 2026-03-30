@@ -41,6 +41,47 @@ log = logging.getLogger(__name__)
 
 
 
+def _create_graphene_chelicera(state, controller_index: int) -> None:
+    """Create a Graphene Chelicera token as a weapon in the Arms equipment slot.
+
+    "Once per Turn Action - {r}: Attack with this for 1, with go again."
+    Created as a weapon (not a permanent) so the weapon activation system handles it.
+    """
+    from htc.cards.card import CardDefinition
+    from htc.cards.instance import CardInstance
+    from htc.enums import EquipmentSlot
+
+    player = state.players[controller_index]
+
+    token_def = CardDefinition(
+        unique_id="graphene-chelicera-token",
+        name="Graphene Chelicera",
+        color=None,
+        pitch=None,
+        cost=None,
+        power=1,
+        defense=None,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.TOKEN, CardType.WEAPON}),
+        subtypes=frozenset({SubType.ARMS, SubType.DAGGER, SubType.ONE_HAND}),
+        supertypes=frozenset({SuperType.ASSASSIN}),
+        keywords=frozenset({Keyword.GO_AGAIN}),
+        functional_text="Once per Turn Action - {r}: Attack with this for 1, with go again.",
+        type_text="Assassin Arms Equipment Token",
+    )
+    token = CardInstance(
+        instance_id=state.next_instance_id(),
+        definition=token_def,
+        owner_index=controller_index,
+        zone=Zone.WEAPON_1,
+    )
+    # Add as a weapon so the weapon activation system handles it
+    player.weapons.append(token)
+    log.info(f"  Equipped Graphene Chelicera token for Player {controller_index}")
+
+
 def _is_dagger_attack(attack, link=None) -> bool:
     """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
     if attack is None:
@@ -428,8 +469,9 @@ def _frailty_trap(ctx: AbilityContext) -> None:
         attacker_index = 1 - link.attack_target_index
         create_token(
             ctx.state, attacker_index, "Frailty", SubType.AURA,
-            functional_text="At the beginning of your turn, destroy this then the next attack action card you defend with this turn gets -2{d}.",
+            functional_text="Your attack action cards played from arsenal and weapon attacks have -1{p}. At the beginning of your end phase destroy Frailty.",
             type_text="Token - Aura",
+            event_bus=ctx.events, effect_engine=ctx.effect_engine,
         )
         log.info(f"  Frailty Trap: Created Frailty token for Player {attacker_index}")
     else:
@@ -453,8 +495,9 @@ def _inertia_trap(ctx: AbilityContext) -> None:
         attacker_index = 1 - link.attack_target_index
         create_token(
             ctx.state, attacker_index, "Inertia", SubType.AURA,
-            functional_text="At the beginning of your turn, destroy this then the next attack action card you play this turn costs an additional {r}.",
+            functional_text="At the beginning of your end phase, destroy Inertia, then put all cards from your hand and arsenal on the bottom of your deck.",
             type_text="Token - Aura",
+            event_bus=ctx.events, effect_engine=ctx.effect_engine,
         )
         log.info(
             f"  Inertia Trap: Created Inertia token for Player {attacker_index} "
@@ -557,14 +600,16 @@ def _codex_template(
 
     create_token(
         ctx.state, ctx.controller_index, "Ponder", SubType.AURA,
-        functional_text="At the beginning of your turn, destroy this, then look at the top card of your deck. You may put it on the bottom.",
+        functional_text="At the beginning of your end phase, destroy Ponder and draw a card.",
         type_text="Token - Aura",
+        event_bus=ctx.events, effect_engine=ctx.effect_engine,
     )
     opponent_index = 1 - ctx.controller_index
     create_token(
         ctx.state, opponent_index, debuff_token_name, SubType.AURA,
         functional_text=debuff_token_text,
         type_text="Token - Aura",
+        event_bus=ctx.events, effect_engine=ctx.effect_engine, ask=ctx.ask,
     )
     log.info(f"  {codex_name}: Created Ponder for P{ctx.controller_index}, {debuff_token_name} for P{opponent_index}")
 
@@ -595,7 +640,7 @@ def _codex_of_frailty(ctx: AbilityContext) -> None:
     _codex_template(
         ctx, "Codex of Frailty", _arsenal_from_graveyard,
         "Frailty",
-        "At the beginning of your turn, destroy this then the next attack action card you defend with this turn gets -2{d}.",
+        "Your attack action cards played from arsenal and weapon attacks have -1{p}. At the beginning of your end phase destroy Frailty.",
     )
 
 
@@ -623,7 +668,7 @@ def _codex_of_inertia(ctx: AbilityContext) -> None:
     _codex_template(
         ctx, "Codex of Inertia", _arsenal_from_deck,
         "Inertia",
-        "At the beginning of your turn, destroy this then the next attack action card you play this turn costs an additional {r}.",
+        "At the beginning of your end phase, destroy Inertia, then put all cards from your hand and arsenal on the bottom of your deck.",
     )
 
 
@@ -692,13 +737,8 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     "Once per Turn Action - {r}: Attack with this for 1, with go again."
     For now we create the token as a permanent.
     """
-    # Create Graphene Chelicera equipment token
-    # TODO: Implement as proper equipment with activation ability
-    create_token(
-        ctx.state, ctx.controller_index, "Graphene Chelicera", SubType.ARMS,
-        functional_text="Once per Turn Action - {r}: Attack with this for 1, with go again.",
-        type_text="Assassin Arms Equipment Token",
-    )
+    # Create Graphene Chelicera as a weapon token
+    _create_graphene_chelicera(ctx.state, ctx.controller_index)
 
     # Next stealth attack bonus
     bonus = color_bonus(ctx)
@@ -829,11 +869,7 @@ def _whittle_from_bone_on_attack(ctx: AbilityContext) -> None:
 
     defender = ctx.state.players[link.attack_target_index]
     if defender.is_marked:
-        create_token(
-            ctx.state, ctx.controller_index, "Graphene Chelicera", SubType.ARMS,
-            functional_text="Once per Turn Action - {r}: Attack with this for 1, with go again.",
-            type_text="Assassin Arms Equipment Token",
-        )
+        _create_graphene_chelicera(ctx.state, ctx.controller_index)
         log.info(f"  Whittle from Bone: Equipped Graphene Chelicera (attacking marked hero)")
     else:
         log.info(f"  Whittle from Bone: no effect (target not marked)")
@@ -1012,20 +1048,23 @@ def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     # Contract: create a Silver token for each red card banished
     for card in banished_cards:
         if card.definition.color == Color.RED:
-            _create_silver_token(ctx.state, ctx.controller_index)
+            _create_silver_token(
+                ctx.state, ctx.controller_index,
+                event_bus=ctx.events, effect_engine=ctx.effect_engine,
+            )
             log.info(
                 f"  Leave No Witnesses: Contract completed — {card.name} is red, "
                 f"created Silver token for P{ctx.controller_index}"
             )
 
 
-def _create_silver_token(state, controller_index: int) -> CardInstance:
+def _create_silver_token(
+    state, controller_index: int, *, event_bus=None, effect_engine=None,
+) -> CardInstance:
     """Create a Silver token as a permanent for the given player.
 
-    Silver tokens are resource tokens. In the full game they have:
-    "Action - {r}{r}{r}, destroy Silver: Draw a card. Go again"
-    For now, they are simple permanents that can be destroyed for 1 resource
-    (activation infrastructure is Phase 6).
+    Silver tokens are item tokens with:
+    "Action - {r}{r}{r}, destroy Silver: Draw a card. Go again."
     """
     token = create_token(
         state,
@@ -1034,6 +1073,8 @@ def _create_silver_token(state, controller_index: int) -> CardInstance:
         subtype=SubType.ITEM,
         functional_text="Action - {r}{r}{r}, destroy Silver: Draw a card. Go again.",
         type_text="Token - Item",
+        event_bus=event_bus,
+        effect_engine=effect_engine,
     )
     return token
 
@@ -1072,9 +1113,17 @@ def _death_touch_on_hit(ctx: AbilityContext) -> None:
     choice = response.first or "frailty"
     token_name = {"frailty": "Frailty", "inertia": "Inertia", "bloodrot_pox": "Bloodrot Pox"}.get(choice, "Frailty")
 
+    # Map token names to their authoritative functional text
+    _token_texts = {
+        "Frailty": "Your attack action cards played from arsenal and weapon attacks have -1{p}. At the beginning of your end phase destroy Frailty.",
+        "Inertia": "At the beginning of your end phase, destroy Inertia, then put all cards from your hand and arsenal on the bottom of your deck.",
+        "Bloodrot Pox": "At the beginning of your end phase, destroy Bloodrot Pox, then it deals 2 damage to you unless you pay {r}{r}{r}.",
+    }
     create_token(
         ctx.state, target_index, token_name, SubType.AURA,
+        functional_text=_token_texts.get(token_name, ""),
         type_text="Token - Aura",
+        event_bus=ctx.events, effect_engine=ctx.effect_engine, ask=ctx.ask,
     )
     log.info(f"  Death Touch: Created {token_name} token for Player {target_index}")
 
