@@ -216,3 +216,171 @@ class TestBloodRunsDeepCostReduction:
 
         cost = game.effect_engine.get_modified_cost(game.state, brd)
         assert cost == 1  # 3 - 2 = 1
+
+
+# ===========================================================================
+# 3. Contract keyword — Leave No Witnesses Silver token creation
+# ===========================================================================
+
+
+def _make_leave_no_witnesses(
+    instance_id: int = 1,
+    owner_index: int = 0,
+) -> CardInstance:
+    """Create a Leave No Witnesses card."""
+    defn = CardDefinition(
+        unique_id=f"lnw-{instance_id}",
+        name="Leave No Witnesses",
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=4,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ATTACK}),
+        supertypes=frozenset({SuperType.ASSASSIN}),
+        keywords=frozenset({Keyword.CONTRACT}),
+        functional_text="",
+        type_text="Assassin Attack Action",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.COMBAT_CHAIN,
+    )
+
+
+def _make_deck_card(
+    instance_id: int,
+    name: str = "Deck Card",
+    color: Color = Color.RED,
+    owner_index: int = 1,
+) -> CardInstance:
+    """Create a simple card for an opponent's deck."""
+    defn = CardDefinition(
+        unique_id=f"deck-{instance_id}",
+        name=name,
+        color=color,
+        pitch=1 if color == Color.RED else 3,
+        cost=0,
+        power=3,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ATTACK}),
+        supertypes=frozenset(),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.DECK,
+    )
+
+
+class TestContractSilverToken:
+    """Leave No Witnesses Contract: banishing opponent's red cards creates Silver tokens."""
+
+    def test_red_card_banished_creates_silver(self):
+        """Banishing a red card from opponent's deck creates a Silver token."""
+        game = make_game_shell()
+        target = game.state.players[1]
+
+        red_card = _make_deck_card(instance_id=50, color=Color.RED)
+        target.deck.insert(0, red_card)
+
+        lnw = _make_leave_no_witnesses()
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, lnw, 1)
+
+        game._apply_card_ability(lnw, 0, "on_hit")
+
+        controller = game.state.players[0]
+        silver_tokens = [p for p in controller.permanents if p.name == "Silver"]
+        assert len(silver_tokens) == 1
+
+    def test_blue_card_banished_no_silver(self):
+        """Banishing a blue card does NOT create a Silver token."""
+        game = make_game_shell()
+        target = game.state.players[1]
+
+        blue_card = _make_deck_card(instance_id=50, color=Color.BLUE)
+        target.deck.insert(0, blue_card)
+
+        lnw = _make_leave_no_witnesses()
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, lnw, 1)
+
+        game._apply_card_ability(lnw, 0, "on_hit")
+
+        controller = game.state.players[0]
+        silver_tokens = [p for p in controller.permanents if p.name == "Silver"]
+        assert len(silver_tokens) == 0
+
+    def test_both_red_cards_create_two_silvers(self):
+        """Banishing two red cards (deck + arsenal) creates two Silver tokens."""
+        game = make_game_shell()
+        target = game.state.players[1]
+
+        red_deck = _make_deck_card(instance_id=50, color=Color.RED, name="Red Deck Card")
+        target.deck.insert(0, red_deck)
+
+        red_arsenal = _make_deck_card(instance_id=51, color=Color.RED, name="Red Arsenal Card")
+        red_arsenal.zone = Zone.ARSENAL
+        target.arsenal.append(red_arsenal)
+
+        lnw = _make_leave_no_witnesses()
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, lnw, 1)
+
+        game._apply_card_ability(lnw, 0, "on_hit")
+
+        controller = game.state.players[0]
+        silver_tokens = [p for p in controller.permanents if p.name == "Silver"]
+        assert len(silver_tokens) == 2
+
+    def test_mixed_colors_one_silver(self):
+        """Banishing red from deck + blue from arsenal creates one Silver."""
+        game = make_game_shell()
+        target = game.state.players[1]
+
+        red_deck = _make_deck_card(instance_id=50, color=Color.RED)
+        target.deck.insert(0, red_deck)
+
+        blue_arsenal = _make_deck_card(instance_id=51, color=Color.BLUE)
+        blue_arsenal.zone = Zone.ARSENAL
+        target.arsenal.append(blue_arsenal)
+
+        lnw = _make_leave_no_witnesses()
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, lnw, 1)
+
+        game._apply_card_ability(lnw, 0, "on_hit")
+
+        controller = game.state.players[0]
+        silver_tokens = [p for p in controller.permanents if p.name == "Silver"]
+        assert len(silver_tokens) == 1
+
+    def test_empty_deck_no_crash(self):
+        """No crash when opponent's deck is empty."""
+        game = make_game_shell()
+        target = game.state.players[1]
+        target.deck.clear()
+
+        lnw = _make_leave_no_witnesses()
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, lnw, 1)
+
+        game._apply_card_ability(lnw, 0, "on_hit")
+
+        controller = game.state.players[0]
+        assert len(controller.permanents) == 0

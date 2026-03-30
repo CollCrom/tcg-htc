@@ -980,29 +980,62 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
 def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     """Leave No Witnesses (Assassin, Attack Action):
 
-    'When this hits a hero, banish the top card of their deck and up to 1
+    'Contract - You are contracted to banish opponents' red cards.
+     Whenever you complete this contract, create a Silver token.
+     When this hits a hero, banish the top card of their deck and up to 1
      card in their arsenal.'
 
-    Contract keyword effect (banish opponents' red cards -> create Silver
-    token) is tracked separately.
-    TODO: Implement Contract tracking and Silver token creation.
+    Contract: when a banished card is red, create a Silver token for the
+    controller.
     """
     link = ctx.chain_link
 
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
 
+    banished_cards = []
+
     # Banish top card of deck
     if target.deck:
         card = target.deck[0]
         ctx.banish_card(card, target_index)
+        banished_cards.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from top of P{target_index}'s deck")
 
     # Banish up to 1 card in their arsenal
     if target.arsenal:
         card = target.arsenal[0]
         ctx.banish_card(card, target_index)
+        banished_cards.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from P{target_index}'s arsenal")
+
+    # Contract: create a Silver token for each red card banished
+    for card in banished_cards:
+        if card.definition.color == Color.RED:
+            _create_silver_token(ctx.state, ctx.controller_index)
+            log.info(
+                f"  Leave No Witnesses: Contract completed — {card.name} is red, "
+                f"created Silver token for P{ctx.controller_index}"
+            )
+
+
+def _create_silver_token(state, controller_index: int) -> CardInstance:
+    """Create a Silver token as a permanent for the given player.
+
+    Silver tokens are resource tokens. In the full game they have:
+    "Action - {r}{r}{r}, destroy Silver: Draw a card. Go again"
+    For now, they are simple permanents that can be destroyed for 1 resource
+    (activation infrastructure is Phase 6).
+    """
+    token = create_token(
+        state,
+        controller_index,
+        name="Silver",
+        subtype=SubType.ITEM,
+        functional_text="Action - Destroy Silver: Gain {r}",
+        type_text="Token - Item",
+    )
+    return token
 
 
 @require_chain_link
