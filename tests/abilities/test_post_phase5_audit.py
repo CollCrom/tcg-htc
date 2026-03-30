@@ -653,12 +653,12 @@ def _make_overpower_attack(instance_id=1, owner_index=0):
     )
 
 
-def test_ambush_from_arsenal_bypasses_overpower():
-    """Ambush card from arsenal should defend even when Overpower limits
-    action cards from hand to 1.
+def test_ambush_from_arsenal_blocked_by_overpower():
+    """Overpower restricts to at most 1 action card total -- regardless of zone.
 
-    Overpower says "can't be defended by more than 1 action card from hand".
-    Arsenal is not hand, so Ambush cards from arsenal are not restricted.
+    Overpower says "can't be defended by more than 1 action card". An Ambush
+    action card from arsenal still counts as an action card, so if one action
+    card already defended, the Ambush action card is blocked.
     """
     game = make_game_shell(life=20)
     state = game.state
@@ -688,9 +688,9 @@ def test_ambush_from_arsenal_bypasses_overpower():
     game._ask = mock_ask
     game._defend_step()
 
-    # Both should defend: Overpower only restricts hand cards
+    # Only the first action card should defend; the Ambush action is blocked
     assert hand_action in link.defending_cards, "Hand action card should defend"
-    assert ambush_card in link.defending_cards, (
-        "Ambush from arsenal should bypass Overpower restriction"
+    assert ambush_card not in link.defending_cards, (
+        "Ambush action from arsenal should be blocked by Overpower"
     )
-    assert len(link.defending_cards) == 2
+    assert len(link.defending_cards) == 1

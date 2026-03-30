@@ -1448,8 +1448,12 @@ class Game:
                     card_kws = self.effect_engine.get_modified_keywords(self.state, card)
                     if Keyword.AMBUSH not in card_kws:
                         continue
-                    # Arsenal cards are NOT restricted by Dominate or Overpower —
-                    # those keywords only restrict cards defended from hand.
+                    # Overpower (8.3.9): can't defend with more than 1 action card
+                    # — applies regardless of source zone (hand or arsenal).
+                    if has_overpower and card.definition.is_action and action_cards_defended >= 1:
+                        continue
+                    if card.definition.is_action:
+                        action_cards_defended += 1
                     player.arsenal.remove(card)
                 self.combat_mgr.add_defender(self.state, link, card)
                 log.info(f"  Defended with: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
