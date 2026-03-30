@@ -290,7 +290,7 @@ def _dragon_power_on_attack(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    if not _is_draconic(attack):
+    if not _is_draconic(attack, ctx):
         log.info("  Dragon Power: not Draconic, no bonus")
         return
 
@@ -311,7 +311,7 @@ def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    if not _is_draconic(attack):
+    if not _is_draconic(attack, ctx):
         log.info("  Art of the Dragon: Blood: not Draconic, no bonus")
         return
 
@@ -347,7 +347,7 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    if not _is_draconic(attack):
+    if not _is_draconic(attack, ctx):
         log.info("  Art of the Dragon: Fire: not Draconic, no effect")
         return
 
@@ -413,7 +413,7 @@ def _art_of_the_dragon_scale_on_attack(ctx: AbilityContext) -> None:
         return
 
     attack = link.active_attack
-    if not _is_draconic(attack):
+    if not _is_draconic(attack, ctx):
         log.info("  Art of the Dragon: Scale: not Draconic, no effect")
         return
 
@@ -730,7 +730,7 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
         return
 
     prev_link = chain.chain_links[current_idx - 1]
-    if prev_link.active_attack is None or not _is_draconic(prev_link.active_attack):
+    if prev_link.active_attack is None or not _is_draconic(prev_link.active_attack, ctx):
         log.info("  Devotion Never Dies: previous attack was not Draconic")
         return
 
