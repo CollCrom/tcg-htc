@@ -12,13 +12,18 @@ import logging
 from dataclasses import dataclass
 
 from htc.cards.abilities._helpers import (
+    choose_dagger,
     color_bonus,
     create_token,
+    deal_dagger_damage,
     draw_card,
     gain_life,
+    get_mark_on_hit_trigger_class,
     grant_keyword,
     grant_power_bonus,
     mark_attacker,
+    require_active_attack,
+    require_chain_link,
 )
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
@@ -72,6 +77,7 @@ def _has_stealth(attack, ctx: AbilityContext) -> bool:
 # ---------------------------------------------------------------------------
 
 
+@require_active_attack
 def _incision(ctx: AbilityContext) -> None:
     """Incision (Assassin/Warrior, Attack Reaction):
 
@@ -79,8 +85,6 @@ def _incision(ctx: AbilityContext) -> None:
     Red=+3, Yellow=+2, Blue=+1.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_dagger_attack(attack, link):
@@ -91,6 +95,7 @@ def _incision(ctx: AbilityContext) -> None:
     grant_power_bonus(ctx, attack, bonus, "Incision")
 
 
+@require_active_attack
 def _to_the_point(ctx: AbilityContext) -> None:
     """To the Point (Assassin/Warrior, Attack Reaction):
 
@@ -99,8 +104,6 @@ def _to_the_point(ctx: AbilityContext) -> None:
     Red: +3/+4, Yellow: +2/+3, Blue: +1/+2.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_dagger_attack(attack, link):
@@ -115,6 +118,7 @@ def _to_the_point(ctx: AbilityContext) -> None:
     grant_power_bonus(ctx, attack, bonus, f"To the Point (marked={defender.is_marked})")
 
 
+@require_active_attack
 def _stains_of_the_redback(ctx: AbilityContext) -> None:
     """Stains of the Redback (Assassin, Attack Reaction):
 
@@ -126,8 +130,6 @@ def _stains_of_the_redback(ctx: AbilityContext) -> None:
     card-specific modifier (costs {r} less when opponent is marked).
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _has_stealth(attack, ctx):
@@ -139,6 +141,7 @@ def _stains_of_the_redback(ctx: AbilityContext) -> None:
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Stains of the Redback")
 
 
+@require_active_attack
 def _shred(ctx: AbilityContext) -> None:
     """Shred (Assassin, Attack Reaction):
 
@@ -149,8 +152,6 @@ def _shred(ctx: AbilityContext) -> None:
     chooses which one gets the defense reduction.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_assassin_attack(attack):
@@ -203,6 +204,7 @@ def _shred(ctx: AbilityContext) -> None:
     log.info(f"  Shred: {target.name} gets {penalty} defense")
 
 
+@require_active_attack
 def _take_up_the_mantle(ctx: AbilityContext) -> None:
     """Take Up the Mantle (Assassin, Attack Reaction):
 
@@ -217,8 +219,6 @@ def _take_up_the_mantle(ctx: AbilityContext) -> None:
     zone, counters, and continuous effects already on it.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not attack.definition.is_attack_action:
@@ -291,6 +291,7 @@ def _take_up_the_mantle(ctx: AbilityContext) -> None:
         grant_power_bonus(ctx, attack, bonus, "Take Up the Mantle")
 
 
+@require_active_attack
 def _tarantula_toxin(ctx: AbilityContext) -> None:
     """Tarantula Toxin (Assassin, Attack Reaction):
 
@@ -301,8 +302,6 @@ def _tarantula_toxin(ctx: AbilityContext) -> None:
     NOTE: Only Red variant in the deck. The CSV only shows Red with +3/-3.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     bonus = 3  # Red only in this deck
@@ -374,6 +373,7 @@ def _tarantula_toxin(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_active_attack
 def _den_of_the_spider(ctx: AbilityContext) -> None:
     """Den of the Spider (Assassin/Warrior, Defense Reaction, Trap):
 
@@ -384,8 +384,6 @@ def _den_of_the_spider(ctx: AbilityContext) -> None:
     modified power is greater than its base power, mark the attacker.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     base_power = attack.definition.power or 0
@@ -397,14 +395,13 @@ def _den_of_the_spider(ctx: AbilityContext) -> None:
         log.info(f"  Den of the Spider: no effect (power {modified_power} <= base {base_power})")
 
 
+@require_active_attack
 def _lair_of_the_spider(ctx: AbilityContext) -> None:
     """Lair of the Spider (Assassin/Ninja, Defense Reaction, Trap):
 
     'When this defends an attack with go again, mark the attacking hero.'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     kws = ctx.effect_engine.get_modified_keywords(ctx.state, attack)
@@ -415,6 +412,7 @@ def _lair_of_the_spider(ctx: AbilityContext) -> None:
         log.info(f"  Lair of the Spider: no effect (attack has no Go Again)")
 
 
+@require_active_attack
 def _frailty_trap(ctx: AbilityContext) -> None:
     """Frailty Trap (Assassin/Ranger, Defense Reaction, Trap):
 
@@ -422,8 +420,6 @@ def _frailty_trap(ctx: AbilityContext) -> None:
      the attacking hero's control.'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     kws = ctx.effect_engine.get_modified_keywords(ctx.state, attack)
@@ -440,6 +436,7 @@ def _frailty_trap(ctx: AbilityContext) -> None:
         log.info(f"  Frailty Trap: no effect (attack has no Go Again)")
 
 
+@require_active_attack
 def _inertia_trap(ctx: AbilityContext) -> None:
     """Inertia Trap (Assassin/Ranger, Defense Reaction, Trap):
 
@@ -447,8 +444,6 @@ def _inertia_trap(ctx: AbilityContext) -> None:
      Inertia token under the attacking hero's control.'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     base_power = attack.definition.power or 0
@@ -823,6 +818,7 @@ def _pick_up_the_point_on_attack(ctx: AbilityContext) -> None:
     log.info(f"  Pick Up the Point: Retrieved dagger (if available)")
 
 
+@require_chain_link
 def _whittle_from_bone_on_attack(ctx: AbilityContext) -> None:
     """Whittle from Bone (Assassin, Attack Action):
 
@@ -830,8 +826,6 @@ def _whittle_from_bone_on_attack(ctx: AbilityContext) -> None:
     Stealth (keyword).
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     defender = ctx.state.players[link.attack_target_index]
     if defender.is_marked:
@@ -850,6 +844,7 @@ def _whittle_from_bone_on_attack(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_chain_link
 def _kiss_of_death_on_hit(ctx: AbilityContext) -> None:
     """Kiss of Death (Assassin, Dagger Attack Action):
 
@@ -857,8 +852,6 @@ def _kiss_of_death_on_hit(ctx: AbilityContext) -> None:
     Stealth (keyword).
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     # Card text: "they lose 1 life" — life loss, not damage (bypasses prevention)
     ctx.events.emit(GameEvent(
@@ -870,6 +863,7 @@ def _kiss_of_death_on_hit(ctx: AbilityContext) -> None:
     log.info(f"  Kiss of Death: Player {link.attack_target_index} loses 1 life (now {ctx.state.players[link.attack_target_index].life_total})")
 
 
+@require_chain_link
 def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
     """Mark of the Black Widow (Assassin, Attack Action):
 
@@ -877,8 +871,6 @@ def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
     Stealth (keyword).
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     target = ctx.state.players[link.attack_target_index]
     # Use pre-hit mark state: the HIT handler clears is_marked before
@@ -899,6 +891,7 @@ def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
     log.info(f"  Mark of the Black Widow: Player {link.attack_target_index} banishes {banished_card.name}")
 
 
+@require_chain_link
 def _meet_madness_on_hit(ctx: AbilityContext) -> None:
     """Meet Madness (Chaos/Assassin, Attack Action):
 
@@ -909,8 +902,6 @@ def _meet_madness_on_hit(ctx: AbilityContext) -> None:
     Stealth (keyword, in functional_text but not card keywords in CSV).
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
@@ -947,6 +938,7 @@ def _under_the_trap_door_on_hit(ctx: AbilityContext) -> None:
     pass
 
 
+@require_chain_link
 def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
     """Pain in the Backside (Assassin/Ninja, Attack Action):
 
@@ -959,9 +951,6 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
     and if damage is dealt, a HIT event is emitted for the dagger.
     """
     link = ctx.chain_link
-    if link is None:
-        return
-
     target_index = link.attack_target_index
     controller = ctx.state.players[ctx.controller_index]
 
@@ -972,55 +961,13 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
         log.info("  Pain in the Backside: No dagger found — no damage dealt")
         return
 
-    # If multiple daggers, player chooses which one to use
-    if len(daggers) == 1:
-        dagger = daggers[0]
-    else:
-        options = [
-            ActionOption(
-                action_id=f"dagger_{d.instance_id}",
-                description=f"Use {d.name} (ID {d.instance_id})",
-                action_type=ActionType.ACTIVATE_ABILITY,
-                card_instance_id=d.instance_id,
-            )
-            for d in daggers
-        ]
-        decision = Decision(
-            player_index=ctx.controller_index,
-            decision_type=DecisionType.CHOOSE_TARGET,
-            prompt="Pain in the Backside: Choose a dagger to deal damage",
-            options=options,
-        )
-        response = ctx.ask(decision)
-        chosen_id = (
-            int(response.first.replace("dagger_", ""))
-            if response.first
-            else daggers[0].instance_id
-        )
-        dagger = next(
-            (d for d in daggers if d.instance_id == chosen_id), daggers[0]
-        )
+    dagger = choose_dagger(
+        ctx, daggers, "Pain in the Backside: Choose a dagger to deal damage",
+        decision_type="CHOOSE_TARGET",
+    )
 
-    # Card text: "target dagger you control deals 1 damage to them"
-    # Emit DEAL_DAMAGE so prevention/replacement effects can apply
-    damage_event = ctx.events.emit(GameEvent(
-        event_type=EventType.DEAL_DAMAGE,
-        source=dagger,
-        target_player=target_index,
-        amount=1,
-        data={"chain_link": link, "is_combat": False},
-    ))
-
-    actual_damage = damage_event.amount if not damage_event.cancelled else 0
+    actual_damage = deal_dagger_damage(ctx, dagger, target_index, link)
     if actual_damage > 0:
-        # Card text: "If damage is dealt this way, the dagger has hit."
-        ctx.events.emit(GameEvent(
-            event_type=EventType.HIT,
-            source=dagger,
-            target_player=target_index,
-            amount=actual_damage,
-            data={"chain_link": link},
-        ))
         log.info(
             f"  Pain in the Backside: {dagger.name} deals {actual_damage} damage "
             f"to Player {target_index} (now {ctx.state.players[target_index].life_total})"
@@ -1029,6 +976,7 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
         log.info("  Pain in the Backside: Damage was prevented")
 
 
+@require_chain_link
 def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     """Leave No Witnesses (Assassin, Attack Action):
 
@@ -1040,8 +988,6 @@ def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     TODO: Implement Contract tracking and Silver token creation.
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
@@ -1059,6 +1005,7 @@ def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
         log.info(f"  Leave No Witnesses: Banished {card.name} from P{target_index}'s arsenal")
 
 
+@require_chain_link
 def _death_touch_on_hit(ctx: AbilityContext) -> None:
     """Death Touch (Assassin/Ranger, Attack Action):
 
@@ -1071,8 +1018,6 @@ def _death_touch_on_hit(ctx: AbilityContext) -> None:
     The controller chooses which token to create.
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     target_index = link.attack_target_index
 
@@ -1101,6 +1046,7 @@ def _death_touch_on_hit(ctx: AbilityContext) -> None:
     log.info(f"  Death Touch: Created {token_name} token for Player {target_index}")
 
 
+@require_chain_link
 def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
     """Persuasive Prognosis (Assassin, Attack Action):
 
@@ -1110,8 +1056,6 @@ def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
     Stealth (keyword).
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
@@ -1183,6 +1127,7 @@ def _amulet_of_echoes_on_play(ctx: AbilityContext) -> None:
     log.info(f"  Amulet of Echoes: Enters the arena (instant activation TODO)")
 
 
+@require_chain_link
 def _overcrowded_on_attack(ctx: AbilityContext) -> None:
     """Overcrowded (Generic, Attack Action):
 
@@ -1190,8 +1135,6 @@ def _overcrowded_on_attack(ctx: AbilityContext) -> None:
      different name among aura tokens in the arena.'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     # Count unique aura token names in the entire arena
     aura_token_names: set[str] = set()
@@ -1226,33 +1169,7 @@ def _overcrowded_on_attack(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _ScarTissueMarkOnHit(TriggeredEffect):
-    """One-shot trigger: when the attack hits a hero, mark them."""
-    attack_instance_id: int = 0
-    target_player_index: int = 0
-    _state: object = None
-    one_shot: bool = True
-
-    def condition(self, event: GameEvent) -> bool:
-        if event.event_type != EventType.HIT:
-            return False
-        if event.source is None:
-            return False
-        return event.source.instance_id == self.attack_instance_id
-
-    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        if self._state is None:
-            return None
-        from htc.state.game_state import GameState
-        state = self._state
-        if not isinstance(state, GameState):
-            return None
-        state.players[self.target_player_index].is_marked = True
-        log.info(f"  Scar Tissue: Marked Player {self.target_player_index} on hit")
-        return None
-
-
+@require_active_attack
 def _scar_tissue(ctx: AbilityContext) -> None:
     """Scar Tissue (Assassin/Warrior, Attack Reaction):
 
@@ -1260,8 +1177,6 @@ def _scar_tissue(ctx: AbilityContext) -> None:
     Red=+3, Yellow=+2, Blue=+1.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_dagger_attack(attack, link):
@@ -1271,9 +1186,10 @@ def _scar_tissue(ctx: AbilityContext) -> None:
     bonus = color_bonus(ctx)
     grant_power_bonus(ctx, attack, bonus, "Scar Tissue")
 
-    hit_trigger = _ScarTissueMarkOnHit(
+    hit_trigger = get_mark_on_hit_trigger_class()(
         attack_instance_id=attack.instance_id,
         target_player_index=link.attack_target_index,
+        card_name="Scar Tissue",
         _state=ctx.state,
         one_shot=True,
     )

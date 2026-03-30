@@ -6,6 +6,7 @@ ability files to reduce duplication.
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import TYPE_CHECKING
 
@@ -13,6 +14,8 @@ from htc.engine.continuous import EffectDuration, make_keyword_grant, make_power
 from htc.enums import CardType, Keyword, SubType, Zone
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from htc.cards.instance import CardInstance
     from htc.engine.abilities import AbilityContext
     from htc.state.game_state import GameState
@@ -176,3 +179,187 @@ def create_token(
     state.players[controller_index].permanents.append(token)
     log.info(f"  Created {name} token for Player {controller_index}")
     return token
+
+
+# ---------------------------------------------------------------------------
+# Guard decorators
+# ---------------------------------------------------------------------------
+
+
+def require_active_attack(fn: Callable[[AbilityContext], None]) -> Callable[[AbilityContext], None]:
+    """Decorator: return early if there is no active chain link or attack."""
+
+    @functools.wraps(fn)
+    def wrapper(ctx: AbilityContext) -> None:
+        if ctx.chain_link is None or ctx.chain_link.active_attack is None:
+            return
+        return fn(ctx)
+
+    return wrapper
+
+
+def require_chain_link(fn: Callable[[AbilityContext], None]) -> Callable[[AbilityContext], None]:
+    """Decorator: return early if there is no active chain link."""
+
+    @functools.wraps(fn)
+    def wrapper(ctx: AbilityContext) -> None:
+        if ctx.chain_link is None:
+            return
+        return fn(ctx)
+
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
+# Dagger helpers
+# ---------------------------------------------------------------------------
+
+
+def choose_dagger(
+    ctx: AbilityContext,
+    daggers: list[CardInstance],
+    prompt: str,
+    *,
+    decision_type: str = "CHOOSE_MODE",
+) -> CardInstance:
+    """Pick a dagger: auto-pick if only one, else ask the player.
+
+    Returns the chosen dagger CardInstance.
+    """
+    from htc.engine.actions import ActionOption, Decision
+    from htc.enums import ActionType, DecisionType
+
+    if len(daggers) == 1:
+        return daggers[0]
+
+    dtype = getattr(DecisionType, decision_type)
+    options = [
+        ActionOption(
+            action_id=f"dagger_{d.instance_id}",
+            description=f"{d.name} (ID {d.instance_id})",
+            action_type=ActionType.ACTIVATE_ABILITY,
+            card_instance_id=d.instance_id,
+        )
+        for d in daggers
+    ]
+    decision = Decision(
+        player_index=ctx.controller_index,
+        decision_type=dtype,
+        prompt=prompt,
+        options=options,
+    )
+    response = ctx.ask(decision)
+    chosen_id = (
+        int(response.first.replace("dagger_", ""))
+        if response.first
+        else daggers[0].instance_id
+    )
+    return next(
+        (d for d in daggers if d.instance_id == chosen_id), daggers[0]
+    )
+
+
+def deal_dagger_damage(
+    ctx: AbilityContext,
+    dagger: CardInstance,
+    target_index: int,
+    link: object,
+) -> int:
+    """Deal 1 damage from a dagger, emit HIT if damage dealt. Returns actual damage."""
+    from htc.engine.events import EventType, GameEvent
+
+    damage_event = ctx.events.emit(GameEvent(
+        event_type=EventType.DEAL_DAMAGE,
+        source=dagger,
+        target_player=target_index,
+        amount=1,
+        data={"chain_link": link, "is_combat": False},
+    ))
+
+    actual_damage = damage_event.amount if not damage_event.cancelled else 0
+    if actual_damage > 0:
+        ctx.events.emit(GameEvent(
+            event_type=EventType.HIT,
+            source=dagger,
+            target_player=target_index,
+            amount=actual_damage,
+            data={"chain_link": link},
+        ))
+    return actual_damage
+
+
+def destroy_arsenal(
+    ctx: AbilityContext,
+    player_index: int,
+    ability_name: str,
+) -> int:
+    """Destroy all cards in a player's arsenal. Returns count destroyed."""
+    player = ctx.state.players[player_index]
+    if not player.arsenal:
+        log.info(f"  {ability_name}: Player {player_index}'s arsenal is empty")
+        return 0
+
+    count = len(player.arsenal)
+    for card in list(player.arsenal):
+        card.zone = Zone.GRAVEYARD
+        player.graveyard.append(card)
+    player.arsenal.clear()
+    log.info(
+        f"  {ability_name}: destroyed {count} card(s) "
+        f"in Player {player_index}'s arsenal"
+    )
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Shared triggered effects
+# ---------------------------------------------------------------------------
+
+
+def _make_mark_on_hit_trigger_class():
+    """Create MarkOnHitTrigger class (deferred import to avoid circular deps)."""
+    from dataclasses import dataclass
+    from htc.engine.events import EventType, GameEvent, TriggeredEffect
+
+    @dataclass
+    class MarkOnHitTrigger(TriggeredEffect):
+        """One-shot trigger: on hit, mark the target hero.
+
+        Shared by Scar Tissue (assassin), Mark with Magma (ninja), etc.
+        """
+
+        attack_instance_id: int = 0
+        target_player_index: int = 0
+        card_name: str = ""
+        one_shot: bool = True
+        _state: object = None
+
+        def condition(self, event: GameEvent) -> bool:
+            if event.event_type != EventType.HIT:
+                return False
+            if event.source is None:
+                return False
+            return event.source.instance_id == self.attack_instance_id
+
+        def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+            if self._state is None:
+                return None
+            self._state.players[self.target_player_index].is_marked = True
+            log.info(
+                f"  {self.card_name}: Player {self.target_player_index} is now marked"
+            )
+            return None
+
+    return MarkOnHitTrigger
+
+
+# Lazy singleton to avoid circular import at module load time
+_MarkOnHitTriggerCls = None
+
+
+def get_mark_on_hit_trigger_class():
+    """Return the shared MarkOnHitTrigger class (created once on first call)."""
+    global _MarkOnHitTriggerCls
+    if _MarkOnHitTriggerCls is None:
+        _MarkOnHitTriggerCls = _make_mark_on_hit_trigger_class()
+    return _MarkOnHitTriggerCls

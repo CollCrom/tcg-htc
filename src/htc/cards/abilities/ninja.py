@@ -12,10 +12,16 @@ import logging
 from dataclasses import dataclass
 
 from htc.cards.abilities._helpers import (
+    choose_dagger,
     create_token,
+    deal_dagger_damage,
+    destroy_arsenal,
     draw_card,
+    get_mark_on_hit_trigger_class,
     grant_keyword,
     grant_power_bonus,
+    require_active_attack,
+    require_chain_link,
 )
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
@@ -96,6 +102,7 @@ def _create_fealty_token(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_chain_link
 def _throw_dagger(ctx: AbilityContext) -> None:
     """Throw Dagger (Assassin/Ninja, Attack Reaction, Blue):
 
@@ -104,9 +111,6 @@ def _throw_dagger(ctx: AbilityContext) -> None:
      has hit and you draw a card. Destroy the dagger.'
     """
     link = ctx.chain_link
-    if link is None:
-        return
-
     player = ctx.state.players[ctx.controller_index]
     defender_index = link.attack_target_index
 
@@ -124,54 +128,12 @@ def _throw_dagger(ctx: AbilityContext) -> None:
         log.info("  Throw Dagger: no eligible dagger found")
         return
 
-    # If multiple daggers, ask which to throw
-    if len(daggers) == 1:
-        chosen_dagger = daggers[0]
-    else:
-        options = [
-            ActionOption(
-                action_id=f"dagger_{d.instance_id}",
-                description=f"Throw {d.name} (ID {d.instance_id})",
-                action_type=ActionType.ACTIVATE_ABILITY,
-                card_instance_id=d.instance_id,
-            )
-            for d in daggers
-        ]
-        decision = Decision(
-            player_index=ctx.controller_index,
-            decision_type=DecisionType.CHOOSE_MODE,
-            prompt="Throw Dagger: Choose a dagger to throw",
-            options=options,
-        )
-        response = ctx.ask(decision)
-        chosen_id = (
-            int(response.first.replace("dagger_", ""))
-            if response.first
-            else daggers[0].instance_id
-        )
-        chosen_dagger = next(
-            (d for d in daggers if d.instance_id == chosen_id), daggers[0]
-        )
+    chosen_dagger = choose_dagger(
+        ctx, daggers, "Throw Dagger: Choose a dagger to throw",
+    )
 
-    # Deal 1 damage via DEAL_DAMAGE event (so prevention/replacement can apply)
-    damage_event = ctx.events.emit(GameEvent(
-        event_type=EventType.DEAL_DAMAGE,
-        source=chosen_dagger,
-        target_player=defender_index,
-        amount=1,
-        data={"chain_link": link, "is_combat": False},
-    ))
-
-    actual_damage = damage_event.amount if not damage_event.cancelled else 0
+    actual_damage = deal_dagger_damage(ctx, chosen_dagger, defender_index, link)
     if actual_damage > 0:
-        # Dagger has hit — emit HIT event and draw a card
-        ctx.events.emit(GameEvent(
-            event_type=EventType.HIT,
-            source=chosen_dagger,
-            target_player=defender_index,
-            amount=actual_damage,
-            data={"chain_link": link},
-        ))
         log.info(
             f"  Throw Dagger: {chosen_dagger.name} deals {actual_damage} damage to Player {defender_index}"
         )
@@ -187,6 +149,7 @@ def _throw_dagger(ctx: AbilityContext) -> None:
     log.info(f"  Throw Dagger: {chosen_dagger.name} destroyed")
 
 
+@require_active_attack
 def _exposed(ctx: AbilityContext) -> None:
     """Exposed (Generic, Attack Reaction, Blue):
 
@@ -198,8 +161,6 @@ def _exposed(ctx: AbilityContext) -> None:
     the action-building level (legality check). Here we just apply the effect.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     # +1 power to the active attack
     attack = link.active_attack
@@ -294,6 +255,7 @@ def _authority_of_ataya(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_active_attack
 def _dragon_power_on_attack(ctx: AbilityContext) -> None:
     """Dragon Power (Ninja, Attack Action):
 
@@ -304,8 +266,6 @@ def _dragon_power_on_attack(ctx: AbilityContext) -> None:
     an effect). By default it is NOT Draconic — it's just Ninja.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_draconic(attack, ctx):
@@ -315,6 +275,7 @@ def _dragon_power_on_attack(ctx: AbilityContext) -> None:
     grant_power_bonus(ctx, attack, 3, "Dragon Power")
 
 
+@require_active_attack
 def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
     """Art of the Dragon: Blood (Ninja, Attack Action):
 
@@ -325,8 +286,6 @@ def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
     bonus if it has become Draconic through game effects.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_draconic(attack, ctx):
@@ -353,6 +312,7 @@ def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
     )
 
 
+@require_active_attack
 def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
     """Art of the Dragon: Fire (Ninja, Attack Action):
 
@@ -361,8 +321,6 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
     In 1v1, "any target" means the defending hero or your own hero.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_draconic(attack, ctx):
@@ -419,6 +377,7 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
         log.info("  Art of the Dragon: Fire: Damage was prevented")
 
 
+@require_active_attack
 def _art_of_the_dragon_scale_on_attack(ctx: AbilityContext) -> None:
     """Art of the Dragon: Scale (Ninja, Attack Action):
 
@@ -427,8 +386,6 @@ def _art_of_the_dragon_scale_on_attack(ctx: AbilityContext) -> None:
      destroy it."'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     if not _is_draconic(attack, ctx):
@@ -538,6 +495,7 @@ class _ArtOfDragonScaleHitTrigger(TriggeredEffect):
         return None
 
 
+@require_active_attack
 def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
     """Blood Runs Deep (Draconic/Ninja, Attack Action):
 
@@ -550,12 +508,9 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
     on this card while in hand). The on_attack handler deals the dagger damage.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     player = ctx.state.players[ctx.controller_index]
     defender_index = link.attack_target_index
-    defender = ctx.state.players[defender_index]
 
     # Find all daggers the player controls
     daggers = [w for w in player.weapons if SubType.DAGGER in w.definition.subtypes]
@@ -565,25 +520,8 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
         return
 
     for dagger in daggers:
-        # Each dagger deals 1 damage via DEAL_DAMAGE event
-        damage_event = ctx.events.emit(GameEvent(
-            event_type=EventType.DEAL_DAMAGE,
-            source=dagger,
-            target_player=defender_index,
-            amount=1,
-            data={"chain_link": link, "is_combat": False},
-        ))
-
-        actual_damage = damage_event.amount if not damage_event.cancelled else 0
+        actual_damage = deal_dagger_damage(ctx, dagger, defender_index, link)
         if actual_damage > 0:
-            # Card text: "the dagger has hit" — emit HIT event
-            ctx.events.emit(GameEvent(
-                event_type=EventType.HIT,
-                source=dagger,
-                target_player=defender_index,
-                amount=actual_damage,
-                data={"chain_link": link},
-            ))
             log.info(
                 f"  Blood Runs Deep: {dagger.name} deals {actual_damage} damage to Player {defender_index}"
             )
@@ -597,6 +535,7 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
         log.info(f"  Blood Runs Deep: {dagger.name} destroyed")
 
 
+@require_active_attack
 def _breaking_point_on_hit(ctx: AbilityContext) -> None:
     """Breaking Point (Draconic, Attack Action):
 
@@ -606,8 +545,6 @@ def _breaking_point_on_hit(ctx: AbilityContext) -> None:
     Rupture check: only fires if current chain link number >= 4.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     # Check Rupture condition (chain link 4 or higher)
     if link.link_number < 4:
@@ -616,119 +553,61 @@ def _breaking_point_on_hit(ctx: AbilityContext) -> None:
         )
         return
 
-    defender_index = link.attack_target_index
-    defender = ctx.state.players[defender_index]
-
-    # Destroy all cards in their arsenal
-    if defender.arsenal:
-        destroyed_count = len(defender.arsenal)
-        for card in list(defender.arsenal):
-            card.zone = Zone.GRAVEYARD
-            defender.graveyard.append(card)
-        defender.arsenal.clear()
-        log.info(
-            f"  Breaking Point (Rupture): destroyed {destroyed_count} card(s) "
-            f"in Player {defender_index}'s arsenal"
-        )
-    else:
-        log.info(
-            f"  Breaking Point (Rupture): Player {defender_index}'s arsenal is empty"
-        )
+    destroy_arsenal(ctx, link.attack_target_index, "Breaking Point (Rupture)")
 
 
+@require_chain_link
 def _command_and_conquer_on_attack(ctx: AbilityContext) -> None:
     """Command and Conquer on_attack: block defense reactions this chain link.
 
     Sets defense_reactions_blocked on the active chain link so that
     build_reaction_decision() won't offer defense reactions to the defender.
     """
-    link = ctx.chain_link
-    if link is None:
-        return
-    link.defense_reactions_blocked = True
+    ctx.chain_link.defense_reactions_blocked = True
     log.info("  Command and Conquer: defense reactions blocked this chain link")
 
 
+@require_chain_link
 def _command_and_conquer_on_hit(ctx: AbilityContext) -> None:
     """Command and Conquer (Generic, Attack Action):
 
     'Defense reaction cards can't be played this chain link.
      When this hits a hero, destroy all cards in their arsenal.'
     """
-    link = ctx.chain_link
-    if link is None:
-        return
-
-    defender_index = link.attack_target_index
-    defender = ctx.state.players[defender_index]
-
-    if defender.arsenal:
-        destroyed_count = len(defender.arsenal)
-        for card in list(defender.arsenal):
-            card.zone = Zone.GRAVEYARD
-            defender.graveyard.append(card)
-        defender.arsenal.clear()
-        log.info(
-            f"  Command and Conquer: destroyed {destroyed_count} card(s) "
-            f"in Player {defender_index}'s arsenal"
-        )
-    else:
-        log.info(
-            f"  Command and Conquer: Player {defender_index}'s arsenal is empty"
-        )
+    destroy_arsenal(ctx, ctx.chain_link.attack_target_index, "Command and Conquer")
 
 
-def _demonstrate_devotion_on_attack(ctx: AbilityContext) -> None:
-    """Demonstrate Devotion (Draconic/Ninja, Attack Action):
+def _draconic_devotion_handler(ability_name: str):
+    """Factory for Demonstrate Devotion / Display Loyalty (identical behavior).
 
     'If you control 2 or more Draconic chain links, this gets go again
      and "When this attacks a hero, create a Fealty token."'
     """
-    link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
-    draconic_count = count_draconic_chain_links(ctx)
-    if draconic_count < 2:
-        log.info(
-            f"  Demonstrate Devotion: only {draconic_count} Draconic chain link(s), "
-            f"need 2+"
-        )
-        return
+    @require_active_attack
+    def handler(ctx: AbilityContext) -> None:
+        draconic_count = count_draconic_chain_links(ctx)
+        if draconic_count < 2:
+            log.info(
+                f"  {ability_name}: only {draconic_count} Draconic chain link(s), "
+                f"need 2+"
+            )
+            return
 
-    # Grant Go Again and create Fealty token
-    attack = link.active_attack
-    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Demonstrate Devotion")
-    _create_fealty_token(ctx)
-    log.info("  Demonstrate Devotion: created Fealty token")
+        attack = ctx.chain_link.active_attack
+        grant_keyword(ctx, attack, Keyword.GO_AGAIN, ability_name)
+        _create_fealty_token(ctx)
+        log.info(f"  {ability_name}: created Fealty token")
 
-
-def _display_loyalty_on_attack(ctx: AbilityContext) -> None:
-    """Display Loyalty (Draconic/Ninja, Attack Action):
-
-    'If you control 2 or more Draconic chain links, this gets go again
-     and "When this attacks a hero, create a Fealty token."'
-
-    Same effect as Demonstrate Devotion.
-    """
-    link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
-
-    draconic_count = count_draconic_chain_links(ctx)
-    if draconic_count < 2:
-        log.info(
-            f"  Display Loyalty: only {draconic_count} Draconic chain link(s), "
-            f"need 2+"
-        )
-        return
-
-    attack = link.active_attack
-    grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Display Loyalty")
-    _create_fealty_token(ctx)
-    log.info("  Display Loyalty: created Fealty token")
+    handler.__name__ = f"_{ability_name.lower().replace(' ', '_')}_on_attack"
+    return handler
 
 
+_demonstrate_devotion_on_attack = _draconic_devotion_handler("Demonstrate Devotion")
+_display_loyalty_on_attack = _draconic_devotion_handler("Display Loyalty")
+
+
+@require_chain_link
 def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
     """Devotion Never Dies (Ninja, Attack Action):
 
@@ -737,8 +616,6 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
      Go again'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     chain = ctx.state.combat_chain
     # Check if the previous chain link was a Draconic attack
@@ -765,6 +642,7 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
     )
 
 
+@require_active_attack
 def _hot_on_their_heels_on_attack(ctx: AbilityContext) -> None:
     """Hot on Their Heels (Draconic/Ninja, Attack Action):
 
@@ -772,8 +650,6 @@ def _hot_on_their_heels_on_attack(ctx: AbilityContext) -> None:
      and "When this hits a hero, mark them."'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     draconic_count = count_draconic_chain_links(ctx)
     if draconic_count < 2:
@@ -788,7 +664,7 @@ def _hot_on_their_heels_on_attack(ctx: AbilityContext) -> None:
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Hot on Their Heels")
 
     # Register on-hit trigger to mark the defending hero
-    hit_trigger = _MarkOnHitTrigger(
+    hit_trigger = get_mark_on_hit_trigger_class()(
         attack_instance_id=attack.instance_id,
         target_player_index=link.attack_target_index,
         _state=ctx.state,
@@ -799,6 +675,7 @@ def _hot_on_their_heels_on_attack(ctx: AbilityContext) -> None:
     log.info("  Hot on Their Heels: registered mark-on-hit trigger")
 
 
+@require_active_attack
 def _mark_with_magma_on_attack(ctx: AbilityContext) -> None:
     """Mark with Magma (Draconic/Ninja, Attack Action):
 
@@ -808,8 +685,6 @@ def _mark_with_magma_on_attack(ctx: AbilityContext) -> None:
     Same conditional effect as Hot on Their Heels.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     draconic_count = count_draconic_chain_links(ctx)
     if draconic_count < 2:
@@ -822,7 +697,7 @@ def _mark_with_magma_on_attack(ctx: AbilityContext) -> None:
     attack = link.active_attack
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Mark with Magma")
 
-    hit_trigger = _MarkOnHitTrigger(
+    hit_trigger = get_mark_on_hit_trigger_class()(
         attack_instance_id=attack.instance_id,
         target_player_index=link.attack_target_index,
         _state=ctx.state,
@@ -833,34 +708,7 @@ def _mark_with_magma_on_attack(ctx: AbilityContext) -> None:
     log.info("  Mark with Magma: registered mark-on-hit trigger")
 
 
-@dataclass
-class _MarkOnHitTrigger(TriggeredEffect):
-    """One-shot trigger: on hit, mark the target hero."""
-
-    attack_instance_id: int = 0
-    target_player_index: int = 0
-    card_name: str = ""
-    one_shot: bool = True
-    _state: object = None
-
-    def condition(self, event: GameEvent) -> bool:
-        if event.event_type != EventType.HIT:
-            return False
-        if event.source is None:
-            return False
-        return event.source.instance_id == self.attack_instance_id
-
-    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        if self._state is None:
-            return None
-        target = self._state.players[self.target_player_index]
-        target.is_marked = True
-        log.info(
-            f"  {self.card_name}: Player {self.target_player_index} is now marked"
-        )
-        return None
-
-
+@require_active_attack
 def _hunt_to_the_ends_on_attack(ctx: AbilityContext) -> None:
     """Hunt to the Ends of Rathe (Draconic, Attack Action):
 
@@ -869,8 +717,6 @@ def _hunt_to_the_ends_on_attack(ctx: AbilityContext) -> None:
      Go again'
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     defender_index = link.attack_target_index
     defender = ctx.state.players[defender_index]
@@ -889,6 +735,7 @@ def _hunt_to_the_ends_on_attack(ctx: AbilityContext) -> None:
         grant_power_bonus(ctx, link.active_attack, 2, "Hunt to the Ends of Rathe")
 
 
+@require_active_attack
 def _ignite_on_attack(ctx: AbilityContext) -> None:
     """Ignite (Draconic/Ninja, Attack Action):
 
@@ -900,8 +747,6 @@ def _ignite_on_attack(ctx: AbilityContext) -> None:
     Counter-limited via uses_remaining on the ContinuousEffect.
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     cost_effect = make_cost_modifier(
         -1,
@@ -919,6 +764,7 @@ def _ignite_on_attack(ctx: AbilityContext) -> None:
     )
 
 
+@require_chain_link
 def _enlightened_strike_on_attack(ctx: AbilityContext) -> None:
     """Enlightened Strike (Generic, Attack Action):
 
@@ -933,8 +779,6 @@ def _enlightened_strike_on_attack(ctx: AbilityContext) -> None:
     at play-time. For now we enforce it in the on_attack handler.
     """
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     player = ctx.state.players[ctx.controller_index]
     attack = link.active_attack
@@ -1007,6 +851,7 @@ def _enlightened_strike_on_attack(ctx: AbilityContext) -> None:
         grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Enlightened Strike")
 
 
+@require_active_attack
 def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
     """Rising Resentment (Draconic/Ninja, Attack Action):
 
@@ -1017,8 +862,6 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
      Go again'
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     player = ctx.state.players[ctx.controller_index]
     draconic_count = count_draconic_chain_links(ctx)
@@ -1089,6 +932,7 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
             )
 
 
+@require_active_attack
 def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
     """Spreading Flames (Draconic/Ninja, Attack Action):
 
@@ -1100,8 +944,6 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
     We apply it as a continuous effect for the combat chain duration.
     """
     link = ctx.chain_link
-    if link is None:
-        return
 
     state = ctx.state
     controller = ctx.controller_index
@@ -1155,11 +997,10 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_chain_link
 def _enflame_the_firebrand_on_attack(ctx: AbilityContext) -> None:
     """Enflame the Firebrand on_attack: tiered bonuses based on Draconic chain links."""
     link = ctx.chain_link
-    if link is None or link.active_attack is None:
-        return
 
     attack = link.active_attack
     draconic_count = count_draconic_chain_links(ctx)
