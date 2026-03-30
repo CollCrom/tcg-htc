@@ -505,8 +505,8 @@ def _fealty_instant(ctx: AbilityContext) -> None:
         duration=EffectDuration.END_OF_TURN,
         target_filter=next_card_filter,
     )
-    # Mark with uses_remaining=1 so it only applies once
-    effect.uses_remaining = 1
+    # Note: uses_remaining only works for cost modifiers, not supertype grants.
+    # The closure-based `consumed` flag handles single-use correctly.
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  Fealty: Next card played this turn is Draconic")
 
