@@ -651,8 +651,8 @@ class Game:
                     self._deal_arcane_damage(card, target_index, card.definition.arcane)
                 self._move_to_graveyard_or_banish(card)
 
-            # Go again from resolved layer
-            if layer.has_go_again and not card.definition.is_attack:
+            # Go again from resolved layer (query effect engine, not stale snapshot)
+            if not card.definition.is_attack and Keyword.GO_AGAIN in self.effect_engine.get_modified_keywords(self.state, card):
                 self.state.action_points[layer.controller_index] += 1
 
     def _build_action_decision(self, player_index: int) -> Decision:
