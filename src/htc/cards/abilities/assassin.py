@@ -15,6 +15,7 @@ from htc.cards.abilities._helpers import (
     color_bonus,
     create_token,
     draw_card,
+    gain_life,
     grant_keyword,
     grant_power_bonus,
     mark_attacker,
@@ -745,11 +746,11 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
             return None
         player = state.players[self.controller_index]
         if player.deck:
-            drawn = player.deck.pop(0)
-            drawn.zone = Zone.HAND
-            player.hand.append(drawn)
-            player.turn_counters.num_cards_drawn += 1
             log.info(f"  Savor Bloodshed: Player {self.controller_index} draws a card (dagger hit marked hero)")
+            return GameEvent(
+                event_type=EventType.DRAW_CARD,
+                target_player=self.controller_index,
+            )
         return None
 
 
@@ -843,9 +844,7 @@ def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
 
     # Opponent chooses a card to banish (simplified: first card)
     banished_card = target.hand[0]
-    target.hand.remove(banished_card)
-    banished_card.zone = Zone.BANISHED
-    target.banished.append(banished_card)
+    ctx.banish_card(banished_card, link.attack_target_index)
     log.info(f"  Mark of the Black Widow: Player {link.attack_target_index} banishes {banished_card.name}")
 
 
@@ -872,20 +871,15 @@ def _meet_madness_on_hit(ctx: AbilityContext) -> None:
     if chosen == 1 and target.hand:
         # They choose a card in hand to banish (simplified: first card)
         card = target.hand[0]
-        target.hand.remove(card)
-        card.zone = Zone.BANISHED
-        target.banished.append(card)
+        ctx.banish_card(card, target_index)
         log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from hand")
     elif chosen == 2 and target.arsenal:
         card = target.arsenal[0]
-        target.arsenal.remove(card)
-        card.zone = Zone.BANISHED
-        target.banished.append(card)
+        ctx.banish_card(card, target_index)
         log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from arsenal")
     elif chosen == 3 and target.deck:
-        card = target.deck.pop(0)
-        card.zone = Zone.BANISHED
-        target.banished.append(card)
+        card = target.deck[0]
+        ctx.banish_card(card, target_index)
         log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from top of deck")
     else:
         log.info(f"  Meet Madness: chosen mode {chosen} has no valid target")
@@ -1005,17 +999,14 @@ def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
 
     # Banish top card of deck
     if target.deck:
-        card = target.deck.pop(0)
-        card.zone = Zone.BANISHED
-        target.banished.append(card)
+        card = target.deck[0]
+        ctx.banish_card(card, target_index)
         log.info(f"  Leave No Witnesses: Banished {card.name} from top of P{target_index}'s deck")
 
     # Banish up to 1 card in their arsenal
     if target.arsenal:
         card = target.arsenal[0]
-        target.arsenal.remove(card)
-        card.zone = Zone.BANISHED
-        target.banished.append(card)
+        ctx.banish_card(card, target_index)
         log.info(f"  Leave No Witnesses: Banished {card.name} from P{target_index}'s arsenal")
 
 
@@ -1075,37 +1066,31 @@ def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
 
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
-    controller = ctx.state.players[ctx.controller_index]
 
     # Banish top card of deck
     if not target.deck:
         log.info(f"  Persuasive Prognosis: no cards in deck to banish")
         return
 
-    top_card = target.deck.pop(0)
-    top_card.zone = Zone.BANISHED
-    target.banished.append(top_card)
+    top_card = target.deck[0]
+    ctx.banish_card(top_card, target_index)
     banished_color = top_card.definition.color
     log.info(f"  Persuasive Prognosis: Banished {top_card.name} ({banished_color}) from deck")
 
     # If banished an action card, gain 1 life
     if top_card.definition.is_action:
-        controller.life_total += 1
-        log.info(f"  Persuasive Prognosis: Gained 1 life (banished action card)")
+        gain_life(ctx, ctx.controller_index, 1, "Persuasive Prognosis")
 
     # Look at hand, banish a card with same color
     if banished_color is not None:
         matching = [c for c in target.hand if c.definition.color == banished_color]
         if matching:
             card = matching[0]  # Simplified: first matching card
-            target.hand.remove(card)
-            card.zone = Zone.BANISHED
-            target.banished.append(card)
+            ctx.banish_card(card, target_index)
             log.info(f"  Persuasive Prognosis: Banished {card.name} from hand (same color: {banished_color})")
 
             if card.definition.is_action:
-                controller.life_total += 1
-                log.info(f"  Persuasive Prognosis: Gained 1 life (banished action card from hand)")
+                gain_life(ctx, ctx.controller_index, 1, "Persuasive Prognosis")
 
 
 def _reapers_call_on_hit(ctx: AbilityContext) -> None:

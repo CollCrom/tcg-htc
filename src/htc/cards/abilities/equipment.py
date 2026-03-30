@@ -156,13 +156,13 @@ class MaskOfMomentumTrigger(TriggeredEffect):
 
         player = state.players[self.controller_index]
         if player.deck:
-            drawn = player.deck.pop(0)
-            drawn.zone = Zone.HAND
-            player.hand.append(drawn)
-            player.turn_counters.num_cards_drawn += 1
             log.info(
                 f"  Mask of Momentum: Player {self.controller_index} draws a card "
                 f"(3rd+ consecutive hit)"
+            )
+            return GameEvent(
+                event_type=EventType.DRAW_CARD,
+                target_player=self.controller_index,
             )
         return None
 

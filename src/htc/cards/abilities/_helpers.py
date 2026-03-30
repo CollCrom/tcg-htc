@@ -107,14 +107,28 @@ def mark_attacker(ctx: AbilityContext, link, ability_name: str) -> None:
 
 
 def draw_card(ctx: AbilityContext, ability_name: str) -> None:
-    """Draw a card for the controller."""
+    """Draw a card for the controller via the event system."""
+    from htc.engine.events import EventType, GameEvent
+
     player = ctx.state.players[ctx.controller_index]
     if player.deck:
-        drawn = player.deck.pop(0)
-        drawn.zone = Zone.HAND
-        player.hand.append(drawn)
-        player.turn_counters.num_cards_drawn += 1
+        ctx.events.emit(GameEvent(
+            event_type=EventType.DRAW_CARD,
+            target_player=ctx.controller_index,
+        ))
         log.info(f"  {ability_name}: Player {ctx.controller_index} draws a card")
+
+
+def gain_life(ctx: AbilityContext, player_index: int, amount: int, ability_name: str) -> None:
+    """Gain life for a player via the event system."""
+    from htc.engine.events import EventType, GameEvent
+
+    ctx.events.emit(GameEvent(
+        event_type=EventType.GAIN_LIFE,
+        target_player=player_index,
+        amount=amount,
+    ))
+    log.info(f"  {ability_name}: Player {player_index} gains {amount} life")
 
 
 # ---------------------------------------------------------------------------
