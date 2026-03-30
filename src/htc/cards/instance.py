@@ -24,32 +24,44 @@ class CardInstance:
     counters: dict[str, int] = field(default_factory=dict)
     is_proxy: bool = False
     proxy_source_id: int | None = None  # instance_id of the weapon that created this proxy
+    definition_override: CardDefinition | None = None  # copy effect override
 
     # --- Delegation to definition ---
 
     @property
+    def _effective_definition(self) -> CardDefinition:
+        """The definition to use for property lookups.
+
+        When ``definition_override`` is set (e.g. by a copy effect),
+        all property lookups delegate to the override instead of the
+        original definition. The card keeps its identity (instance_id,
+        zone, counters, etc.) but takes on the copied card's stats.
+        """
+        return self.definition_override if self.definition_override is not None else self.definition
+
+    @property
     def name(self) -> str:
-        return self.definition.name
+        return self._effective_definition.name
 
     @property
     def cost(self) -> int | None:
-        return self.definition.cost
+        return self._effective_definition.cost
 
     @property
     def pitch(self) -> int | None:
-        return self.definition.pitch
+        return self._effective_definition.pitch
 
     @property
     def base_power(self) -> int | None:
-        return self.definition.power
+        return self._effective_definition.power
 
     @property
     def base_defense(self) -> int | None:
-        return self.definition.defense
+        return self._effective_definition.defense
 
     @property
     def keyword_values(self) -> dict:
-        return self.definition.keyword_values
+        return self._effective_definition.keyword_values
 
     def __repr__(self) -> str:
         return f"CardInstance({self.instance_id}, {self.definition!r}, zone={self.zone.value})"
