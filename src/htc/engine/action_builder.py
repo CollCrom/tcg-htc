@@ -148,9 +148,15 @@ class ActionBuilder:
         options: list[ActionOption] = []
         player = state.players[priority_player]
 
+        link = state.combat_chain.active_link
+        defense_blocked = link is not None and link.defense_reactions_blocked
+
         for card in player.hand:
             # Attack reactions: only attacker can play (7.4.2a)
             if card.definition.is_attack_reaction and priority_player == attacker_index:
+                # Exposed: "If you are marked, you can't play this."
+                if card.name == "Exposed" and player.is_marked:
+                    continue
                 if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
                     options.append(ActionOption.play_card(
                         card.instance_id, card.name, card.definition.color_label,
@@ -159,6 +165,8 @@ class ActionBuilder:
 
             # Defense reactions: only defender can play (7.4.2b)
             if card.definition.is_defense_reaction and priority_player == defender_index:
+                if defense_blocked:
+                    continue
                 if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
                     options.append(ActionOption.play_card(
                         card.instance_id, card.name, card.definition.color_label,
@@ -166,7 +174,7 @@ class ActionBuilder:
                     ))
 
         # Defense reactions from banish (e.g. traps banished by Trap-Door)
-        if priority_player == defender_index:
+        if priority_player == defender_index and not defense_blocked:
             for card in self._get_playable_from_banish(state, priority_player):
                 if card.definition.is_defense_reaction:
                     if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
@@ -237,6 +245,10 @@ class ActionBuilder:
 
         # Resource cards and blocks can't be played from hand
         if defn.types & {CardType.RESOURCE, CardType.BLOCK}:
+            return False
+
+        # Death Touch: "can't be played from hand" (only arsenal or banish)
+        if card.name == "Death Touch" and card.zone == Zone.HAND:
             return False
 
         # Action cards need action points
