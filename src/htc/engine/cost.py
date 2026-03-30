@@ -9,6 +9,7 @@ from htc.state.game_state import GameState
 
 if TYPE_CHECKING:
     from htc.engine.effects import EffectEngine
+    from htc.engine.events import EventBus
 
 
 def calculate_play_cost(
@@ -86,8 +87,17 @@ def build_pitch_decision(
     )
 
 
-def pitch_card(state: GameState, player_index: int, card: CardInstance) -> int:
-    """Pitch a card: move from hand to pitch zone, gain resources. Returns resources gained."""
+def pitch_card(
+    state: GameState,
+    player_index: int,
+    card: CardInstance,
+    event_bus: EventBus | None = None,
+) -> int:
+    """Pitch a card: move from hand to pitch zone, gain resources. Returns resources gained.
+
+    If *event_bus* is provided, emits a ``PITCH_CARD`` event so that
+    pitch-triggered abilities (e.g. Authority of Ataya) can fire.
+    """
     player = state.players[player_index]
     if card in player.hand:
         player.hand.remove(card)
@@ -96,6 +106,18 @@ def pitch_card(state: GameState, player_index: int, card: CardInstance) -> int:
     gained = card.pitch or 0
     state.resource_points[player_index] += gained
     player.turn_counters.num_cards_pitched += 1
+
+    if event_bus is not None:
+        from htc.engine.events import EventType, GameEvent
+
+        event_bus.emit(GameEvent(
+            event_type=EventType.PITCH_CARD,
+            source=card,
+            target_player=player_index,
+            card=card,
+            amount=gained,
+        ))
+
     return gained
 
 

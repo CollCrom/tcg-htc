@@ -261,13 +261,30 @@ def _authority_of_ataya(ctx: AbilityContext) -> None:
     'Legendary. When this is pitched, defense reaction cards cost opponents
      an additional {r} to play this turn.'
 
-    NOTE: This is a pitch trigger, not an on-play effect. The on_play
-    timing is incorrect for this card — it should trigger when pitched.
-    TODO: Implement pitch-trigger infrastructure. For now this is a stub.
+    Creates a continuous effect that increases the cost of defense reaction
+    cards for all opponents by 1 resource until end of turn.
     """
+    from htc.engine.continuous import EffectDuration, make_cost_modifier
+
+    controller = ctx.controller_index
+    # "opponents" = all other players
+    opponent_indices = [i for i in range(len(ctx.state.players)) if i != controller]
+
+    for opp_idx in opponent_indices:
+        effect = make_cost_modifier(
+            +1,
+            controller,
+            source_instance_id=ctx.source_card.instance_id,
+            duration=EffectDuration.END_OF_TURN,
+            target_filter=lambda c, _oi=opp_idx: (
+                c.definition.is_defense_reaction and c.owner_index == _oi
+            ),
+        )
+        ctx.effect_engine.add_continuous_effect(ctx.state, effect)
+
     log.info(
-        "  Authority of Ataya: pitch trigger not yet implemented "
-        "(requires pitch-trigger infrastructure)"
+        f"  Authority of Ataya: defense reactions cost opponents +1{{r}} "
+        f"this turn (controller P{controller})"
     )
 
 
@@ -1184,7 +1201,7 @@ def register_ninja_abilities(registry: AbilityRegistry) -> None:
 
     # Non-attack actions (on_play)
     registry.register("on_play", "Warmonger's Diplomacy", _warmongers_diplomacy)
-    registry.register("on_play", "Authority of Ataya", _authority_of_ataya)
+    registry.register("on_pitch", "Authority of Ataya", _authority_of_ataya)
 
     # Attack actions — on_attack
     registry.register("on_attack", "Dragon Power", _dragon_power_on_attack)

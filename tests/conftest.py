@@ -258,7 +258,7 @@ def make_game_shell(
     game.events = EventBus()
     game.stack_mgr = StackManager()
     game.combat_mgr = CombatManager(game.effect_engine)
-    game.cost_manager = CostManager(game.effect_engine, lambda d: game._ask(d))
+    game.cost_manager = CostManager(game.effect_engine, lambda d: game._ask(d), game.events)
     game.keyword_engine = KeywordEngine(
         game.effect_engine, game.events, lambda d: game._ask(d),
     )

@@ -25,6 +25,7 @@ from htc.engine.cost import (
 if TYPE_CHECKING:
     from htc.cards.instance import CardInstance
     from htc.engine.effects import EffectEngine
+    from htc.engine.events import EventBus
     from htc.state.game_state import GameState
 
 log = logging.getLogger(__name__)
@@ -40,9 +41,15 @@ class CostManager:
     interactive pitch loop can query players.
     """
 
-    def __init__(self, effect_engine: EffectEngine, ask_fn: AskFn) -> None:
+    def __init__(
+        self,
+        effect_engine: EffectEngine,
+        ask_fn: AskFn,
+        event_bus: EventBus | None = None,
+    ) -> None:
         self.effect_engine = effect_engine
         self._ask = ask_fn
+        self.event_bus = event_bus
 
     # --- Delegations to cost.py free functions ---
 
@@ -88,5 +95,5 @@ class CostManager:
                 pitch_id = int(response.first.replace("pitch_", ""))
                 pitch_target = player.find_card(pitch_id)
                 if pitch_target:
-                    pitch_card(state, player_index, pitch_target)
+                    pitch_card(state, player_index, pitch_target, self.event_bus)
         pay_resource_cost(state, player_index, cost)

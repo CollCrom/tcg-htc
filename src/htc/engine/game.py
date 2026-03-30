@@ -71,8 +71,10 @@ class Game:
         self.stack_mgr = StackManager()
         self.effect_engine = EffectEngine()
         self.combat_mgr = CombatManager(self.effect_engine)
-        self.cost_manager = CostManager(self.effect_engine, lambda d: self._ask(d))
         self.events = EventBus()
+        self.cost_manager = CostManager(
+            self.effect_engine, lambda d: self._ask(d), self.events
+        )
         self.keyword_engine = KeywordEngine(
             self.effect_engine, self.events, lambda d: self._ask(d),
         )
@@ -174,6 +176,7 @@ class Game:
         self.events.register_handler(EventType.LOSE_LIFE, self._handle_lose_life)
         self.events.register_handler(EventType.DRAW_CARD, self._handle_draw_card)
         self.events.register_handler(EventType.HIT, self._handle_hit_mark_removal)
+        self.events.register_handler(EventType.PITCH_CARD, self._handle_pitch_card)
 
     def _handle_damage(self, event: GameEvent) -> None:
         """Apply damage to a player."""
@@ -226,6 +229,11 @@ class Game:
         card.zone = Zone.HAND
         player.hand.append(card)
         player.turn_counters.num_cards_drawn += 1
+
+    def _handle_pitch_card(self, event: GameEvent) -> None:
+        """Execute on_pitch abilities when a card is pitched."""
+        if event.card is not None and event.target_player is not None:
+            self._apply_card_ability(event.card, event.target_player, "on_pitch")
 
     # --- Triggered Effect Processing ---
 
