@@ -27,6 +27,7 @@ from htc.cards.abilities.tokens import (
 from htc.engine.actions import PlayerResponse
 from htc.engine.events import EventType, GameEvent
 from htc.enums import CardType, Keyword, SubType, SuperType, Zone
+from tests.abilities.conftest import make_dagger_weapon, make_weapon_proxy
 from tests.conftest import make_card, make_game_shell, make_mock_ask, make_pitch_card
 
 
@@ -137,25 +138,8 @@ class TestFrailtyToken(unittest.TestCase):
         )
 
         # Create a weapon proxy (simulates weapon attack)
-        from htc.cards.card import CardDefinition
-        from htc.cards.instance import CardInstance
-
-        proxy_def = CardDefinition(
-            unique_id="proxy-1",
-            name="Dagger (attack)",
-            color=None, pitch=None, cost=None,
-            power=1, defense=None, health=None, intellect=None, arcane=None,
-            types=frozenset({CardType.ACTION}),
-            subtypes=frozenset({SubType.ATTACK}),
-            supertypes=frozenset(),
-            keywords=frozenset(),
-            functional_text="", type_text="",
-        )
-        proxy = CardInstance(
-            instance_id=50, definition=proxy_def,
-            owner_index=0, zone=Zone.COMBAT_CHAIN,
-        )
-        proxy.is_proxy = True
+        dagger = make_dagger_weapon(instance_id=49)
+        proxy = make_weapon_proxy(dagger, instance_id=50)
 
         modified_power = game.effect_engine.get_modified_power(game.state, proxy)
         assert modified_power == 0  # 1 - 1

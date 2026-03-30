@@ -146,6 +146,27 @@ class Game:
                 game=self,
             )
 
+    def _build_ability_context(
+        self, card: CardInstance, player_index: int, **extra_kwargs,
+    ) -> AbilityContext:
+        """Construct an AbilityContext wired to this game's engines.
+
+        Any additional keyword arguments (e.g. ``extra_data``) are forwarded
+        to the AbilityContext constructor.
+        """
+        return AbilityContext(
+            state=self.state,
+            source_card=card,
+            controller_index=player_index,
+            chain_link=self.state.combat_chain.active_link,
+            effect_engine=self.effect_engine,
+            events=self.events,
+            ask=lambda d: self._ask(d),
+            keyword_engine=self.keyword_engine,
+            combat_mgr=self.combat_mgr,
+            **extra_kwargs,
+        )
+
     def _apply_card_ability(
         self, card: CardInstance, player_index: int, timing: str,
         *, extra_data: dict | None = None,
@@ -163,18 +184,7 @@ class Game:
             log.debug(f"  No {timing} ability for {card.name}")
             return
 
-        ctx = AbilityContext(
-            state=self.state,
-            source_card=card,
-            controller_index=player_index,
-            chain_link=self.state.combat_chain.active_link,
-            effect_engine=self.effect_engine,
-            events=self.events,
-            ask=lambda d: self._ask(d),
-            keyword_engine=self.keyword_engine,
-            combat_mgr=self.combat_mgr,
-            extra_data=extra_data or {},
-        )
+        ctx = self._build_ability_context(card, player_index, extra_data=extra_data or {})
         handler(ctx)
 
     def _register_event_handlers(self) -> None:
@@ -953,17 +963,7 @@ class Game:
             log.warning(f"  No instant_discard_effect handler for {card.name}")
             return
 
-        ctx = AbilityContext(
-            state=self.state,
-            source_card=card,
-            controller_index=player_index,
-            chain_link=self.state.combat_chain.active_link,
-            effect_engine=self.effect_engine,
-            events=self.events,
-            ask=lambda d: self._ask(d),
-            keyword_engine=self.keyword_engine,
-            combat_mgr=self.combat_mgr,
-        )
+        ctx = self._build_ability_context(card, player_index)
         handler(ctx)
         log.info(f"  Instant discard activated: {card.name}")
 
@@ -999,17 +999,7 @@ class Game:
             if cost is not None and cost > 0:
                 self._pitch_to_pay(player_index, cost)
 
-        ctx = AbilityContext(
-            state=self.state,
-            source_card=equipment,
-            controller_index=player_index,
-            chain_link=self.state.combat_chain.active_link,
-            effect_engine=self.effect_engine,
-            events=self.events,
-            ask=lambda d: self._ask(d),
-            keyword_engine=self.keyword_engine,
-            combat_mgr=self.combat_mgr,
-        )
+        ctx = self._build_ability_context(equipment, player_index)
         handler(ctx)
         log.info(f"  Equipment activated: {equipment.name} ({timing})")
 
@@ -1034,17 +1024,7 @@ class Game:
             log.warning(f"  No permanent instant handler for {permanent.name}")
             return
 
-        ctx = AbilityContext(
-            state=self.state,
-            source_card=permanent,
-            controller_index=player_index,
-            chain_link=self.state.combat_chain.active_link,
-            effect_engine=self.effect_engine,
-            events=self.events,
-            ask=lambda d: self._ask(d),
-            keyword_engine=self.keyword_engine,
-            combat_mgr=self.combat_mgr,
-        )
+        ctx = self._build_ability_context(permanent, player_index)
         handler(ctx)
         log.info(f"  Permanent instant activated: {permanent.name}")
 
@@ -1081,17 +1061,7 @@ class Game:
             0, self.state.action_points.get(player_index, 0) - 1
         )
 
-        ctx = AbilityContext(
-            state=self.state,
-            source_card=permanent,
-            controller_index=player_index,
-            chain_link=self.state.combat_chain.active_link,
-            effect_engine=self.effect_engine,
-            events=self.events,
-            ask=lambda d: self._ask(d),
-            keyword_engine=self.keyword_engine,
-            combat_mgr=self.combat_mgr,
-        )
+        ctx = self._build_ability_context(permanent, player_index)
         handler(ctx)
         log.info(f"  Permanent action activated: {permanent.name}")
 

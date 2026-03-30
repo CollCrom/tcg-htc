@@ -21,6 +21,7 @@ from htc.cards.abilities._helpers import (
     get_mark_on_hit_trigger_class,
     grant_keyword,
     grant_power_bonus,
+    make_once_filter,
     mark_attacker,
     require_active_attack,
     require_chain_link,
@@ -540,35 +541,17 @@ def _cut_from_the_same_cloth(ctx: AbilityContext) -> None:
 def _grant_next_dagger_attack_bonus(ctx: AbilityContext, bonus: int, source_name: str) -> None:
     """Grant +N power to the controller's next dagger attack this turn.
 
-    Uses a continuous effect with an ``applied_to`` set that records the
-    instance_id of the first matching dagger attack.  The filter returns True
-    for that same card on every subsequent evaluation, so the bonus is stable
-    across display, damage calculation, and any other queries.
+    Uses :func:`make_once_filter` so the bonus sticks to the first matching
+    dagger and remains stable across repeated effect-engine queries.
     """
     controller = ctx.controller_index
     source_id = ctx.source_card.instance_id
-    # Track which instance_id has been granted the bonus (at most one).
-    applied_to: set[int] = set()
 
-    def target_filter(card):
-        # Already granted — keep matching the same card idempotently.
-        if card.instance_id in applied_to:
-            return True
-        # Only grant once.
-        if applied_to:
-            return False
-        # Check if this card is a dagger attack on the combat chain
-        if card.zone != Zone.COMBAT_CHAIN:
-            return False
-        if SubType.DAGGER not in card.definition.subtypes:
-            # Also check if it's a proxy of a dagger weapon
-            if not card.is_proxy:
-                return False
-        if card.owner_index != controller:
-            return False
-        # Record this card so subsequent evaluations keep matching it.
-        applied_to.add(card.instance_id)
-        return True
+    target_filter = make_once_filter(lambda card: (
+        card.zone == Zone.COMBAT_CHAIN
+        and card.owner_index == controller
+        and (SubType.DAGGER in card.definition.subtypes or card.is_proxy)
+    ))
 
     effect = make_power_modifier(
         bonus,
@@ -751,34 +734,20 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     controller = ctx.controller_index
     source_id = ctx.source_card.instance_id
 
-    # Track which instance_id has been granted the bonus (at most one).
-    applied_to: set[int] = set()
-
-    def stealth_attack_filter(card):
-        # Already granted — keep matching the same card idempotently.
-        if card.instance_id in applied_to:
-            return True
-        # Only grant once.
-        if applied_to:
-            return False
-        if card.zone != Zone.COMBAT_CHAIN:
-            return False
-        if card.owner_index != controller:
-            return False
-        if Keyword.STEALTH not in card.definition.keywords:
-            return False
-        # Record this card so subsequent evaluations keep matching it.
-        applied_to.add(card.instance_id)
-        return True
     # Note: ideally check Stealth via effect engine, but target_filter
     # doesn't have access to state/effect_engine. Stealth is innate.
+    target_filter = make_once_filter(lambda card: (
+        card.zone == Zone.COMBAT_CHAIN
+        and card.owner_index == controller
+        and Keyword.STEALTH in card.definition.keywords
+    ))
 
     effect = make_power_modifier(
         bonus,
         controller,
         source_instance_id=source_id,
         duration=EffectDuration.END_OF_TURN,
-        target_filter=stealth_attack_filter,
+        target_filter=target_filter,
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  Orb-Weaver Spinneret: Equipped Graphene Chelicera, next Stealth attack gets +{bonus} power")

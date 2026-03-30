@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from htc.cards.abilities._helpers import make_once_filter
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.continuous import (
     EffectDuration,
@@ -56,15 +57,21 @@ def _destroy_token(state: GameState, controller_index: int, token: CardInstance)
 
 
 # ---------------------------------------------------------------------------
-# Ponder — end-phase trigger
-# ---------------------------------------------------------------------------
-# "At the beginning of your end phase, destroy Ponder and draw a card."
+# Base class for end-phase token triggers
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class PonderEndPhaseTrigger(TriggeredEffect):
-    """Ponder token: destroy and draw a card at end of turn."""
+class TokenEndPhaseTrigger(TriggeredEffect):
+    """Base class for token triggers that fire at the beginning of end phase.
+
+    Provides shared fields (controller_index, token_instance_id, one_shot,
+    _state_getter), the standard ``condition()`` check (END_OF_TURN event,
+    correct controller, token still on the battlefield), and helpers
+    ``_get_state()`` / ``_get_token()``.
+
+    Subclasses only need to override ``create_triggered_event()``.
+    """
 
     controller_index: int = 0
     token_instance_id: int = 0
@@ -76,37 +83,51 @@ class PonderEndPhaseTrigger(TriggeredEffect):
             return False
         if event.target_player != self.controller_index:
             return False
-        # Token must still exist
         state = self._get_state()
         if state is None:
             return False
         player = state.players[self.controller_index]
         return any(p.instance_id == self.token_instance_id for p in player.permanents)
 
-    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+    def _get_state(self) -> GameState | None:
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+    def _get_token(self) -> CardInstance | None:
+        """Return the token CardInstance if it still exists, else None."""
         state = self._get_state()
         if state is None:
             return None
-
         player = state.players[self.controller_index]
-        token = next(
+        return next(
             (p for p in player.permanents if p.instance_id == self.token_instance_id),
             None,
         )
+
+
+# ---------------------------------------------------------------------------
+# Ponder — end-phase trigger
+# ---------------------------------------------------------------------------
+# "At the beginning of your end phase, destroy Ponder and draw a card."
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PonderEndPhaseTrigger(TokenEndPhaseTrigger):
+    """Ponder token: destroy and draw a card at end of turn."""
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        token = self._get_token()
         if token is None:
             return None
-
+        state = self._get_state()
         _destroy_token(state, self.controller_index, token)
         log.info(f"  Ponder: Player {self.controller_index} draws a card")
         return GameEvent(
             event_type=EventType.DRAW_CARD,
             target_player=self.controller_index,
         )
-
-    def _get_state(self) -> GameState | None:
-        if self._state_getter and callable(self._state_getter):
-            return self._state_getter()
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -118,46 +139,17 @@ class PonderEndPhaseTrigger(TriggeredEffect):
 
 
 @dataclass
-class FrailtyEndPhaseTrigger(TriggeredEffect):
+class FrailtyEndPhaseTrigger(TokenEndPhaseTrigger):
     """Frailty token: destroy at end of turn (continuous effect is removed by
     cleanup_zone_effects when the source token leaves the arena)."""
 
-    controller_index: int = 0
-    token_instance_id: int = 0
-    one_shot: bool = True
-    _state_getter: object = None
-
-    def condition(self, event: GameEvent) -> bool:
-        if event.event_type != EventType.END_OF_TURN:
-            return False
-        if event.target_player != self.controller_index:
-            return False
-        state = self._get_state()
-        if state is None:
-            return False
-        player = state.players[self.controller_index]
-        return any(p.instance_id == self.token_instance_id for p in player.permanents)
-
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        state = self._get_state()
-        if state is None:
-            return None
-
-        player = state.players[self.controller_index]
-        token = next(
-            (p for p in player.permanents if p.instance_id == self.token_instance_id),
-            None,
-        )
+        token = self._get_token()
         if token is None:
             return None
-
+        state = self._get_state()
         _destroy_token(state, self.controller_index, token)
         log.info(f"  Frailty: Destroyed at end of turn (Player {self.controller_index})")
-        return None
-
-    def _get_state(self) -> GameState | None:
-        if self._state_getter and callable(self._state_getter):
-            return self._state_getter()
         return None
 
 
@@ -212,40 +204,18 @@ def register_frailty_continuous_effect(
 
 
 @dataclass
-class InertiaEndPhaseTrigger(TriggeredEffect):
+class InertiaEndPhaseTrigger(TokenEndPhaseTrigger):
     """Inertia token: destroy, then move hand + arsenal to bottom of deck."""
 
-    controller_index: int = 0
-    token_instance_id: int = 0
-    one_shot: bool = True
-    _state_getter: object = None
-
-    def condition(self, event: GameEvent) -> bool:
-        if event.event_type != EventType.END_OF_TURN:
-            return False
-        if event.target_player != self.controller_index:
-            return False
-        state = self._get_state()
-        if state is None:
-            return False
-        player = state.players[self.controller_index]
-        return any(p.instance_id == self.token_instance_id for p in player.permanents)
-
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        state = self._get_state()
-        if state is None:
-            return None
-
-        player = state.players[self.controller_index]
-        token = next(
-            (p for p in player.permanents if p.instance_id == self.token_instance_id),
-            None,
-        )
+        token = self._get_token()
         if token is None:
             return None
+        state = self._get_state()
 
         _destroy_token(state, self.controller_index, token)
 
+        player = state.players[self.controller_index]
         # Move all cards from hand to bottom of deck
         cards_moved = 0
         for card in list(player.hand):
@@ -267,11 +237,6 @@ class InertiaEndPhaseTrigger(TriggeredEffect):
         )
         return None
 
-    def _get_state(self) -> GameState | None:
-        if self._state_getter and callable(self._state_getter):
-            return self._state_getter()
-        return None
-
 
 # ---------------------------------------------------------------------------
 # Bloodrot Pox — end-phase damage unless pay 3
@@ -282,41 +247,20 @@ class InertiaEndPhaseTrigger(TriggeredEffect):
 
 
 @dataclass
-class BloodrotPoxEndPhaseTrigger(TriggeredEffect):
+class BloodrotPoxEndPhaseTrigger(TokenEndPhaseTrigger):
     """Bloodrot Pox: destroy, then deal 2 damage unless controller pays 3 resources."""
 
-    controller_index: int = 0
-    token_instance_id: int = 0
-    one_shot: bool = True
-    _state_getter: object = None
     _ask: object = None  # ask callback
 
-    def condition(self, event: GameEvent) -> bool:
-        if event.event_type != EventType.END_OF_TURN:
-            return False
-        if event.target_player != self.controller_index:
-            return False
-        state = self._get_state()
-        if state is None:
-            return False
-        player = state.players[self.controller_index]
-        return any(p.instance_id == self.token_instance_id for p in player.permanents)
-
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        state = self._get_state()
-        if state is None:
-            return None
-
-        player = state.players[self.controller_index]
-        token = next(
-            (p for p in player.permanents if p.instance_id == self.token_instance_id),
-            None,
-        )
+        token = self._get_token()
         if token is None:
             return None
+        state = self._get_state()
 
         _destroy_token(state, self.controller_index, token)
 
+        player = state.players[self.controller_index]
         # Check if player can pay 3 resources (from existing resources + pitchable cards)
         available = state.resource_points.get(self.controller_index, 0)
         for c in player.hand:
@@ -395,11 +339,6 @@ class BloodrotPoxEndPhaseTrigger(TriggeredEffect):
             data={"is_combat": False},
         )
 
-    def _get_state(self) -> GameState | None:
-        if self._state_getter and callable(self._state_getter):
-            return self._state_getter()
-        return None
-
 
 # ---------------------------------------------------------------------------
 # Fealty — instant activation + end-phase conditional self-destruct
@@ -411,60 +350,35 @@ class BloodrotPoxEndPhaseTrigger(TriggeredEffect):
 
 
 @dataclass
-class FealtyEndPhaseTrigger(TriggeredEffect):
+class FealtyEndPhaseTrigger(TokenEndPhaseTrigger):
     """Fealty token: conditionally self-destruct at end of turn.
 
     Destroyed if the controller hasn't created a Fealty token OR played a
     Draconic card this turn.
     """
 
-    controller_index: int = 0
-    token_instance_id: int = 0
-    one_shot: bool = True
-    _state_getter: object = None
-
     def condition(self, event: GameEvent) -> bool:
-        if event.event_type != EventType.END_OF_TURN:
+        if not super().condition(event):
             return False
-        if event.target_player != self.controller_index:
-            return False
+        # Extra check: hasn't created a Fealty OR played a Draconic card
         state = self._get_state()
-        if state is None:
-            return False
         player = state.players[self.controller_index]
-        if not any(p.instance_id == self.token_instance_id for p in player.permanents):
-            return False
-
-        # Check condition: hasn't created a Fealty OR played a Draconic card
         tc = player.turn_counters
         if tc.fealty_created_this_turn or tc.draconic_card_played_this_turn:
             return False  # condition NOT met, don't destroy
-
         return True  # condition met, destroy
 
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        state = self._get_state()
-        if state is None:
-            return None
-
-        player = state.players[self.controller_index]
-        token = next(
-            (p for p in player.permanents if p.instance_id == self.token_instance_id),
-            None,
-        )
+        token = self._get_token()
         if token is None:
             return None
+        state = self._get_state()
 
         _destroy_token(state, self.controller_index, token)
         log.info(
             f"  Fealty: Self-destructed at end of turn — no Fealty created "
             f"and no Draconic card played (Player {self.controller_index})"
         )
-        return None
-
-    def _get_state(self) -> GameState | None:
-        if self._state_getter and callable(self._state_getter):
-            return self._state_getter()
         return None
 
 
@@ -485,23 +399,11 @@ def _fealty_instant(ctx: AbilityContext) -> None:
 
     # Grant Draconic supertype to the next card played this turn
     controller = ctx.controller_index
-    # Track which instance_id was granted Draconic.  On first match the ID is
-    # recorded; all subsequent evaluations keep matching the same card so the
-    # grant is stable across multiple effect-engine queries (cost reduction,
-    # supertype resolution, Draconic tracking, etc.).
-    granted_id: list[int | None] = [None]
 
-    def next_card_filter(card: CardInstance) -> bool:
-        if card.owner_index != controller:
-            return False
-        # Already granted — keep matching the same card idempotently.
-        if granted_id[0] is not None:
-            return card.instance_id == granted_id[0]
-        # Match the first card that reaches the stack or combat chain.
-        if card.zone in (Zone.COMBAT_CHAIN, Zone.STACK):
-            granted_id[0] = card.instance_id
-            return True
-        return False
+    next_card_filter = make_once_filter(lambda card: (
+        card.owner_index == controller
+        and card.zone in (Zone.COMBAT_CHAIN, Zone.STACK)
+    ))
 
     effect = make_supertype_grant(
         frozenset({SuperType.DRACONIC}),
