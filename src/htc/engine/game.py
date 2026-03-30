@@ -746,6 +746,9 @@ class Game:
         resource_cost = calculate_play_cost(self.state, card, self.effect_engine)
         self._pitch_to_pay(player_index, resource_cost)
 
+        # Consume usage-limited cost reduction effects that matched this card
+        self.effect_engine.consume_limited_cost_effects(self.state, card)
+
         # Update turn counters
         if card.definition.is_attack_action:
             player.turn_counters.num_attack_cards_played += 1

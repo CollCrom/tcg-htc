@@ -110,6 +110,42 @@ class EffectEngine:
         return card.definition.keyword_value(keyword)
 
     # ------------------------------------------------------------------
+    # Usage-limited cost effects
+    # ------------------------------------------------------------------
+
+    def consume_limited_cost_effects(
+        self, state: GameState, card: CardInstance
+    ) -> None:
+        """Decrement ``uses_remaining`` on cost effects that matched *card*.
+
+        Called after a card is successfully played and its cost paid.
+        Only cost-modifying effects (``numeric_property == COST``) with a
+        non-None ``uses_remaining`` are considered.  Effects whose counter
+        reaches 0 are removed.
+        """
+        active = self._active_effects(state)
+        # Pre-resolve supertypes so target_filter sees granted supertypes
+        card._resolved_supertypes = self._resolver.resolve_supertypes(
+            active, card, state, card.definition.supertypes
+        )
+        try:
+            to_remove: list[int] = []
+            for effect in active:
+                if (
+                    effect.numeric_property == NumericProperty.COST
+                    and effect.uses_remaining is not None
+                    and effect.target_filter(card)
+                ):
+                    effect.uses_remaining -= 1
+                    if effect.uses_remaining <= 0:
+                        to_remove.append(effect.effect_id)
+            for eid in to_remove:
+                self.remove_continuous_effect(state, eid)
+        finally:
+            if hasattr(card, "_resolved_supertypes"):
+                del card._resolved_supertypes
+
+    # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
 
