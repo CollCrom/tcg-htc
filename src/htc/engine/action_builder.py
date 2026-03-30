@@ -247,8 +247,8 @@ class ActionBuilder:
         if defn.types & {CardType.RESOURCE, CardType.BLOCK}:
             return False
 
-        # Death Touch: "can't be played from hand" (only arsenal or banish)
-        if card.name == "Death Touch" and card.zone == Zone.HAND:
+        # Death Touch: can only be played from arsenal
+        if card.name == "Death Touch" and card.zone != Zone.ARSENAL:
             return False
 
         # Action cards need action points

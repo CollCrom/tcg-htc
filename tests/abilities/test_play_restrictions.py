@@ -3,7 +3,7 @@
 Covers:
 - Command and Conquer: defense reactions can't be played this chain link
 - Exposed: can't be played when controller is marked
-- Death Touch: can't be played from hand (only arsenal or banish)
+- Death Touch: can only be played from arsenal
 """
 
 from htc.cards.card import CardDefinition
@@ -324,7 +324,7 @@ def test_exposed_allowed_when_not_marked():
 
 
 # ---------------------------------------------------------------------------
-# Death Touch — can't be played from hand
+# Death Touch — can only be played from arsenal
 # ---------------------------------------------------------------------------
 
 
@@ -368,8 +368,8 @@ def test_death_touch_allowed_from_arsenal():
     assert dt.instance_id in card_ids
 
 
-def test_death_touch_allowed_from_banish():
-    """Death Touch CAN be played from banish when marked as playable."""
+def test_death_touch_blocked_from_banish():
+    """Death Touch can NOT be played from banish — only from arsenal."""
     game = make_game_shell(action_points={0: 1, 1: 0})
 
     dt = _make_death_touch(instance_id=20, owner_index=0, zone=Zone.BANISHED)
@@ -388,7 +388,7 @@ def test_death_touch_allowed_from_banish():
     )
 
     card_ids = [o.card_instance_id for o in decision.options if o.action_type == ActionType.PLAY_CARD]
-    assert dt.instance_id in card_ids
+    assert dt.instance_id not in card_ids
 
 
 def test_death_touch_can_play_card_returns_false_for_hand():
