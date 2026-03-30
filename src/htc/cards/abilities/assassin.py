@@ -1127,7 +1127,7 @@ def _amulet_of_echoes_on_play(ctx: AbilityContext) -> None:
     log.info(f"  Amulet of Echoes: Enters the arena (instant activation TODO)")
 
 
-@require_chain_link
+@require_active_attack
 def _overcrowded_on_attack(ctx: AbilityContext) -> None:
     """Overcrowded (Generic, Attack Action):
 

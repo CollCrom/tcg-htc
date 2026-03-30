@@ -607,7 +607,7 @@ _demonstrate_devotion_on_attack = _draconic_devotion_handler("Demonstrate Devoti
 _display_loyalty_on_attack = _draconic_devotion_handler("Display Loyalty")
 
 
-@require_chain_link
+@require_active_attack
 def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
     """Devotion Never Dies (Ninja, Attack Action):
 
@@ -764,7 +764,7 @@ def _ignite_on_attack(ctx: AbilityContext) -> None:
     )
 
 
-@require_chain_link
+@require_active_attack
 def _enlightened_strike_on_attack(ctx: AbilityContext) -> None:
     """Enlightened Strike (Generic, Attack Action):
 
@@ -997,7 +997,7 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
 # ---------------------------------------------------------------------------
 
 
-@require_chain_link
+@require_active_attack
 def _enflame_the_firebrand_on_attack(ctx: AbilityContext) -> None:
     """Enflame the Firebrand on_attack: tiered bonuses based on Draconic chain links."""
     link = ctx.chain_link
