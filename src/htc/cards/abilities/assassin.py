@@ -540,16 +540,22 @@ def _cut_from_the_same_cloth(ctx: AbilityContext) -> None:
 def _grant_next_dagger_attack_bonus(ctx: AbilityContext, bonus: int, source_name: str) -> None:
     """Grant +N power to the controller's next dagger attack this turn.
 
-    Uses a continuous effect with a condition that checks for dagger attacks
-    and auto-expires after applying once.
+    Uses a continuous effect with an ``applied_to`` set that records the
+    instance_id of the first matching dagger attack.  The filter returns True
+    for that same card on every subsequent evaluation, so the bonus is stable
+    across display, damage calculation, and any other queries.
     """
     controller = ctx.controller_index
     source_id = ctx.source_card.instance_id
-    # Track whether the bonus has been consumed via a mutable container
-    consumed = [False]
+    # Track which instance_id has been granted the bonus (at most one).
+    applied_to: set[int] = set()
 
     def target_filter(card):
-        if consumed[0]:
+        # Already granted — keep matching the same card idempotently.
+        if card.instance_id in applied_to:
+            return True
+        # Only grant once.
+        if applied_to:
             return False
         # Check if this card is a dagger attack on the combat chain
         if card.zone != Zone.COMBAT_CHAIN:
@@ -560,8 +566,8 @@ def _grant_next_dagger_attack_bonus(ctx: AbilityContext, bonus: int, source_name
                 return False
         if card.owner_index != controller:
             return False
-        # Consume on first match so the bonus only applies once
-        consumed[0] = True
+        # Record this card so subsequent evaluations keep matching it.
+        applied_to.add(card.instance_id)
         return True
 
     effect = make_power_modifier(
