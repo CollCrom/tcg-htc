@@ -8,6 +8,10 @@ Covers:
 5. Stains of the Redback: cost reduction when opponent is marked
 6. Reaper's Call: instant discard marks opposing hero
 7. Under the Trap-Door: stale TODO removed (instant already implemented)
+8. Diplomacy restriction cleared at end of turn
+9. War restriction allows weapon activations
+10. _is_draconic uses effect engine for granted supertypes
+11. Stains of the Redback cost reduction via intrinsic modifier registry
 """
 
 from htc.cards.card import CardDefinition
@@ -613,3 +617,184 @@ class TestUnderTheTrapDoorTODO:
 
         assert game.state.players[0].life_total == 20
         assert game.state.players[1].life_total == 20
+
+
+# ===========================================================================
+# 8. Diplomacy restriction cleared at end of turn
+# ===========================================================================
+
+
+class TestDiplomacyRestrictionClearing:
+    """Diplomacy restriction is cleared at end of the restricted player's turn."""
+
+    def test_war_restriction_cleared_at_end_of_turn(self):
+        """War restriction is cleared when the restricted player's turn ends."""
+        game = make_game_shell(action_points={0: 0, 1: 0})
+        game.state.players[0].diplomacy_restriction = "war"
+        game.state.turn_player_index = 0
+
+        # Provide an interface so _run_end_phase can ask about arsenaling
+        game.interfaces = _make_mock_interfaces(make_mock_ask({}))
+
+        game._run_end_phase()
+
+        assert game.state.players[0].diplomacy_restriction is None
+
+    def test_peace_restriction_cleared_at_end_of_turn(self):
+        """Peace restriction is cleared when the restricted player's turn ends."""
+        game = make_game_shell(action_points={0: 0, 1: 0})
+        game.state.players[0].diplomacy_restriction = "peace"
+        game.state.turn_player_index = 0
+
+        game.interfaces = _make_mock_interfaces(make_mock_ask({}))
+
+        game._run_end_phase()
+
+        assert game.state.players[0].diplomacy_restriction is None
+
+    def test_restriction_not_cleared_for_other_player(self):
+        """Restriction on player 1 is NOT cleared when player 0's turn ends."""
+        game = make_game_shell(action_points={0: 0, 1: 0})
+        game.state.players[1].diplomacy_restriction = "war"
+        game.state.turn_player_index = 0
+
+        game.interfaces = _make_mock_interfaces(make_mock_ask({}))
+
+        game._run_end_phase()
+
+        # Player 1's restriction should still be active (it's player 0's turn)
+        assert game.state.players[1].diplomacy_restriction == "war"
+
+
+# ===========================================================================
+# 9. War restriction allows weapon activations
+# ===========================================================================
+
+
+class TestWarAllowsWeapons:
+    """War restriction allows weapon activations (only non-attack actions blocked)."""
+
+    def test_war_allows_weapon_activation(self):
+        """Under war restriction, weapons can still be activated."""
+        game = make_game_shell(action_points={0: 1, 1: 1})
+        game.state.players[1].diplomacy_restriction = "war"
+
+        weapon = make_dagger_weapon(instance_id=100, owner_index=1)
+        game.state.players[1].weapons.append(weapon)
+
+        assert game.action_builder._can_activate_weapon(game.state, 1, weapon)
+
+    def test_war_blocks_non_attack_but_allows_weapon(self):
+        """War blocks non-attack actions but allows weapons in the same turn."""
+        game = make_game_shell(action_points={0: 1, 1: 1})
+        game.state.players[1].diplomacy_restriction = "war"
+
+        # Non-attack action should be blocked
+        non_attack = _make_non_attack_action(instance_id=5, owner_index=1)
+        game.state.players[1].hand.append(non_attack)
+        assert not game.action_builder.can_play_card(game.state, 1, non_attack)
+
+        # Weapon should be allowed
+        weapon = make_dagger_weapon(instance_id=100, owner_index=1)
+        game.state.players[1].weapons.append(weapon)
+        assert game.action_builder._can_activate_weapon(game.state, 1, weapon)
+
+
+# ===========================================================================
+# 10. _is_draconic uses effect engine for granted supertypes
+# ===========================================================================
+
+
+class TestIsDraconicUsesEffectEngine:
+    """_is_draconic() queries the effect engine when ctx is provided."""
+
+    def test_effect_granted_draconic_detected(self):
+        """A non-Draconic card with a granted Draconic supertype is detected."""
+        from htc.engine.continuous import EffectDuration, make_supertype_grant
+
+        game = make_game_shell()
+
+        # Non-Draconic ninja attack
+        attack = make_ninja_attack(instance_id=1, name="Dragon Power", power=4)
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        # NOT Draconic by definition
+        assert SuperType.DRACONIC not in attack.definition.supertypes
+
+        # Grant Draconic via continuous effect
+        grant = make_supertype_grant(
+            frozenset({SuperType.DRACONIC}),
+            controller_index=0,
+            duration=EffectDuration.END_OF_TURN,
+            target_filter=lambda c: c.instance_id == attack.instance_id,
+        )
+        game.effect_engine.add_continuous_effect(game.state, grant)
+
+        # _is_draconic without ctx falls back to definition (misses it)
+        from htc.cards.abilities.ninja import _is_draconic
+        assert not _is_draconic(attack)
+
+        # _is_draconic with ctx should detect the granted supertype
+        from htc.engine.abilities import AbilityContext
+        ctx = AbilityContext(
+            state=game.state,
+            source_card=attack,
+            controller_index=0,
+            chain_link=game.state.combat_chain.chain_links[-1],
+            effect_engine=game.effect_engine,
+            events=game.events,
+            ask=lambda d: None,
+            keyword_engine=game.keyword_engine,
+            combat_mgr=game.combat_mgr,
+        )
+        assert _is_draconic(attack, ctx)
+
+    def test_dragon_power_triggers_with_granted_draconic(self):
+        """Dragon Power grants +3 power when Draconic is effect-granted."""
+        from htc.engine.continuous import EffectDuration, make_supertype_grant
+
+        game = make_game_shell()
+
+        attack = make_ninja_attack(
+            instance_id=1, name="Dragon Power", power=4,
+        )
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        # Grant Draconic via continuous effect
+        grant = make_supertype_grant(
+            frozenset({SuperType.DRACONIC}),
+            controller_index=0,
+            duration=EffectDuration.END_OF_TURN,
+            target_filter=lambda c: c.instance_id == attack.instance_id,
+        )
+        game.effect_engine.add_continuous_effect(game.state, grant)
+
+        # Apply Dragon Power on_attack
+        game._apply_card_ability(attack, 0, "on_attack")
+
+        # Should have +3 power from Dragon Power
+        modified_power = game.effect_engine.get_modified_power(game.state, attack)
+        assert modified_power == 7  # 4 base + 3 from Dragon Power
+
+
+# ===========================================================================
+# 11. Stains of the Redback — intrinsic cost modifier registry
+# ===========================================================================
+
+
+class TestStainsCostModifierRegistry:
+    """Stains of the Redback cost reduction uses the intrinsic modifier registry."""
+
+    def test_modifier_is_registered(self):
+        """The cost modifier is registered on the effect engine."""
+        game = make_game_shell()
+        assert "Stains of the Redback" in game.effect_engine._intrinsic_cost_modifiers
+
+    def test_no_hardcoded_name_check_in_get_modified_cost(self):
+        """get_modified_cost does not contain a hardcoded Stains check."""
+        import inspect
+        from htc.engine.effects import EffectEngine
+        source = inspect.getsource(EffectEngine.get_modified_cost)
+        assert "Stains of the Redback" not in source
