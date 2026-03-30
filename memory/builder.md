@@ -192,3 +192,20 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Take Up the Mantle copy effect** — When attacking a marked hero and stealth attack chosen from graveyard: banish it, set `attack.definition_override = banished_card.definition`. The +3 power bonus from Take Up the Mantle stacks on top of the copy's base power via continuous effects.
 - **ChainLink constructor** — `link_number` is required, no `attacker_index` field. Set up chain via `game.state.combat_chain.chain_links.append(link)` (not `active_link = link`).
 - **595 tests passing** — 20 new tests for all four items.
+
+## Phase 6 — Token Abilities (2026-03-30)
+
+- **Token abilities** in `src/htc/cards/abilities/tokens.py`. All 7 tokens used by Cindra and Arakni decks now have functional abilities.
+- **End-phase triggers** — Ponder, Frailty, Inertia, Bloodrot Pox, and Fealty all register `TriggeredEffect` on `END_OF_TURN`. Triggers are one-shot and registered via `register_token_triggers()` when tokens are created.
+- **Critical fix: `_process_pending_triggers()`** — Was missing after `END_OF_TURN` emit in `_run_end_phase()`. Without this, no end-phase token triggers would fire.
+- **`create_token()` auto-registration** — Now accepts optional `event_bus`, `effect_engine`, `ask` kwargs. When provided, calls `register_token_triggers()` automatically. All callers updated.
+- **Frailty continuous effect** — `-1 power` to controller's attack actions and weapon proxies via `WHILE_SOURCE_IN_ZONE` duration. Automatically cleaned up when token is destroyed (zone changes).
+- **Inertia devastation** — Moves ALL hand and arsenal cards to bottom of deck at end of turn. Player draws 0 cards because draw happens after this.
+- **Bloodrot Pox choice** — Player can pay 3 resources (from pool or by pitching) to avoid 2 damage. Uses Decision/Response pattern for the choice.
+- **Fealty dual ability** — Instant activation (destroy to grant Draconic to next card via `make_supertype_grant` with `uses_remaining=1`) and conditional end-phase self-destruct (checks `TurnCounters.fealty_created_this_turn` and `draconic_card_played_this_turn`).
+- **Silver action** — New `permanent_action_effect` timing. Cost 3 resources, destroy, draw a card, gain AP (go again). `ActionBuilder._add_permanent_action_options()` offers it when player has AP and can afford 3.
+- **Graphene Chelicera as weapon** — Converted from permanent to proper weapon (CardType.WEAPON, SubType.DAGGER/ONE_HAND, power=1, Keyword.GO_AGAIN). Added to `player.weapons` list so weapon activation system handles it. Tap-based once-per-turn.
+- **`permanent_action_effect` timing** — New timing in AbilityRegistry for action-speed permanent activations. `Game._activate_permanent_action()` pays cost, consumes AP, calls handler.
+- **TurnCounters tracking** — Added `fealty_created_this_turn` and `draconic_card_played_this_turn` flags. Set in `create_token()` (Fealty name check), `_create_fealty_token()` on Game, and `_play_card()` (Draconic supertype check).
+- **Functional text corrections** — All 7 tokens now have authoritative text from card database instead of stale/wrong text.
+- **658 tests passing** — 34 new tests for token abilities.
