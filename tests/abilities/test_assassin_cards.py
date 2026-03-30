@@ -477,7 +477,7 @@ class TestCodexOfInertia:
 
 
 class TestRelentlessPursuit:
-    """Relentless Pursuit: Mark opponent."""
+    """Relentless Pursuit: Mark opponent, deck-bottom redirect if attacked."""
 
     def test_marks_opponent(self):
         game = make_game_shell()
@@ -485,6 +485,75 @@ class TestRelentlessPursuit:
         game._apply_card_ability(card, 0, "on_play")
 
         assert game.state.players[1].is_marked
+
+    def test_deck_bottom_when_attacked_this_turn(self):
+        """If player has attacked this turn, card goes to bottom of deck."""
+        game = make_game_shell()
+        card = _make_non_attack_action("Relentless Pursuit", color=Color.BLUE,
+                                        instance_id=99, owner_index=0)
+        # Put card in hand so move_card can find and remove it
+        card.zone = Zone.HAND
+        game.state.players[0].hand.append(card)
+
+        # Simulate having attacked this turn
+        game.state.players[0].turn_counters.has_attacked = True
+
+        # Fire on_play — sets _redirect_to_deck_bottom flag
+        game._apply_card_ability(card, 0, "on_play")
+        assert getattr(card, '_redirect_to_deck_bottom', False)
+
+        # Now move to graveyard (engine normally does this after on_play)
+        game._move_to_graveyard_or_banish(card)
+
+        # Card should be at bottom of deck, not in graveyard
+        assert card.zone == Zone.DECK
+        assert card in game.state.players[0].deck
+        assert card not in game.state.players[0].graveyard
+        # Flag should be cleared
+        assert not getattr(card, '_redirect_to_deck_bottom', False)
+
+    def test_graveyard_when_not_attacked_this_turn(self):
+        """If player has NOT attacked this turn, card goes to graveyard."""
+        game = make_game_shell()
+        card = _make_non_attack_action("Relentless Pursuit", color=Color.BLUE,
+                                        instance_id=99, owner_index=0)
+        card.zone = Zone.HAND
+        game.state.players[0].hand.append(card)
+
+        # has_attacked defaults to False — no attack this turn
+        assert not game.state.players[0].turn_counters.has_attacked
+
+        game._apply_card_ability(card, 0, "on_play")
+        assert not getattr(card, '_redirect_to_deck_bottom', False)
+
+        game._move_to_graveyard_or_banish(card)
+
+        assert card.zone == Zone.GRAVEYARD
+        assert card in game.state.players[0].graveyard
+        assert card not in game.state.players[0].deck
+
+    def test_deck_bottom_takes_priority_over_banish_redirect(self):
+        """If played from banish AND attacked this turn, deck-bottom wins."""
+        game = make_game_shell()
+        card = _make_non_attack_action("Relentless Pursuit", color=Color.BLUE,
+                                        instance_id=99, owner_index=0)
+        card.zone = Zone.HAND
+        game.state.players[0].hand.append(card)
+
+        # Simulate: attacked this turn AND played from banish
+        game.state.players[0].turn_counters.has_attacked = True
+        game._banish_instead_of_graveyard.add(card.instance_id)
+
+        game._apply_card_ability(card, 0, "on_play")
+        game._move_to_graveyard_or_banish(card)
+
+        # Deck-bottom takes priority over banish redirect
+        assert card.zone == Zone.DECK
+        assert card in game.state.players[0].deck
+        assert card not in game.state.players[0].banished
+        assert card not in game.state.players[0].graveyard
+        # Banish redirect should also be cleaned up
+        assert card.instance_id not in game._banish_instead_of_graveyard
 
 
 class TestUpSticksAndRun:

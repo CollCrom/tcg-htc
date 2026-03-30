@@ -485,12 +485,19 @@ class Game:
                     log.info(f"  {card.name} banished instead of graveyard on chain close")
 
     def _move_to_graveyard_or_banish(self, card: CardInstance) -> None:
-        """Move card to graveyard, or banish if it was played from banish.
+        """Move card to graveyard, or redirect to deck bottom / banish.
 
-        Cards played from banish (via Trap-Door, Under the Trap-Door, etc.)
-        go to banish instead of graveyard when they would be put there.
+        Priority order:
+        1. Deck-bottom redirect (Relentless Pursuit) — takes priority over banish
+        2. Banish redirect (played from banish via Trap-Door, etc.)
+        3. Graveyard (default)
         """
-        if card.instance_id in self._banish_instead_of_graveyard:
+        if getattr(card, '_redirect_to_deck_bottom', False):
+            card._redirect_to_deck_bottom = False  # type: ignore[attr-defined]
+            self._banish_instead_of_graveyard.discard(card.instance_id)
+            self.state.move_card(card, Zone.DECK)
+            log.info(f"  {card.name} moved to bottom of deck instead of graveyard")
+        elif card.instance_id in self._banish_instead_of_graveyard:
             self._banish_instead_of_graveyard.discard(card.instance_id)
             self.state.move_card(card, Zone.BANISHED)
             log.info(f"  {card.name} banished instead of graveyard (played from banish)")
