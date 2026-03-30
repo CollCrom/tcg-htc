@@ -25,6 +25,7 @@ from htc.engine.actions import ActionOption, Decision, PlayerResponse
 from htc.engine.continuous import EffectDuration, make_defense_modifier, make_keyword_grant, make_power_modifier
 from htc.engine.events import EventType, GameEvent, TriggeredEffect
 from htc.enums import ActionType, CardType, Color, DecisionType, Keyword, SubType, SuperType, Zone
+from htc.state.player_state import BanishPlayability, EXPIRY_END_OF_TURN
 
 log = logging.getLogger(__name__)
 
@@ -1342,7 +1343,7 @@ def _under_the_trap_door_instant(ctx: AbilityContext) -> None:
     log.info(f"  Under the Trap-Door: banished {target.name} from graveyard")
 
     # Mark as playable from banish this turn
-    player.playable_from_banish.append((target.instance_id, "end_of_turn", True))
+    player.playable_from_banish.append(BanishPlayability(target.instance_id, EXPIRY_END_OF_TURN, True))
     log.info(f"  Under the Trap-Door: {target.name} playable from banish this turn")
 
 

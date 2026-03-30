@@ -37,6 +37,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
+from htc.state.player_state import BanishPlayability, EXPIRY_END_OF_TURN
 
 log = logging.getLogger(__name__)
 
@@ -757,7 +758,7 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
 
     # Mark as playable from banish this turn (goes to graveyard normally)
     player = ctx.state.players[ctx.controller_index]
-    player.playable_from_banish.append((attack.instance_id, "end_of_turn", False))
+    player.playable_from_banish.append(BanishPlayability(attack.instance_id, EXPIRY_END_OF_TURN, False))
     log.info(
         f"  Devotion Never Dies: banished {attack.name}, "
         "may play it this turn from banish"
@@ -1070,7 +1071,7 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
             ctx.banish_card(card, ctx.controller_index)
 
             # Mark as playable from banish this turn (goes to graveyard normally)
-            player.playable_from_banish.append((card.instance_id, "end_of_turn", False))
+            player.playable_from_banish.append(BanishPlayability(card.instance_id, EXPIRY_END_OF_TURN, False))
 
             # "it costs {r} less to play" — continuous cost reduction for this card
             cost_effect = make_cost_modifier(
