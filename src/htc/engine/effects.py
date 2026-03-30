@@ -105,19 +105,19 @@ class EffectEngine:
         self, state: GameState, card: CardInstance
     ) -> frozenset[SuperType]:
         """Get the effective supertypes for a card (base + continuous effects)."""
-        base = card.definition.supertypes
+        base = card._effective_definition.supertypes
         active = self._active_effects(state)
         return self._resolver.resolve_supertypes(active, card, state, base)
 
     def get_modified_keywords(
         self, state: GameState, card: CardInstance
     ) -> frozenset[Keyword]:
-        base = card.definition.keywords
+        base = card._effective_definition.keywords
         active = self._active_effects(state)
         # Pre-resolve supertypes so target_filter lambdas can see
         # effect-granted supertypes.
         card._resolved_supertypes = self._resolver.resolve_supertypes(
-            active, card, state, card.definition.supertypes
+            active, card, state, card._effective_definition.supertypes
         )
         try:
             return self._resolver.resolve_keywords(active, card, state, base)
@@ -133,7 +133,7 @@ class EffectEngine:
         continuous effects that modify keyword values are added, this method
         will incorporate them.
         """
-        return card.definition.keyword_value(keyword)
+        return card._effective_definition.keyword_value(keyword)
 
     # ------------------------------------------------------------------
     # Usage-limited cost effects
@@ -152,7 +152,7 @@ class EffectEngine:
         active = self._active_effects(state)
         # Pre-resolve supertypes so target_filter sees granted supertypes
         card._resolved_supertypes = self._resolver.resolve_supertypes(
-            active, card, state, card.definition.supertypes
+            active, card, state, card._effective_definition.supertypes
         )
         try:
             to_remove: list[int] = []
@@ -201,7 +201,7 @@ class EffectEngine:
         # Pre-resolve supertypes so target_filter lambdas can see
         # effect-granted supertypes (e.g. Enflame's Draconic grant).
         card._resolved_supertypes = self._resolver.resolve_supertypes(
-            active, card, state, card.definition.supertypes
+            active, card, state, card._effective_definition.supertypes
         )
         try:
             value = self._resolver.resolve_numeric(

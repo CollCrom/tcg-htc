@@ -181,3 +181,14 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Solution** — `EffectEngine._resolve_numeric_property()` and `get_modified_keywords()` now pre-resolve supertypes via `StagingResolver.resolve_supertypes()` and set `card._resolved_supertypes` before evaluating target filters. The attribute is cleaned up in a `finally` block to prevent stale state.
 - **Filter pattern** — Target filters that need effect-aware supertypes use `getattr(c, '_resolved_supertypes', c.definition.supertypes)` instead of `c.definition.supertypes`. Updated in ninja.py: Art of the Dragon Blood (line 329), Ignite (line 865), Spreading Flames (lines 1052, 1062).
 - **490 tests passing** — 11 new tests verify: granted Draconic seen by cost/power/defense filters, inherent Draconic still works, non-Draconic correctly excluded, `_resolved_supertypes` cleaned up after each query, Enflame+Ignite and Enflame+Spreading Flames end-to-end scenarios.
+
+## Remaining Infra TODOs (2026-03-30)
+
+- **Pitch-trigger infrastructure** — `on_pitch` timing added to AbilityRegistry. `pitch_card()` in cost.py now accepts optional `EventBus` and emits `PITCH_CARD` event. `CostManager` passes event bus through. `Game._handle_pitch_card` dispatches to `_apply_card_ability(card, player, "on_pitch")`.
+- **Authority of Ataya** — Registered under `on_pitch` (was incorrectly `on_play`). When pitched, creates `make_cost_modifier(+1)` targeting opponent's defense reaction cards until end of turn.
+- **Shelter from the Storm** — `instant_discard_effect` handler creates a `ReplacementEffect` subclass (`ShelterPrevention`) that intercepts `DEAL_DAMAGE` events targeting the controller. Reduces damage by 1, up to 3 uses, then self-removes via `ctx.events.unregister_replacement()`.
+- **Card text correction**: Shelter from the Storm is "next 3 times, prevent 1" (not "prevent next 4"). Always verify card text against `data/cards.tsv`.
+- **definition_override on CardInstance** — New optional field. When set, `_effective_definition` property returns the override instead of `definition`. Properties `name`, `cost`, `pitch`, `base_power`, `base_defense`, `keyword_values` all delegate through it. `EffectEngine` updated to read `_effective_definition` for keywords, supertypes, and keyword_value.
+- **Take Up the Mantle copy effect** — When attacking a marked hero and stealth attack chosen from graveyard: banish it, set `attack.definition_override = banished_card.definition`. The +3 power bonus from Take Up the Mantle stacks on top of the copy's base power via continuous effects.
+- **ChainLink constructor** — `link_number` is required, no `attacker_index` field. Set up chain via `game.state.combat_chain.chain_links.append(link)` (not `active_link = link`).
+- **595 tests passing** — 20 new tests for all four items.

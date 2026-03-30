@@ -210,8 +210,10 @@ def _take_up_the_mantle(ctx: AbilityContext) -> None:
      card with stealth from your graveyard. If you do, the target becomes a
      copy of the banished card.'
 
-    NOTE: The "becomes a copy" effect requires deep copy infrastructure.
-    TODO: Implement the copy effect. For now, we implement the power bonus.
+    The "becomes a copy" effect sets definition_override on the active
+    attack so it takes on the banished card's name, power, defense, cost,
+    keywords, types, subtypes, and supertypes — while keeping its current
+    zone, counters, and continuous effects already on it.
     """
     link = ctx.chain_link
     if link is None or link.active_attack is None:
@@ -230,13 +232,62 @@ def _take_up_the_mantle(ctx: AbilityContext) -> None:
     defender = ctx.state.players[link.attack_target_index]
     if defender.is_marked:
         bonus = 3
-        # TODO: implement "banish stealth attack from graveyard, become copy"
         log.info(f"  Take Up the Mantle: {attack.name} gets +{bonus} power (marked target)")
+        grant_power_bonus(ctx, attack, bonus, "Take Up the Mantle")
+
+        # Find eligible stealth attack actions in graveyard
+        controller = ctx.state.players[ctx.controller_index]
+        stealth_in_gy = [
+            c for c in controller.graveyard
+            if c.definition.is_attack_action
+            and Keyword.STEALTH in c.definition.keywords
+        ]
+
+        if stealth_in_gy:
+            # "you may" — offer the choice
+            options = [
+                ActionOption(
+                    action_id=f"banish_{c.instance_id}",
+                    description=f"Banish {c.name} — target becomes a copy",
+                    action_type=ActionType.ACTIVATE_ABILITY,
+                    card_instance_id=c.instance_id,
+                )
+                for c in stealth_in_gy
+            ]
+            options.append(ActionOption(
+                action_id="pass",
+                description="Do not banish a card",
+                action_type=ActionType.PASS,
+            ))
+            decision = Decision(
+                player_index=ctx.controller_index,
+                decision_type=DecisionType.CHOOSE_TARGET,
+                prompt="Take Up the Mantle: banish a stealth attack from graveyard?",
+                options=options,
+            )
+            response = ctx.ask(decision)
+
+            if response.first and response.first != "pass":
+                banish_id = int(response.first.replace("banish_", ""))
+                banish_card = next(
+                    (c for c in stealth_in_gy if c.instance_id == banish_id),
+                    None,
+                )
+                if banish_card is not None:
+                    # Banish the chosen card from graveyard
+                    ctx.banish_card(banish_card, ctx.controller_index)
+
+                    # Target becomes a copy of the banished card
+                    old_name = attack.name
+                    attack.definition_override = banish_card.definition
+                    log.info(
+                        f"  Take Up the Mantle: {old_name} becomes a copy of "
+                        f"{banish_card.definition.name}"
+                    )
     else:
         bonus = 2
         log.info(f"  Take Up the Mantle: {attack.name} gets +{bonus} power")
-
-    grant_power_bonus(ctx, attack, bonus, "Take Up the Mantle")
+        grant_power_bonus(ctx, attack, bonus, "Take Up the Mantle")
 
 
 def _tarantula_toxin(ctx: AbilityContext) -> None:
@@ -902,10 +953,9 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
      If damage is dealt this way, the dagger has hit.'
     Go again (keyword).
 
-    TODO: "target dagger you control" means the dagger weapon, and "the dagger
-    has hit" triggers on-hit effects for that dagger. This requires selecting
-    a weapon and emitting a separate HIT event for it. Simplified for now:
-    deal 1 damage.
+    Implementation: player chooses a dagger, DEAL_DAMAGE event is emitted
+    through the event pipeline (so prevention/replacement effects apply),
+    and if damage is dealt, a HIT event is emitted for the dagger.
     """
     link = ctx.chain_link
     if link is None:

@@ -258,6 +258,19 @@ Persistent learnings across sessions. Update this after each review.
 - **Missing test**: No test for war restriction allowing weapon activations (only tests peace-blocks-weapons).
 - 566 tests all passing.
 
+### fix/remaining-infra-todos — Remaining Infra TODOs (2026-03-30)
+- **Round 1 verdict: APPROVE** — No critical issues. 2 minor issues, 1 missing test.
+- **4 changes reviewed**: Pain in the Backside (stale TODO), Authority of Ataya (pitch trigger), Shelter from the Storm (instant discard prevention), Take Up the Mantle (copy effect).
+- **Pain in the Backside**: Stale TODO and NOTE removed. Implementation (dagger choice, DEAL_DAMAGE event, HIT event for dagger) was already correct from prior PR. Docstring updated to reflect current behavior. Correct.
+- **Authority of Ataya**: Moved from `on_play` to `on_pitch` timing. `pitch_card()` in cost.py emits `PITCH_CARD` event via optional `event_bus` param. `Game._handle_pitch_card` dispatches to `_apply_card_ability(card, player, "on_pitch")`. Handler creates `make_cost_modifier(+1)` targeting opponent's defense reactions until end of turn. Correct per card text.
+- **Shelter from the Storm**: `ShelterPrevention` subclass of `ReplacementEffect` intercepts DEAL_DAMAGE targeting controller, reduces by 1, tracks 3 uses, self-removes via `unregister_replacement`. Condition checks `event.amount > 0` (won't consume use on 0-damage). Safe iteration: `_apply_replacements` iterates a list copy. Correct per card text ("next 3 times... prevent 1").
+- **Take Up the Mantle**: Copy effect implemented via `definition_override` on `CardInstance`. `_effective_definition` property returns override when set. All delegated properties (name, cost, pitch, base_power, base_defense, keyword_values) route through it. `EffectEngine` updated to read `_effective_definition` for supertypes, keywords, keyword_value. +3 power bonus applied as continuous effect BEFORE copy, so it stacks on top of copied card's base power. Correct per FaB copy rules (effects on the card persist through copy).
+- **Pitch infrastructure**: `PITCH_CARD` EventType added. `CostManager` passes `event_bus` through to `pitch_card()`. `Game.__init__` creates `EventBus` before `CostManager` (correct ordering). Backward-compatible: `event_bus=None` default means existing callers unaffected.
+- **Minor (pre-existing pattern)**: Authority of Ataya target_filter uses `c.definition.is_defense_reaction` instead of `c._effective_definition.is_defense_reaction`. Would miss a copy-effected card that became a DR. No current scenario triggers this.
+- **Minor**: Take Up the Mantle graveyard search uses `c.definition.is_attack_action` and `c.definition.keywords` instead of effect engine. Acceptable for graveyard cards (no continuous effects apply in graveyard).
+- **Missing test**: No test for Authority of Ataya effect expiring at end of turn (duration is `END_OF_TURN` but no test verifies the effect is removed after the turn ends).
+- 595 tests all passing. 20 new tests across 4 categories (2 Pain in the Backside, 5 Authority of Ataya, 5 Shelter from the Storm, 5 Take Up the Mantle, 3 definition_override infrastructure).
+
 ## Talishar Discrepancies
 
 *(None found yet)*
