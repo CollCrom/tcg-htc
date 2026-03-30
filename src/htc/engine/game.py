@@ -725,6 +725,9 @@ class Game:
                 # Check if it's an equipment with a registered ability
                 elif self._is_equipment_activation(card):
                     self._activate_equipment(player_index, card)
+                # Check if it's a permanent with an instant activation
+                elif self._is_permanent_instant_activation(card, player_index):
+                    self._activate_permanent_instant(player_index, card)
                 else:
                     self._activate_weapon(player_index, card)
 
@@ -785,6 +788,9 @@ class Game:
             pass  # counter not yet needed
         elif card.definition.is_defense_reaction:
             player.turn_counters.num_defense_reactions_played += 1
+
+        # Track card name for duplicate-play checks (e.g. Amulet of Echoes)
+        player.turn_counters.card_names_played.append(card.name)
 
         # Emit play event
         self.events.emit(GameEvent(
@@ -994,6 +1000,41 @@ class Game:
         )
         handler(ctx)
         log.info(f"  Equipment activated: {equipment.name} ({timing})")
+
+    def _is_permanent_instant_activation(self, card: CardInstance, player_index: int) -> bool:
+        """Check if an activate action targets a permanent with an instant ability."""
+        player = self.state.players[player_index]
+        for perm in player.permanents:
+            if perm.instance_id == card.instance_id:
+                handler = self.ability_registry.lookup("permanent_instant_effect", perm.name)
+                return handler is not None
+        return False
+
+    def _activate_permanent_instant(self, player_index: int, permanent: CardInstance) -> None:
+        """Activate a permanent's instant ability (e.g. Amulet of Echoes).
+
+        Looks up the permanent_instant_effect handler, builds an AbilityContext,
+        and calls the handler. The handler is responsible for destroying the
+        permanent if required.
+        """
+        handler = self.ability_registry.lookup("permanent_instant_effect", permanent.name)
+        if handler is None:
+            log.warning(f"  No permanent instant handler for {permanent.name}")
+            return
+
+        ctx = AbilityContext(
+            state=self.state,
+            source_card=permanent,
+            controller_index=player_index,
+            chain_link=self.state.combat_chain.active_link,
+            effect_engine=self.effect_engine,
+            events=self.events,
+            ask=lambda d: self._ask(d),
+            keyword_engine=self.keyword_engine,
+            combat_mgr=self.combat_mgr,
+        )
+        handler(ctx)
+        log.info(f"  Permanent instant activated: {permanent.name}")
 
     # --- Weapon Activation (rules 1.4.3) ---
 

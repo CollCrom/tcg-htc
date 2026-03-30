@@ -384,3 +384,131 @@ class TestContractSilverToken:
 
         controller = game.state.players[0]
         assert len(controller.permanents) == 0
+
+
+# ===========================================================================
+# 4. Amulet of Echoes — instant-destroy activation
+# ===========================================================================
+
+
+def _make_amulet_of_echoes(instance_id: int = 40, owner_index: int = 0) -> CardInstance:
+    """Create an Amulet of Echoes permanent."""
+    defn = CardDefinition(
+        unique_id=f"amulet-{instance_id}",
+        name="Amulet of Echoes",
+        color=Color.BLUE,
+        pitch=3,
+        cost=0,
+        power=None,
+        defense=None,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ITEM}),
+        supertypes=frozenset(),
+        keywords=frozenset({Keyword.GO_AGAIN}),
+        functional_text="",
+        type_text="Generic Action - Item",
+    )
+    card = CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.PERMANENT,
+    )
+    return card
+
+
+class TestAmuletOfEchoes:
+    """Amulet of Echoes instant activation: destroy to force opponent discard 2."""
+
+    def test_handler_registered(self):
+        """Amulet of Echoes is registered as a permanent_instant_effect."""
+        game = make_game_shell()
+        handler = game.ability_registry.lookup("permanent_instant_effect", "Amulet of Echoes")
+        assert handler is not None
+
+    def test_precondition_no_duplicate_names(self):
+        """Activation blocked when opponent has NOT played duplicate card names."""
+        game = make_game_shell()
+        amulet = _make_amulet_of_echoes()
+        game.state.players[0].permanents.append(amulet)
+
+        # Opponent played unique-name cards
+        game.state.players[1].turn_counters.card_names_played = ["Card A", "Card B"]
+
+        can_use = game.action_builder._can_use_permanent_instant(game.state, 0, amulet)
+        assert can_use is False
+
+    def test_precondition_with_duplicate_names(self):
+        """Activation allowed when opponent HAS played 2+ same-name cards."""
+        game = make_game_shell()
+        amulet = _make_amulet_of_echoes()
+        game.state.players[0].permanents.append(amulet)
+
+        # Opponent played duplicate-name cards
+        game.state.players[1].turn_counters.card_names_played = ["Card A", "Card A"]
+
+        can_use = game.action_builder._can_use_permanent_instant(game.state, 0, amulet)
+        assert can_use is True
+
+    def test_activation_destroys_amulet_and_discards(self):
+        """Activation destroys the Amulet and forces opponent to discard 2."""
+        game = make_game_shell()
+        amulet = _make_amulet_of_echoes()
+        game.state.players[0].permanents.append(amulet)
+
+        # Give opponent 3 cards in hand
+        for i in range(3):
+            c = _make_deck_card(instance_id=60 + i, name=f"Opponent Card {i}", owner_index=1)
+            c.zone = Zone.HAND
+            game.state.players[1].hand.append(c)
+
+        game.state.players[1].turn_counters.card_names_played = ["Card A", "Card A"]
+
+        # Mock: opponent chooses first card each time
+        mock_ask = make_mock_ask({"Amulet of Echoes": [f"discard_{game.state.players[1].hand[0].instance_id}"]})
+        game.interfaces = _make_mock_interfaces(mock_ask)
+
+        game._activate_permanent_instant(0, amulet)
+
+        # Amulet should be destroyed (in graveyard)
+        assert amulet not in game.state.players[0].permanents
+        assert amulet in game.state.players[0].graveyard
+
+        # Opponent should have 1 card left (3 - 2)
+        assert len(game.state.players[1].hand) == 1
+        assert len(game.state.players[1].graveyard) == 2
+
+    def test_activation_with_one_card_in_hand(self):
+        """If opponent has only 1 card, only 1 is discarded (no crash)."""
+        game = make_game_shell()
+        amulet = _make_amulet_of_echoes()
+        game.state.players[0].permanents.append(amulet)
+
+        c = _make_deck_card(instance_id=60, name="Only Card", owner_index=1)
+        c.zone = Zone.HAND
+        game.state.players[1].hand.append(c)
+
+        game._activate_permanent_instant(0, amulet)
+
+        assert amulet not in game.state.players[0].permanents
+        assert len(game.state.players[1].hand) == 0
+        assert len(game.state.players[1].graveyard) == 1
+
+    def test_card_names_tracked_on_play(self):
+        """TurnCounters.card_names_played is populated when cards are played."""
+        from htc.state.turn_counters import TurnCounters
+        tc = TurnCounters()
+        tc.card_names_played.append("Pummel")
+        tc.card_names_played.append("Pummel")
+        assert tc.has_duplicate_card_name() is True
+
+    def test_no_duplicate_card_names(self):
+        """has_duplicate_card_name returns False for unique names."""
+        from htc.state.turn_counters import TurnCounters
+        tc = TurnCounters()
+        tc.card_names_played.append("Pummel")
+        tc.card_names_played.append("Crush")
+        assert tc.has_duplicate_card_name() is False
