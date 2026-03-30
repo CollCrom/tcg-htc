@@ -326,7 +326,9 @@ def _art_of_the_dragon_blood_on_attack(ctx: AbilityContext) -> None:
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=EffectDuration.END_OF_TURN,
-        target_filter=lambda c: SuperType.DRACONIC in c.definition.supertypes,
+        target_filter=lambda c: SuperType.DRACONIC in getattr(
+            c, '_resolved_supertypes', c.definition.supertypes
+        ),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, cost_effect)
     log.info(
@@ -862,7 +864,9 @@ def _ignite_on_attack(ctx: AbilityContext) -> None:
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c: SuperType.DRACONIC in c.definition.supertypes,
+        target_filter=lambda c: SuperType.DRACONIC in getattr(
+            c, '_resolved_supertypes', c.definition.supertypes
+        ),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, cost_effect)
     log.info(
@@ -1049,7 +1053,10 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
 
     def _spreading_filter(card):
         """Match Draconic attacks with base power < draconic chain link count (dynamic)."""
-        if SuperType.DRACONIC not in card.definition.supertypes:
+        card_supertypes = getattr(
+            card, '_resolved_supertypes', card.definition.supertypes
+        )
+        if SuperType.DRACONIC not in card_supertypes:
             return False
         base_power = card.definition.power
         if base_power is None:
@@ -1059,7 +1066,10 @@ def _spreading_flames_on_attack(ctx: AbilityContext) -> None:
             1 for lnk in state.combat_chain.chain_links
             if lnk.active_attack
             and lnk.active_attack.owner_index == controller
-            and SuperType.DRACONIC in lnk.active_attack.definition.supertypes
+            and SuperType.DRACONIC in getattr(
+                lnk.active_attack, '_resolved_supertypes',
+                lnk.active_attack.definition.supertypes
+            )
         )
         return base_power < dcount
 

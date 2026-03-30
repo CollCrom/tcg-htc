@@ -88,7 +88,15 @@ class EffectEngine:
     ) -> frozenset[Keyword]:
         base = card.definition.keywords
         active = self._active_effects(state)
-        return self._resolver.resolve_keywords(active, card, state, base)
+        # Pre-resolve supertypes so target_filter lambdas can see
+        # effect-granted supertypes.
+        card._resolved_supertypes = self._resolver.resolve_supertypes(
+            active, card, state, card.definition.supertypes
+        )
+        try:
+            return self._resolver.resolve_keywords(active, card, state, base)
+        finally:
+            del card._resolved_supertypes
 
     def get_keyword_value(
         self, state: GameState, card: CardInstance, keyword: Keyword
@@ -128,13 +136,21 @@ class EffectEngine:
     ) -> int:
         """Apply staging resolution for a numeric property and clamp >= 0."""
         active = self._active_effects(state)
-        value = self._resolver.resolve_numeric(
-            active, card, state, base, prop, ModStage.BASE_NUMERIC
+        # Pre-resolve supertypes so target_filter lambdas can see
+        # effect-granted supertypes (e.g. Enflame's Draconic grant).
+        card._resolved_supertypes = self._resolver.resolve_supertypes(
+            active, card, state, card.definition.supertypes
         )
-        value = self._resolver.resolve_numeric(
-            active, card, state, value, prop, ModStage.NUMERIC
-        )
-        return max(0, value)
+        try:
+            value = self._resolver.resolve_numeric(
+                active, card, state, base, prop, ModStage.BASE_NUMERIC
+            )
+            value = self._resolver.resolve_numeric(
+                active, card, state, value, prop, ModStage.NUMERIC
+            )
+            return max(0, value)
+        finally:
+            del card._resolved_supertypes
 
     def _active_effects(self, state: GameState) -> list[ContinuousEffect]:
         """Return currently active effects (condition met)."""
