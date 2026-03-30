@@ -272,11 +272,54 @@ def _sink_below(ctx: AbilityContext) -> None:
             draw_card(ctx, "Sink Below")
 
 
-# NOTE: Shelter from the Storm has an Instant discard activation ability that
-# creates a damage prevention effect. This is a complex triggered/replacement
-# effect that needs Phase 5 infrastructure (damage prevention layer). The card
-# still contributes its defense value when played as a defense reaction.
-# TODO: implement Shelter from the Storm's instant discard prevention effect.
+def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
+    """Shelter from the Storm (Generic, Defense Reaction):
+
+    'Instant — Discard Shelter from the Storm: The next 3 times you would
+     be dealt damage this turn, prevent 1 of that damage.'
+
+    Creates a ReplacementEffect that intercepts DEAL_DAMAGE events targeting
+    this hero, reducing damage by 1 each time, for up to 3 instances.
+    """
+    from htc.engine.events import ReplacementEffect
+
+    controller = ctx.controller_index
+
+    class ShelterPrevention(ReplacementEffect):
+        """Prevents 1 damage up to 3 times this turn."""
+
+        def __init__(self, target_player: int, source_card):
+            super().__init__(source=source_card, one_shot=False)
+            self.target_player = target_player
+            self.uses_remaining = 3
+
+        def condition(self, event: GameEvent) -> bool:
+            return (
+                event.event_type == EventType.DEAL_DAMAGE
+                and event.target_player == self.target_player
+                and event.amount > 0
+                and self.uses_remaining > 0
+            )
+
+        def replace(self, event: GameEvent) -> GameEvent:
+            event.amount = max(0, event.amount - 1)
+            event.modified = True
+            self.uses_remaining -= 1
+            log.info(
+                f"  Shelter from the Storm: prevented 1 damage "
+                f"({self.uses_remaining} uses remaining)"
+            )
+            if self.uses_remaining <= 0:
+                # Remove self from the event bus
+                ctx.events.unregister_replacement(self)
+            return event
+
+    prevention = ShelterPrevention(controller, ctx.source_card)
+    ctx.events.register_replacement(prevention)
+    log.info(
+        f"  Shelter from the Storm: damage prevention active "
+        f"(3 uses, Player {controller})"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -293,3 +336,6 @@ def register_generic_abilities(registry: AbilityRegistry) -> None:
     # Defense reactions
     registry.register("defense_reaction_effect", "Fate Foreseen", _fate_foreseen)
     registry.register("defense_reaction_effect", "Sink Below", _sink_below)
+
+    # Instant discard effects
+    registry.register("instant_discard_effect", "Shelter from the Storm", _shelter_from_the_storm_instant)
