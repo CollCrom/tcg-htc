@@ -1015,9 +1015,7 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
         card_id = int(response.first.replace("banish_", ""))
         card = next((c for c in eligible if c.instance_id == card_id), None)
         if card:
-            player.hand.remove(card)
-            card.zone = Zone.BANISHED
-            player.banished.append(card)
+            ctx.banish_card(card, ctx.controller_index)
             log.info(
                 f"  Rising Resentment: banished {card.name} "
                 "(may play it this turn for 1 less — TODO: track playable from banish)"
