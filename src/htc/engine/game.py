@@ -801,7 +801,7 @@ class Game:
 
         # Track Draconic card plays for Fealty end-phase condition
         from htc.enums import SuperType as _ST
-        if _ST.DRACONIC in card.definition.supertypes:
+        if _ST.DRACONIC in self.effect_engine.get_modified_supertypes(self.state, card):
             player.turn_counters.draconic_card_played_this_turn = True
 
         # Emit play event
