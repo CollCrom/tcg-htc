@@ -97,7 +97,7 @@ class Game:
             register_assassin_abilities,
             register_assassin_cost_modifiers,
         )
-        from htc.cards.abilities.ninja import register_ninja_abilities
+        from htc.cards.abilities.ninja import register_ninja_abilities, register_ninja_cost_modifiers
         from htc.cards.abilities.equipment import register_equipment_abilities
         from htc.cards.abilities.agents import register_agent_abilities
         register_generic_abilities(self.ability_registry)
@@ -107,6 +107,7 @@ class Game:
         register_agent_abilities(self.ability_registry)
         # Intrinsic cost modifiers (card-text cost adjustments)
         register_assassin_cost_modifiers(self.effect_engine)
+        register_ninja_cost_modifiers(self.effect_engine)
 
     def _register_hero_abilities(self) -> None:
         """Register hero abilities as triggered effects on the EventBus.
