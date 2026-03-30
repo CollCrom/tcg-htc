@@ -1348,3 +1348,21 @@ def register_assassin_abilities(registry: AbilityRegistry) -> None:
     # Instant-from-hand (discard to activate)
     registry.register("instant_discard_effect", "Reaper's Call", _reapers_call_instant)
     registry.register("instant_discard_effect", "Under the Trap-Door", _under_the_trap_door_instant)
+
+
+def _stains_of_the_redback_cost_modifier(state, card, current_cost: int) -> int:
+    """Stains of the Redback costs {r} less if the defending hero is marked."""
+    opponent_index = 1 - card.owner_index
+    if (
+        0 <= opponent_index < len(state.players)
+        and state.players[opponent_index].is_marked
+    ):
+        return current_cost - 1
+    return current_cost
+
+
+def register_assassin_cost_modifiers(effect_engine) -> None:
+    """Register intrinsic cost modifiers for Assassin cards."""
+    effect_engine.register_intrinsic_cost_modifier(
+        "Stains of the Redback", _stains_of_the_redback_cost_modifier
+    )

@@ -6,6 +6,7 @@ cost, and keywords rather than reading base values directly.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from htc.engine.continuous import (
@@ -21,6 +22,9 @@ if TYPE_CHECKING:
     from htc.enums import Keyword, SuperType
     from htc.state.game_state import GameState
 
+# Signature: (state, card, current_cost) -> adjusted_cost
+IntrinsicCostModifier = Callable[["GameState", "CardInstance", int], int]
+
 
 class EffectEngine:
     """Central query point for modified card properties.
@@ -33,10 +37,25 @@ class EffectEngine:
         self._resolver = StagingResolver()
         self._next_effect_id: int = 0
         self._next_timestamp: int = 0
+        # Intrinsic cost modifiers keyed by card name.  Each callable
+        # receives (state, card, current_cost) and returns the adjusted cost.
+        self._intrinsic_cost_modifiers: dict[str, IntrinsicCostModifier] = {}
 
     # ------------------------------------------------------------------
     # Registration
     # ------------------------------------------------------------------
+
+    def register_intrinsic_cost_modifier(
+        self, card_name: str, modifier: IntrinsicCostModifier
+    ) -> None:
+        """Register an intrinsic cost modifier for cards with *card_name*.
+
+        Intrinsic cost modifiers represent card-text cost adjustments that
+        depend on game state (e.g. "costs {r} less if the defending hero
+        is marked").  They are applied after continuous-effect cost
+        modifiers and before the floor clamp.
+        """
+        self._intrinsic_cost_modifiers[card_name] = modifier
 
     def add_continuous_effect(
         self,
@@ -75,17 +94,12 @@ class EffectEngine:
         base = card.cost if card.cost is not None else 0
         result = self._resolve_numeric_property(state, card, base, NumericProperty.COST)
 
-        # Stains of the Redback: costs {r} less if defending hero is marked.
-        # This is an intrinsic cost modifier on the card itself.
-        if card.name == "Stains of the Redback":
-            opponent_index = 1 - card.owner_index
-            if (
-                0 <= opponent_index < len(state.players)
-                and state.players[opponent_index].is_marked
-            ):
-                result = max(0, result - 1)
+        # Apply intrinsic cost modifiers (card-text cost adjustments)
+        modifier = self._intrinsic_cost_modifiers.get(card.name)
+        if modifier is not None:
+            result = modifier(state, card, result)
 
-        return result
+        return max(0, result)
 
     def get_modified_supertypes(
         self, state: GameState, card: CardInstance
