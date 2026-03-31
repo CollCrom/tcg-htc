@@ -297,7 +297,8 @@ class Game:
     def _setup_game(self) -> None:
         """Start-of-game procedure (rules 4.1)."""
         for i in range(2):
-            ps = self._build_player_state(i, self.decks[i])
+            selected_equipment = self._select_equipment(i, self.decks[i])
+            ps = self._build_player_state(i, self.decks[i], selected_equipment)
             self.state.players.append(ps)
 
         # Register hero abilities as triggered effects
@@ -319,7 +320,74 @@ class Game:
             intellect = ps.hero.definition.intellect if ps.hero else 4
             self._draw_cards(ps, intellect or 4)
 
-    def _build_player_state(self, index: int, deck: DeckList) -> PlayerState:
+    def _select_equipment(self, player_index: int, deck: DeckList) -> list[str]:
+        """Pre-game equipment selection: let the player choose one piece per slot.
+
+        Groups the equipment pool by slot. For slots with a single option,
+        auto-selects it. For slots with multiple options, presents a
+        CHOOSE_EQUIPMENT decision to the player.
+
+        Returns the list of selected equipment names.
+        """
+        from collections import defaultdict
+
+        # Group equipment by slot
+        slot_options: dict[EquipmentSlot, list[str]] = defaultdict(list)
+        for ename in deck.equipment:
+            edef = self.db.get_by_name(ename)
+            if edef is None:
+                continue
+            slot = self._equipment_slot(edef)
+            if slot is not None:
+                slot_options[slot].append(ename)
+
+        selected: list[str] = []
+        # Process slots in a stable order (Head, Chest, Arms, Legs)
+        for slot in EquipmentSlot:
+            options = slot_options.get(slot, [])
+            if not options:
+                continue
+            if len(options) == 1:
+                # Auto-select the only option
+                selected.append(options[0])
+            else:
+                # Present choice to the player
+                action_options = [
+                    ActionOption(
+                        action_id=f"equip_{name}",
+                        description=f"{name} ({slot.value})",
+                        action_type=ActionType.ACTIVATE_ABILITY,
+                        card_instance_id=None,
+                    )
+                    for name in options
+                ]
+                decision = Decision(
+                    player_index=player_index,
+                    decision_type=DecisionType.CHOOSE_EQUIPMENT,
+                    prompt=f"Choose {slot.value} equipment",
+                    options=action_options,
+                    min_selections=1,
+                    max_selections=1,
+                )
+                response = self._ask(decision)
+                # Extract chosen equipment name from the action_id
+                chosen_id = response.first
+                chosen_name = None
+                if chosen_id:
+                    for name in options:
+                        if f"equip_{name}" == chosen_id:
+                            chosen_name = name
+                            break
+                if chosen_name is None:
+                    # Fallback: pick the first option
+                    chosen_name = options[0]
+                selected.append(chosen_name)
+
+        return selected
+
+    def _build_player_state(
+        self, index: int, deck: DeckList, selected_equipment: list[str] | None = None,
+    ) -> PlayerState:
         ps = PlayerState(index=index)
 
         # Hero
@@ -335,8 +403,9 @@ class Game:
             if wdef:
                 ps.weapons.append(self._make_instance(wdef, index, Zone.WEAPON_1))
 
-        # Equipment
-        for ename in deck.equipment:
+        # Equipment — use pre-selected list if provided, otherwise fall back to deck list
+        equip_names = selected_equipment if selected_equipment is not None else deck.equipment
+        for ename in equip_names:
             edef = self.db.get_by_name(ename)
             if edef:
                 card = self._make_instance(edef, index, Zone.HEAD)  # zone updated below

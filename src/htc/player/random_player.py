@@ -23,6 +23,7 @@ class RandomPlayer:
             DecisionType.CHOOSE_ARSENAL_CARD,
             DecisionType.CHOOSE_CARDS_TO_PITCH,
             DecisionType.OPTIONAL_ABILITY,
+            DecisionType.CHOOSE_EQUIPMENT,
         ):
             opt = self.rng.choice(decision.options)
             return PlayerResponse(selected_option_ids=[opt.action_id])
