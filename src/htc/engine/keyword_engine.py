@@ -346,9 +346,11 @@ class KeywordEngine:
 
         if cards_to_bottom:
             names = ", ".join(c.name for c in cards_to_bottom)
-            log.info(f"  Opt {n}: Player {player_index} puts {len(cards_to_bottom)} card(s) on bottom")
+            pn = state.players[player_index].hero.definition.name.split(",")[0] if state.players[player_index].hero else f"Player {player_index}"
+            log.info(f"  Opt {n}: {pn} puts {len(cards_to_bottom)} card(s) on bottom")
         else:
-            log.info(f"  Opt {n}: Player {player_index} keeps all on top")
+            pn = state.players[player_index].hero.definition.name.split(",")[0] if state.players[player_index].hero else f"Player {player_index}"
+            log.info(f"  Opt {n}: {pn} keeps all on top")
 
     # --- Retrieve ---
 
@@ -403,7 +405,8 @@ class KeywordEngine:
                 player.graveyard.remove(card)
                 card.zone = Zone.HAND
                 player.hand.append(card)
-                log.info(f"  Retrieve: Player {player_index} returns {card.name} to hand")
+                pn = state.players[player_index].hero.definition.name.split(",")[0] if state.players[player_index].hero else f"Player {player_index}"
+                log.info(f"  Retrieve: {pn} returns {card.name} to hand")
                 return card
 
         return None

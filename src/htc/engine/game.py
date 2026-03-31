@@ -214,7 +214,7 @@ class Game:
             target = self.state.players[event.target_player]
             target.life_total += event.amount
             target.turn_counters.life_gained += event.amount
-            log.info(f"  Player {event.target_player} gains {event.amount} life (life: {target.life_total})")
+            log.info(f"  {self._pname(event.target_player)} gains {event.amount} life (life: {target.life_total})")
 
     def _handle_lose_life(self, event: GameEvent) -> None:
         """Apply life loss to a player (not damage — bypasses prevention)."""
@@ -222,7 +222,7 @@ class Game:
             target = self.state.players[event.target_player]
             target.life_total = max(0, target.life_total - event.amount)
             target.turn_counters.life_lost += event.amount
-            log.info(f"  Player {event.target_player} loses {event.amount} life (life: {target.life_total})")
+            log.info(f"  {self._pname(event.target_player)} loses {event.amount} life (life: {target.life_total})")
 
     def _handle_hit_mark_removal(self, event: GameEvent) -> None:
         """Remove marked condition when hero is hit by opponent's source (rules 9.3.3)."""
@@ -234,7 +234,7 @@ class Game:
             source_owner = event.source.owner_index
             if source_owner != event.target_player:
                 target.is_marked = False
-                log.info(f"  Mark removed from Player {event.target_player} (hit by opponent)")
+                log.info(f"  Mark removed from {self._pname(event.target_player)} (hit by opponent)")
 
     def _handle_draw_card(self, event: GameEvent) -> None:
         """Draw a card for a player."""
@@ -486,7 +486,7 @@ class Game:
         self._process_pending_triggers()
 
         log.info(
-            f"  Player {player_index} becomes {agent_card.name} "
+            f"  {self._pname(player_index)} becomes {agent_card.name} "
             f"(was {old_hero_name})"
         )
 
@@ -515,7 +515,7 @@ class Game:
         ))
         log.info(
             f"  Banish: {card.name} ({'face-down' if face_down else 'face-up'}) "
-            f"for Player {player_index}"
+            f"for {self._pname(player_index)}"
         )
 
     def _mark_playable_from_banish(
@@ -534,7 +534,7 @@ class Game:
         )
         log.info(
             f"  Playable from banish: {card.name} until {expiry} "
-            f"(redirect={redirect_to_banish}) for Player {player_index}"
+            f"(redirect={redirect_to_banish}) for {self._pname(player_index)}"
         )
 
     @staticmethod
@@ -956,7 +956,7 @@ class Game:
                 data={"damage_type": "arcane"},
             ))
             log.info(
-                f"  Arcane damage: {remaining} to Player {target_player_index} "
+                f"  Arcane damage: {remaining} to {self._pname(target_player_index)} "
                 f"(life: {self.state.players[target_player_index].life_total})"
             )
             self._check_game_over()
@@ -1019,7 +1019,7 @@ class Game:
         # Pay resources (pitch cards as needed)
         self._pitch_to_pay(player_index, prevent_amount)
 
-        log.info(f"  Arcane Barrier: Player {player_index} prevents {prevent_amount} arcane damage")
+        log.info(f"  Arcane Barrier: {self._pname(player_index)} prevents {prevent_amount} arcane damage")
         return damage - prevent_amount
 
     def _apply_spellvoid(self, player_index: int, damage: int) -> int:
@@ -1947,7 +1947,7 @@ class Game:
         elif len(dead) == 1:
             self.state.winner = 1 - dead[0].index
             self.state.game_over = True
-            log.info(f"Player {dead[0].index} defeated! Player {1 - dead[0].index} wins!")
+            log.info(f"{self._pname(dead[0].index)} defeated! {self._pname(1 - dead[0].index)} wins!")
 
     def _choose_pitch_order(self, player: PlayerState) -> list[CardInstance]:
         """Ask the player to choose the order pitched cards go to bottom of deck.

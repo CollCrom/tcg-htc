@@ -54,6 +54,13 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _pname(state: "GameState", player_index: int) -> str:
+    """Short hero name for logging (standalone helper)."""
+    if state.players[player_index].hero:
+        return state.players[player_index].hero.definition.name.split(",")[0]
+    return f"Player {player_index}"
+
+
 def _is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
     """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
     if attack is None:
@@ -163,7 +170,7 @@ class MaskOfMomentumTrigger(TriggeredEffect):
         player = state.players[self.controller_index]
         if player.deck:
             log.info(
-                f"  Mask of Momentum: Player {self.controller_index} draws a card "
+                f"  Mask of Momentum: {_pname(state, self.controller_index)} draws a card "
                 f"(3rd+ consecutive hit)"
             )
             return GameEvent(
@@ -241,7 +248,7 @@ def _flick_knives(ctx: AbilityContext) -> None:
             amount=actual_damage,
             data={"chain_link": link},
         ))
-        log.info(f"  Flick Knives: Dagger deals {actual_damage} damage to Player {target_index}")
+        log.info(f"  Flick Knives: Dagger deals {actual_damage} damage to {ctx.player_name(target_index)}")
     else:
         log.info(f"  Flick Knives: Damage was prevented")
 
@@ -319,7 +326,7 @@ class BloodSplatteredVestTrigger(TriggeredEffect):
         state.resource_points[self.controller_index] = (
             state.resource_points.get(self.controller_index, 0) + 1
         )
-        log.info(f"  Blood Splattered Vest: Player {self.controller_index} gains 1 resource")
+        log.info(f"  Blood Splattered Vest: {_pname(state, self.controller_index)} gains 1 resource")
 
         # Add stain counter
         vest.counters["stain"] = vest.counters.get("stain", 0) + 1
@@ -400,10 +407,8 @@ class SpringTunicTrigger(TriggeredEffect):
 
         tunic.counters["energy"] = tunic.counters.get("energy", 0) + 1
         energy = tunic.counters["energy"]
-        state = self._get_state()
-        owner = state.players[self.controller_index].hero.definition.name.split(",")[0] if state and state.players[self.controller_index].hero else f"Player {self.controller_index}"
         log.info(
-            f"  {owner}'s Spring Tunic: adds energy counter ({energy}/3)"
+            f"  {_pname(state, self.controller_index)}'s Spring Tunic: adds energy counter ({energy}/3)"
         )
 
         return None
@@ -707,12 +712,12 @@ class MaskOfDeceitTrigger(TriggeredEffect):
                 # Fallback to first if response was invalid
                 chosen = player.demi_heroes[0]
 
-            log.info(f"  Mask of Deceit: Player {self.controller_index} chooses {chosen.name}")
+            log.info(f"  Mask of Deceit: {_pname(state, self.controller_index)} chooses {chosen.name}")
         else:
             # Not marked: random selection
             chosen = state.rng.choice(player.demi_heroes)
             log.info(
-                f"  Mask of Deceit: Player {self.controller_index} randomly becomes "
+                f"  Mask of Deceit: {_pname(state, self.controller_index)} randomly becomes "
                 f"{chosen.name}"
             )
 
@@ -764,7 +769,7 @@ class KunaiDestroyOnChainClose(TriggeredEffect):
                 player.graveyard.append(weapon)
                 log.info(
                     f"  Kunai of Retribution: Destroyed on combat chain close "
-                    f"(Player {self.controller_index})"
+                    f"({_pname(state, self.controller_index)})"
                 )
                 break
         return None
@@ -793,7 +798,7 @@ def _hunters_klaive_on_hit(ctx: AbilityContext) -> None:
 
     target_index = link.attack_target_index
     ctx.state.players[target_index].is_marked = True
-    log.info(f"  Hunter's Klaive: Marked Player {target_index}")
+    log.info(f"  Hunter's Klaive: Marked {ctx.player_name(target_index)}")
 
 
 # ---------------------------------------------------------------------------
@@ -831,7 +836,8 @@ def register_equipment_triggers(
             _event_bus=event_bus,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Mask of Momentum trigger for Player {player_index}")
+        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        log.info(f"  Registered Mask of Momentum trigger for {pn}")
 
     # Blood Splattered Vest
     chest_eq = player_state.equipment.get(EquipmentSlot.CHEST)
@@ -842,7 +848,8 @@ def register_equipment_triggers(
             _equipment_instance_id=chest_eq.instance_id,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Blood Splattered Vest trigger for Player {player_index}")
+        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        log.info(f"  Registered Blood Splattered Vest trigger for {pn}")
 
     # Fyendal's Spring Tunic
     if chest_eq is not None and chest_eq.name == "Fyendal's Spring Tunic":
@@ -852,7 +859,8 @@ def register_equipment_triggers(
             _equipment_instance_id=chest_eq.instance_id,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Fyendal's Spring Tunic trigger for Player {player_index}")
+        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        log.info(f"  Registered Fyendal's Spring Tunic trigger for {pn}")
 
     # Mask of Deceit
     if head_eq is not None and head_eq.name == "Mask of Deceit":
@@ -863,7 +871,8 @@ def register_equipment_triggers(
             _game=game,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Mask of Deceit trigger for Player {player_index}")
+        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        log.info(f"  Registered Mask of Deceit trigger for {pn}")
 
 
 def register_weapon_triggers(
@@ -885,8 +894,10 @@ def register_weapon_triggers(
             one_shot=True,
         )
         event_bus.register_trigger(trigger)
+        state = state_getter() if callable(state_getter) else None
+        pn = _pname(state, player_index) if state else f"Player {player_index}"
         log.info(
-            f"  Registered Kunai of Retribution destroy trigger for Player {player_index}"
+            f"  Registered Kunai of Retribution destroy trigger for {pn}"
         )
 
 
@@ -922,9 +933,8 @@ def _fyendals_spring_tunic_instant(ctx: AbilityContext) -> None:
     ctx.state.resource_points[ctx.controller_index] = (
         ctx.state.resource_points.get(ctx.controller_index, 0) + 1
     )
-    owner = ctx.state.players[ctx.controller_index].hero.definition.name.split(",")[0] if ctx.state.players[ctx.controller_index].hero else f"Player {ctx.controller_index}"
     log.info(
-        f"  {owner}'s Spring Tunic: removes 3 energy counters, gains 1 resource"
+        f"  {ctx.player_name(ctx.controller_index)}'s Spring Tunic: removes 3 energy counters, gains 1 resource"
     )
 
 

@@ -220,7 +220,7 @@ def _fate_foreseen(ctx: AbilityContext) -> None:
     Triggers Opt 1 when played as a defense reaction.
     """
     ctx.keyword_engine.perform_opt(ctx.state, ctx.controller_index, 1)
-    log.info(f"  Fate Foreseen: Player {ctx.controller_index} performs Opt 1")
+    log.info(f"  Fate Foreseen: {ctx.player_name(ctx.controller_index)} performs Opt 1")
 
 
 def _sink_below(ctx: AbilityContext) -> None:
@@ -267,7 +267,7 @@ def _sink_below(ctx: AbilityContext) -> None:
             card.zone = Zone.DECK
             player.deck.append(card)
             log.info(
-                f"  Sink Below: Player {ctx.controller_index} puts "
+                f"  Sink Below: {ctx.player_name(ctx.controller_index)} puts "
                 f"{card.name} on bottom of deck"
             )
 
@@ -321,7 +321,7 @@ def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
     ctx.events.register_replacement(prevention)
     log.info(
         f"  Shelter from the Storm: damage prevention active "
-        f"(3 uses, Player {controller})"
+        f"(3 uses, {ctx.player_name(controller)})"
     )
 
 
