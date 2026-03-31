@@ -178,7 +178,7 @@ class TestEquipmentReactionsOffered:
         assert eq_options[0].action_id == f"activate_{tide.instance_id}"
 
     def test_stalkers_steps_offered_as_reaction(self):
-        """Stalker's Steps should appear in reaction options for the attacker."""
+        """Stalker's Steps should appear in reaction options when attack has Stealth."""
         game = make_game_shell()
         stalkers = make_equipment(
             instance_id=61, name="Stalker's Steps", defense=0,
@@ -186,9 +186,12 @@ class TestEquipmentReactionsOffered:
         )
         _equip(game, stalkers, player_index=0, slot=EquipmentSlot.LEGS)
 
-        # Set up an attack on the chain
+        # Set up an attack WITH Stealth on the chain
         game.combat_mgr.open_chain(game.state)
-        atk = make_ninja_attack(instance_id=1, power=4, cost=0, owner_index=0)
+        atk = make_ninja_attack(
+            instance_id=1, power=4, cost=0, owner_index=0,
+            keywords=frozenset({Keyword.STEALTH}),
+        )
         game.combat_mgr.add_chain_link(game.state, atk, 1)
 
         decision = game.action_builder.build_reaction_decision(
@@ -572,3 +575,239 @@ class TestKeywordParsing:
         surging = db.get_by_name("Surging Strike")
         assert surging is not None
         assert Keyword.GO_AGAIN in surging.keywords
+
+
+# ===========================================================================
+# Equipment reaction precondition tests
+# ===========================================================================
+
+
+class TestEquipmentReactionPreconditions:
+    """Verify that equipment attack reactions are only offered when
+    the active attack meets card-specific eligibility requirements."""
+
+    # --- Tide Flippers preconditions ---
+
+    def test_tide_flippers_not_offered_on_power_3(self):
+        """Tide Flippers should NOT be offered when base power > 2."""
+        game = make_game_shell()
+        tide = make_equipment(
+            instance_id=60, name="Tide Flippers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, tide, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(instance_id=1, power=3, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Tide Flippers" in o.description]
+        assert len(eq_options) == 0, "Tide Flippers should not be offered on power 3 attack"
+
+    def test_tide_flippers_not_offered_on_power_4(self):
+        """Tide Flippers should NOT be offered when base power is 4."""
+        game = make_game_shell()
+        tide = make_equipment(
+            instance_id=60, name="Tide Flippers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, tide, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(instance_id=1, power=4, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Tide Flippers" in o.description]
+        assert len(eq_options) == 0, "Tide Flippers should not be offered on power 4 attack"
+
+    def test_tide_flippers_not_offered_on_weapon_proxy(self):
+        """Tide Flippers should NOT be offered on a weapon attack (proxy)."""
+        game = make_game_shell()
+        tide = make_equipment(
+            instance_id=60, name="Tide Flippers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, tide, player_index=0, slot=EquipmentSlot.LEGS)
+
+        weapon = _make_draconic_weapon(instance_id=100)
+        game.state.players[0].weapons.append(weapon)
+        proxy = make_weapon_proxy(weapon, instance_id=101)
+
+        game.combat_mgr.open_chain(game.state)
+        link = game.combat_mgr.add_chain_link(game.state, proxy, 1)
+        link.attack_source = weapon
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Tide Flippers" in o.description]
+        assert len(eq_options) == 0, "Tide Flippers should not be offered on weapon proxy"
+
+    def test_tide_flippers_offered_on_power_1(self):
+        """Tide Flippers SHOULD be offered when base power is 1."""
+        game = make_game_shell()
+        tide = make_equipment(
+            instance_id=60, name="Tide Flippers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, tide, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(instance_id=1, power=1, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Tide Flippers" in o.description]
+        assert len(eq_options) == 1, "Tide Flippers should be offered on power 1 attack"
+
+    def test_tide_flippers_offered_on_power_2(self):
+        """Tide Flippers SHOULD be offered when base power is exactly 2."""
+        game = make_game_shell()
+        tide = make_equipment(
+            instance_id=60, name="Tide Flippers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, tide, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(instance_id=1, power=2, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Tide Flippers" in o.description]
+        assert len(eq_options) == 1, "Tide Flippers should be offered on power 2 attack"
+
+    # --- Blacktek Whisperers preconditions ---
+
+    def test_blacktek_not_offered_on_non_assassin(self):
+        """Blacktek Whisperers should NOT be offered on a non-Assassin attack."""
+        game = make_game_shell()
+        blacktek = make_equipment(
+            instance_id=62, name="Blacktek Whisperers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, blacktek, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        # Ninja attack (not Assassin)
+        atk = make_ninja_attack(instance_id=1, power=4, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Blacktek" in o.description]
+        assert len(eq_options) == 0, "Blacktek Whisperers should not be offered on non-Assassin"
+
+    def test_blacktek_offered_on_assassin_attack(self):
+        """Blacktek Whisperers SHOULD be offered on an Assassin attack action."""
+        game = make_game_shell()
+        blacktek = make_equipment(
+            instance_id=62, name="Blacktek Whisperers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, blacktek, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(
+            instance_id=1, power=4, cost=0, owner_index=0,
+            supertypes=frozenset({SuperType.ASSASSIN}),
+        )
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Blacktek" in o.description]
+        assert len(eq_options) == 1, "Blacktek Whisperers should be offered on Assassin attack"
+
+    # --- Stalker's Steps preconditions ---
+
+    def test_stalkers_steps_not_offered_without_stealth(self):
+        """Stalker's Steps should NOT be offered when attack lacks Stealth."""
+        game = make_game_shell()
+        stalkers = make_equipment(
+            instance_id=61, name="Stalker's Steps", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, stalkers, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(instance_id=1, power=4, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
+        )
+        eq_options = [o for o in decision.options if "Stalker's Steps" in o.description]
+        assert len(eq_options) == 0, "Stalker's Steps should not be offered without Stealth"
+
+
+# ===========================================================================
+# Tide Flippers destruction-as-cost tests
+# ===========================================================================
+
+
+class TestTideFlippersDestructionAsCost:
+    """Verify that Tide Flippers destruction happens as activation cost
+    (before the go again effect), not as a side-effect."""
+
+    def test_destruction_happens_before_effect(self):
+        """Tide Flippers is destroyed even when called — destruction is cost."""
+        game = make_game_shell()
+        tide = make_equipment(
+            instance_id=60, name="Tide Flippers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, tide, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(instance_id=1, power=2, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        game._activate_equipment(0, tide)
+
+        # Destruction happened (cost was paid)
+        assert game.state.players[0].equipment[EquipmentSlot.LEGS] is None
+        assert tide in game.state.players[0].graveyard
+        assert tide.zone == Zone.GRAVEYARD
+
+        # Effect also applied
+        attack_keywords = game.effect_engine.get_modified_keywords(game.state, atk)
+        assert Keyword.GO_AGAIN in attack_keywords
+
+    def test_destruction_is_unconditional_once_activated(self):
+        """Once activation starts, destruction always happens (it's the cost).
+
+        Even though preconditions are now checked by the ActionBuilder,
+        the handler itself should destroy unconditionally.
+        """
+        game = make_game_shell()
+        tide = make_equipment(
+            instance_id=60, name="Tide Flippers", defense=0,
+            subtype=SubType.LEGS, owner_index=0,
+        )
+        _equip(game, tide, player_index=0, slot=EquipmentSlot.LEGS)
+
+        game.combat_mgr.open_chain(game.state)
+        atk = make_ninja_attack(instance_id=1, power=1, cost=0, owner_index=0)
+        game.combat_mgr.add_chain_link(game.state, atk, 1)
+
+        # Directly call the handler function to verify it destroys first
+        from htc.cards.abilities.equipment import _tide_flippers
+        ctx = make_ability_context(game, tide, controller_index=0)
+        _tide_flippers(ctx)
+
+        # Equipment is destroyed
+        assert game.state.players[0].equipment[EquipmentSlot.LEGS] is None
+        assert tide in game.state.players[0].graveyard

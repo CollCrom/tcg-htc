@@ -180,6 +180,10 @@ def _collect_all_cards(state) -> list[CardInstance]:
         cards.extend(ps.demi_heroes)
         for eq in ps.equipment.values():
             if eq is not None:
+                # Skip equipment currently on the combat chain — it will be
+                # collected from link.defending_cards to avoid double-counting.
+                if eq.zone == Zone.COMBAT_CHAIN:
+                    continue
                 cards.append(eq)
     # Combat chain cards
     for link in state.combat_chain.chain_links:
