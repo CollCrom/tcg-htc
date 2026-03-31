@@ -200,6 +200,12 @@ def _flick_knives(ctx: AbilityContext) -> None:
     player = ctx.state.players[ctx.controller_index]
     target_index = 1 - ctx.controller_index
 
+    # Mark as activated this turn (once-per-turn enforcement)
+    from htc.enums import EquipmentSlot
+    flick = player.equipment.get(EquipmentSlot.ARMS)
+    if flick is not None and flick.name == "Flick Knives":
+        flick.activated_this_turn = True
+
     # Find a dagger weapon not on the active chain link
     active_attack_id = link.active_attack.instance_id if link.active_attack else None
     source_id = link.attack_source.instance_id if link.attack_source else None

@@ -1167,8 +1167,8 @@ class Game:
         """
         player = self.state.players[player_index]
 
-        # Tap the weapon (enforces once-per-turn)
-        weapon.is_tapped = True
+        # Mark as activated this turn (once-per-turn enforcement)
+        weapon.activated_this_turn = True
 
         # Pay action point cost
         self.state.action_points[player_index] -= 1
@@ -1857,12 +1857,14 @@ class Game:
                 player.deck.extend(ordered)
                 player.pitch.clear()
 
-        # 4.4.3d: Untap all turn player's permanents
+        # 4.4.3d: Untap all turn player's permanents and reset once-per-turn
         for eq in tp.equipment.values():
             if eq:
                 eq.is_tapped = False
+                eq.activated_this_turn = False
         for w in tp.weapons:
             w.is_tapped = False
+            w.activated_this_turn = False
 
         # 4.4.3e: ALL players lose all action points and resource points
         for i in range(len(self.state.players)):

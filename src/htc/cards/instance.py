@@ -20,6 +20,7 @@ class CardInstance:
     zone: Zone
     controller_index: int | None = None
     is_tapped: bool = False
+    activated_this_turn: bool = False  # once-per-turn tracking (separate from tap)
     face_up: bool = True
     counters: dict[str, int] = field(default_factory=dict)
     is_proxy: bool = False

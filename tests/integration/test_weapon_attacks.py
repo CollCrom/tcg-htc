@@ -126,7 +126,7 @@ def test_weapon_tapped_after_activation():
     game.interfaces = [None, None]
     game._activate_weapon(0, weapon)
 
-    assert weapon.is_tapped is True
+    assert weapon.activated_this_turn is True
 
 
 def test_weapon_activation_consumes_action_point():
