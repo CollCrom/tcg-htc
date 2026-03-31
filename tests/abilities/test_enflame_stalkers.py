@@ -307,8 +307,12 @@ class TestStalkersSteps:
         # Equipment should be in graveyard
         assert steps in game.state.players[0].graveyard
 
-    def test_no_effect_without_stealth(self):
-        """Stalker's Steps does nothing if the attack doesn't have Stealth."""
+    def test_not_offered_without_stealth(self):
+        """Stalker's Steps is not offered when the attack lacks Stealth.
+
+        Precondition checking is now in the ActionBuilder, so the handler
+        is never called for ineligible attacks.
+        """
         game = make_game_shell()
         game.combat_mgr.open_chain(game.state)
         # Regular ninja attack without Stealth
@@ -318,16 +322,15 @@ class TestStalkersSteps:
         steps = _make_stalkers_steps(owner_index=0)
         game.state.players[0].equipment[EquipmentSlot.LEGS] = steps
 
-        game._apply_card_ability(
-            make_attack_reaction("Stalker's Steps", instance_id=60, owner_index=0),
-            0, "attack_reaction_effect",
+        decision = game.action_builder.build_reaction_decision(
+            game.state, priority_player=0, attacker_index=0, defender_index=1,
         )
 
-        # Go again should NOT be granted (no stealth)
-        kws = game.effect_engine.get_modified_keywords(game.state, ninja_atk)
-        assert Keyword.GO_AGAIN not in kws
+        # Stalker's Steps should NOT be in the options
+        eq_options = [o for o in decision.options if "Stalker's Steps" in o.description]
+        assert len(eq_options) == 0, "Stalker's Steps should not be offered without Stealth"
 
-        # Equipment should NOT be destroyed
+        # Equipment should still be equipped (not destroyed)
         assert game.state.players[0].equipment.get(EquipmentSlot.LEGS) is not None
 
     def test_stalkers_steps_registered(self):

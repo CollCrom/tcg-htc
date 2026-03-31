@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from htc.cards.instance import CardInstance
 from htc.engine.actions import ActionOption, Decision
 from htc.engine.cost import can_pay_action_cost, can_pay_resource_cost
-from htc.enums import ActionType, CardType, DecisionType, EquipmentSlot, Zone
+from htc.enums import ActionType, CardType, DecisionType, EquipmentSlot, Keyword, SubType, SuperType, Zone
 
 if TYPE_CHECKING:
     from htc.engine.abilities import AbilityRegistry
@@ -358,6 +358,9 @@ class ActionBuilder:
             # Already in options?
             if any(o.card_instance_id == eq.instance_id for o in options):
                 continue
+            # Check preconditions (e.g. Tide Flippers needs low-power attack action)
+            if not self._can_use_equipment_reaction(state, player_index, eq):
+                continue
             options.append(ActionOption.activate(
                 eq.instance_id, f"Activate {eq.name} (attack reaction)",
             ))
@@ -435,6 +438,63 @@ class ActionBuilder:
             energy = equipment.counters.get("energy", 0)
             if energy < 3:
                 return False
+        return True
+
+    def _can_use_equipment_reaction(
+        self, state: GameState, player_index: int, equipment: CardInstance,
+    ) -> bool:
+        """Check preconditions for equipment attack reaction activation.
+
+        Equipment attack reactions have card-specific eligibility requirements
+        based on the active attack.  Returns False if the current game state
+        does not satisfy the equipment's preconditions.
+        """
+        link = state.combat_chain.active_link
+        if link is None or link.active_attack is None:
+            return False
+        attack = link.active_attack
+
+        if equipment.name == "Tide Flippers":
+            # Must be an attack action card (not weapon proxy)
+            if CardType.ACTION not in attack.definition.types:
+                return False
+            if SubType.ATTACK not in attack.definition.subtypes:
+                return False
+            # Base power must be 2 or less
+            base_power = attack.definition.power or 0
+            if base_power > 2:
+                return False
+
+        elif equipment.name == "Blacktek Whisperers":
+            # Must be an Assassin attack action card
+            if CardType.ACTION not in attack.definition.types:
+                return False
+            if SubType.ATTACK not in attack.definition.subtypes:
+                return False
+            supertypes = self.effect_engine.get_modified_supertypes(state, attack)
+            if SuperType.ASSASSIN not in supertypes:
+                return False
+
+        elif equipment.name == "Stalker's Steps":
+            # Must have Stealth keyword
+            attack_keywords = self.effect_engine.get_modified_keywords(state, attack)
+            if Keyword.STEALTH not in attack_keywords:
+                return False
+
+        elif equipment.name == "Flick Knives":
+            # Must have an off-chain dagger weapon
+            player = state.players[player_index]
+            active_attack_id = attack.instance_id
+            source_id = link.attack_source.instance_id if link.attack_source else None
+            has_off_chain_dagger = False
+            for weapon in player.weapons:
+                if SubType.DAGGER in weapon.definition.subtypes:
+                    if weapon.instance_id != source_id and weapon.instance_id != active_attack_id:
+                        has_off_chain_dagger = True
+                        break
+            if not has_off_chain_dagger:
+                return False
+
         return True
 
     def _count_draconic_chain_links(self, state: GameState, player_index: int) -> int:

@@ -420,29 +420,24 @@ class SpringTunicTrigger(TriggeredEffect):
 
 @require_active_attack
 def _tide_flippers(ctx: AbilityContext) -> None:
-    """Tide Flippers: destroy self, grant go again to low-power attack."""
+    """Tide Flippers: destroy self (cost), then grant go again to low-power attack.
+
+    Destruction is the activation COST per card text ("Destroy Tide Flippers:"),
+    so it happens first, unconditionally once activation begins.  Preconditions
+    (attack action card with base power <= 2) are checked by the ActionBuilder
+    before this handler is offered.
+    """
     link = ctx.chain_link
-
     attack = link.active_attack
-    # Must be an attack action card (not weapon proxy)
-    if CardType.ACTION not in attack.definition.types:
-        return
-    if SubType.ATTACK not in attack.definition.subtypes:
-        return
 
-    # Base power must be 2 or less
-    base_power = attack.definition.power or 0
-    if base_power > 2:
-        return
-
-    # Destroy Tide Flippers
+    # --- Cost: Destroy Tide Flippers ---
     player = ctx.state.players[ctx.controller_index]
     from htc.enums import EquipmentSlot
     legs_eq = player.equipment.get(EquipmentSlot.LEGS)
     if legs_eq is not None and legs_eq.name == "Tide Flippers":
         _destroy_equipment(ctx.state, legs_eq)
 
-    # Grant Go Again
+    # --- Effect: Grant Go Again ---
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Tide Flippers")
 
 
@@ -459,26 +454,23 @@ def _tide_flippers(ctx: AbilityContext) -> None:
 
 @require_active_attack
 def _blacktek_whisperers(ctx: AbilityContext) -> None:
-    """Blacktek Whisperers: destroy self, grant on-hit go again to Assassin attack."""
+    """Blacktek Whisperers: destroy self (cost), grant on-hit go again to Assassin attack.
+
+    Destruction is the activation COST per card text ("Destroy Blacktek Whisperers:"),
+    so it happens first.  Preconditions (Assassin attack action card) are checked by
+    the ActionBuilder before this handler is offered.
+    """
     link = ctx.chain_link
-
     attack = link.active_attack
-    # Must be an Assassin attack action card
-    if SuperType.ASSASSIN not in attack.definition.supertypes:
-        return
-    if CardType.ACTION not in attack.definition.types:
-        return
-    if SubType.ATTACK not in attack.definition.subtypes:
-        return
 
-    # Destroy Blacktek Whisperers
+    # --- Cost: Destroy Blacktek Whisperers ---
     player = ctx.state.players[ctx.controller_index]
     from htc.enums import EquipmentSlot
     legs_eq = player.equipment.get(EquipmentSlot.LEGS)
     if legs_eq is not None and legs_eq.name == "Blacktek Whisperers":
         _destroy_equipment(ctx.state, legs_eq)
 
-    # Register one-shot HIT trigger for Go Again
+    # --- Effect: Register one-shot HIT trigger for Go Again ---
     atk_id = attack.instance_id
     hit_trigger = _BlacktekGoAgainOnHit(
         controller_index=ctx.controller_index,
@@ -561,24 +553,23 @@ class _BlacktekGoAgainOnHit(TriggeredEffect):
 
 @require_active_attack
 def _stalkers_steps(ctx: AbilityContext) -> None:
-    """Stalker's Steps: destroy self, grant go again to stealth attack."""
+    """Stalker's Steps: destroy self (cost), grant go again to stealth attack.
+
+    Destruction is the activation COST per card text ("Destroy this:"),
+    so it happens first.  Preconditions (attack with Stealth) are checked by
+    the ActionBuilder before this handler is offered.
+    """
     link = ctx.chain_link
-
     attack = link.active_attack
-    # Must have Stealth keyword (check via effect engine for modified keywords)
-    attack_keywords = ctx.effect_engine.get_modified_keywords(ctx.state, attack)
-    if Keyword.STEALTH not in attack_keywords:
-        log.info(f"  Stalker's Steps: no effect -- {attack.name} does not have Stealth")
-        return
 
-    # Destroy Stalker's Steps
+    # --- Cost: Destroy Stalker's Steps ---
     player = ctx.state.players[ctx.controller_index]
     from htc.enums import EquipmentSlot
     legs_eq = player.equipment.get(EquipmentSlot.LEGS)
     if legs_eq is not None and legs_eq.name == "Stalker's Steps":
         _destroy_equipment(ctx.state, legs_eq)
 
-    # Grant Go Again
+    # --- Effect: Grant Go Again ---
     grant_keyword(ctx, attack, Keyword.GO_AGAIN, "Stalker's Steps")
 
 
