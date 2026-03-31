@@ -165,6 +165,9 @@ class ActionBuilder:
                 # Exposed: "If you are marked, you can't play this."
                 if card.name == "Exposed" and player.is_marked:
                     continue
+                # Check target requirements for the active attack
+                if not self._can_play_attack_reaction(state, priority_player, card):
+                    continue
                 if can_pay_resource_cost(state, priority_player, card, self.effect_engine):
                     options.append(ActionOption.play_card(
                         card.instance_id, card.name, card.definition.color_label,
@@ -504,6 +507,79 @@ class ActionBuilder:
                         has_off_chain_dagger = True
                         break
             if not has_off_chain_dagger:
+                return False
+
+        return True
+
+    def _can_play_attack_reaction(
+        self, state: GameState, player_index: int, card: CardInstance,
+    ) -> bool:
+        """Check if a hand-played attack reaction has a valid target.
+
+        Some attack reactions require the active attack to be a specific
+        type (dagger, stealth, Ninja, Assassin, etc.).
+        """
+        link = state.combat_chain.active_link
+        if link is None or link.active_attack is None:
+            return False
+        attack = link.active_attack
+
+        # "Target dagger attack" — Incision, To the Point, Scar Tissue
+        if card.name in ("Incision", "To the Point", "Scar Tissue"):
+            is_dagger = (
+                SubType.DAGGER in attack.definition.subtypes
+                or (attack.is_proxy and attack.proxy_source_id is not None
+                    and any(
+                        w.instance_id == attack.proxy_source_id
+                        and SubType.DAGGER in w.definition.subtypes
+                        for w in state.players[player_index].weapons
+                    ))
+            )
+            if not is_dagger:
+                return False
+
+        # "Target attack with stealth" — Stains of the Redback
+        elif card.name == "Stains of the Redback":
+            kws = self.effect_engine.get_modified_keywords(state, attack)
+            if Keyword.STEALTH not in kws:
+                return False
+
+        # "Target attack action card with stealth" — Take Up the Mantle
+        elif card.name == "Take Up the Mantle":
+            if not attack.definition.is_attack_action:
+                return False
+            kws = self.effect_engine.get_modified_keywords(state, attack)
+            if Keyword.STEALTH not in kws:
+                return False
+
+        # "Target Ninja attack action card" — Ancestral Empowerment
+        elif card.name == "Ancestral Empowerment":
+            if not attack.definition.is_attack_action:
+                return False
+            supertypes = self.effect_engine.get_modified_supertypes(state, attack)
+            if SuperType.NINJA not in supertypes:
+                return False
+
+        # "Target card defending an Assassin attack" — Shred
+        # Shred targets a defending card, not the attack itself.
+        # It's playable as long as the active attack is Assassin.
+        elif card.name == "Shred":
+            supertypes = self.effect_engine.get_modified_supertypes(state, attack)
+            if SuperType.ASSASSIN not in supertypes:
+                return False
+
+        # Throw Dagger needs an off-chain dagger weapon
+        elif card.name == "Throw Dagger":
+            player = state.players[player_index]
+            source_id = link.attack_source.instance_id if link.attack_source else None
+            active_id = attack.instance_id
+            has_dagger = any(
+                SubType.DAGGER in w.definition.subtypes
+                and w.instance_id != source_id
+                and w.instance_id != active_id
+                for w in player.weapons
+            )
+            if not has_dagger:
                 return False
 
         return True

@@ -214,7 +214,7 @@ class Game:
             target = self.state.players[event.target_player]
             target.life_total += event.amount
             target.turn_counters.life_gained += event.amount
-            log.info(f"  Player {event.target_player} gains {event.amount} life (life: {target.life_total})")
+            log.info(f"  {self._pname(event.target_player)} gains {event.amount} life (life: {target.life_total})")
 
     def _handle_lose_life(self, event: GameEvent) -> None:
         """Apply life loss to a player (not damage — bypasses prevention)."""
@@ -222,7 +222,7 @@ class Game:
             target = self.state.players[event.target_player]
             target.life_total = max(0, target.life_total - event.amount)
             target.turn_counters.life_lost += event.amount
-            log.info(f"  Player {event.target_player} loses {event.amount} life (life: {target.life_total})")
+            log.info(f"  {self._pname(event.target_player)} loses {event.amount} life (life: {target.life_total})")
 
     def _handle_hit_mark_removal(self, event: GameEvent) -> None:
         """Remove marked condition when hero is hit by opponent's source (rules 9.3.3)."""
@@ -234,7 +234,7 @@ class Game:
             source_owner = event.source.owner_index
             if source_owner != event.target_player:
                 target.is_marked = False
-                log.info(f"  Mark removed from Player {event.target_player} (hit by opponent)")
+                log.info(f"  Mark removed from {self._pname(event.target_player)} (hit by opponent)")
 
     def _handle_draw_card(self, event: GameEvent) -> None:
         """Draw a card for a player."""
@@ -486,7 +486,7 @@ class Game:
         self._process_pending_triggers()
 
         log.info(
-            f"  Player {player_index} becomes {agent_card.name} "
+            f"  {self._pname(player_index)} becomes {agent_card.name} "
             f"(was {old_hero_name})"
         )
 
@@ -515,7 +515,7 @@ class Game:
         ))
         log.info(
             f"  Banish: {card.name} ({'face-down' if face_down else 'face-up'}) "
-            f"for Player {player_index}"
+            f"for {self._pname(player_index)}"
         )
 
     def _mark_playable_from_banish(
@@ -534,7 +534,7 @@ class Game:
         )
         log.info(
             f"  Playable from banish: {card.name} until {expiry} "
-            f"(redirect={redirect_to_banish}) for Player {player_index}"
+            f"(redirect={redirect_to_banish}) for {self._pname(player_index)}"
         )
 
     @staticmethod
@@ -622,11 +622,34 @@ class Game:
             return EquipmentSlot.LEGS
         return None
 
+    # --- Helpers ---
+
+    def _pname(self, player_index: int) -> str:
+        """Short hero name for logging (e.g. 'Cindra' instead of full title)."""
+        ps = self.state.players[player_index]
+        if ps.hero:
+            name = ps.hero.definition.name
+            # Use first name only (before comma)
+            return name.split(",")[0] if "," in name else name
+        return f"P{player_index}"
+
     # --- Turn structure ---
 
     def _run_turn(self) -> None:
         tp = self.state.turn_player
-        log.info(f"=== Turn {self.state.turn_number} (Player {tp.index}) ===")
+        opp = self.state.players[1 - tp.index]
+        # FaB turn numbering: turn 0 is the opening turn, then both players
+        # share the same turn number (turn 1, turn 1, turn 2, turn 2, ...)
+        fab_turn = self.state.turn_number // 2
+        log.info(
+            f"=== Turn {fab_turn} ({self._pname(tp.index)}'s turn) "
+            f"| Life: {self._pname(0)} {self.state.players[0].life_total} — "
+            f"{self._pname(1)} {self.state.players[1].life_total} ==="
+        )
+        # Log hands at start of turn
+        for p in self.state.players:
+            hand_str = ", ".join(f"{c.name}{c.definition.color_label}" for c in p.hand) or "(empty)"
+            log.info(f"  {self._pname(p.index)}'s hand: [{hand_str}]")
         # Reset turn counters for ALL players at start of each turn
         for player in self.state.players:
             player.turn_counters.reset()
@@ -737,7 +760,7 @@ class Game:
                 link = self.state.combat_chain.active_link
                 if link:
                     self.combat_mgr.add_defender(self.state, link, card)
-                    log.info(f"  Defense reaction: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
+                    log.info(f"  {self._pname(layer.controller_index)} plays defense reaction: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
                     # Apply defense reaction effect (e.g. Fate Foreseen's Opt, Sink Below's cycle)
                     self._apply_card_ability(card, layer.controller_index, "defense_reaction_effect")
                 else:
@@ -746,7 +769,7 @@ class Game:
                 # Attack reaction resolves: apply effect, then graveyard
                 self._apply_card_ability(card, layer.controller_index, "attack_reaction_effect")
                 self._move_to_graveyard_or_banish(card)
-                log.info(f"  Attack reaction: {card.name}{card.definition.color_label}")
+                log.info(f"  {self._pname(layer.controller_index)} plays attack reaction: {card.name}{card.definition.color_label}")
             elif card.definition.is_permanent_when_resolved:
                 # Permanent subtypes (auras, items, allies, etc.) enter the arena (1.3.3)
                 card.zone = Zone.PERMANENT
@@ -898,11 +921,11 @@ class Game:
         # If it's an attack and combat chain is closed, open it (7.0.2a)
         if card.definition.is_attack and not self.state.combat_chain.is_open:
             self.combat_mgr.open_chain(self.state)
-            log.info(f"  Play attack: {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
+            log.info(f"  {self._pname(player_index)} attacks with {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
         elif card.definition.is_attack:
-            log.info(f"  Chain attack: {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
+            log.info(f"  {self._pname(player_index)} chains {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
         else:
-            log.info(f"  Play: {card.name}{color_str}")
+            log.info(f"  {self._pname(player_index)} plays {card.name}{color_str}")
 
     # --- Arcane Damage ---
 
@@ -933,7 +956,7 @@ class Game:
                 data={"damage_type": "arcane"},
             ))
             log.info(
-                f"  Arcane damage: {remaining} to Player {target_player_index} "
+                f"  Arcane damage: {remaining} to {self._pname(target_player_index)} "
                 f"(life: {self.state.players[target_player_index].life_total})"
             )
             self._check_game_over()
@@ -996,7 +1019,7 @@ class Game:
         # Pay resources (pitch cards as needed)
         self._pitch_to_pay(player_index, prevent_amount)
 
-        log.info(f"  Arcane Barrier: Player {player_index} prevents {prevent_amount} arcane damage")
+        log.info(f"  Arcane Barrier: {self._pname(player_index)} prevents {prevent_amount} arcane damage")
         return damage - prevent_amount
 
     def _apply_spellvoid(self, player_index: int, damage: int) -> int:
@@ -1068,9 +1091,9 @@ class Game:
             if cost is not None and cost > 0:
                 self._pitch_to_pay(player_index, cost)
 
+        log.info(f"  {self._pname(player_index)} activates {equipment.name}")
         ctx = self._build_ability_context(equipment, player_index)
         handler(ctx)
-        log.info(f"  Equipment activated: {equipment.name} ({timing})")
 
     def _is_permanent_instant_activation(self, card: CardInstance, player_index: int) -> bool:
         """Check if an activate action targets a permanent with an instant ability."""
@@ -1209,7 +1232,7 @@ class Game:
         if not self.state.combat_chain.is_open:
             self.combat_mgr.open_chain(self.state)
 
-        log.info(f"  Weapon attack: {weapon.name} (power={weapon.base_power or 0})")
+        log.info(f"  {self._pname(player_index)} attacks with {weapon.name} (power={weapon.base_power or 0})")
 
     def _activate_arcane_weapon(self, player_index: int, weapon: CardInstance) -> None:
         """Activate an arcane weapon — deal arcane damage directly (no combat chain)."""
@@ -1495,7 +1518,7 @@ class Game:
                         action_cards_defended += 1
                     player.arsenal.remove(card)
                 self.combat_mgr.add_defender(self.state, link, card)
-                log.info(f"  Defended with: {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
+                log.info(f"  {self._pname(defender_index)} defends with {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
 
                 # Emit defend event (7.0.5a)
                 self.events.emit(GameEvent(
@@ -1562,7 +1585,7 @@ class Game:
             if actual_damage > 0:
                 link.hit = True
                 target = self.state.players[link.attack_target_index]
-                log.info(f"  Hit for {actual_damage} damage! (P{target.index} life: {target.life_total})")
+                log.info(f"  Hit! {actual_damage} damage to {self._pname(target.index)} (life: {target.life_total})")
 
                 # Record mark state BEFORE emitting HIT event.
                 # The HIT handler clears is_marked, but on_hit abilities
@@ -1592,9 +1615,9 @@ class Game:
                         extra_data={"target_was_marked": target_was_marked},
                     )
             else:
-                log.info(f"  Blocked!")
+                log.info(f"  Blocked! {self._pname(link.attack_target_index)} takes no damage")
         else:
-            log.info(f"  Blocked!")
+            log.info(f"  Blocked! {self._pname(link.attack_target_index)} takes no damage")
 
         self._check_game_over()
 
@@ -1842,6 +1865,7 @@ class Game:
                     card.zone = Zone.ARSENAL
                     card.face_up = False
                     tp.arsenal.append(card)
+                    log.info(f"  {self._pname(tp.index)} arsenals {card.name}{card.definition.color_label}")
 
         # 4.4.3c: ALL players' pitch zones -> bottom of deck
         # Rules say player chooses order (pitch-stacking).
@@ -1923,7 +1947,7 @@ class Game:
         elif len(dead) == 1:
             self.state.winner = 1 - dead[0].index
             self.state.game_over = True
-            log.info(f"Player {dead[0].index} defeated! Player {1 - dead[0].index} wins!")
+            log.info(f"{self._pname(dead[0].index)} defeated! {self._pname(1 - dead[0].index)} wins!")
 
     def _choose_pitch_order(self, player: PlayerState) -> list[CardInstance]:
         """Ask the player to choose the order pitched cards go to bottom of deck.

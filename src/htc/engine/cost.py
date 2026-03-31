@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
+
+log = logging.getLogger(__name__)
 
 from htc.cards.instance import CardInstance
 from htc.enums import ActionType, DecisionType, Zone
@@ -106,6 +109,7 @@ def pitch_card(
     gained = card.pitch or 0
     state.resource_points[player_index] += gained
     player.turn_counters.num_cards_pitched += 1
+    log.info(f"  Pitched {card.name}{card.definition.color_label} for {gained} resource(s)")
 
     if event_bus is not None:
         from htc.engine.events import EventType, GameEvent

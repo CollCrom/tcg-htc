@@ -128,7 +128,7 @@ def mark_attacker(ctx: AbilityContext, link, ability_name: str) -> None:
     """Mark the attacking hero (the player who controls the active attack)."""
     attacker_index = 1 - link.attack_target_index
     ctx.state.players[attacker_index].is_marked = True
-    log.info(f"  {ability_name}: Marked Player {attacker_index}")
+    log.info(f"  {ability_name}: Marked {ctx.player_name(attacker_index)}")
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ def draw_card(ctx: AbilityContext, ability_name: str) -> None:
             event_type=EventType.DRAW_CARD,
             target_player=ctx.controller_index,
         ))
-        log.info(f"  {ability_name}: Player {ctx.controller_index} draws a card")
+        log.info(f"  {ability_name}: {ctx.player_name(ctx.controller_index)} draws a card")
 
 
 def gain_life(ctx: AbilityContext, player_index: int, amount: int, ability_name: str) -> None:
@@ -158,7 +158,7 @@ def gain_life(ctx: AbilityContext, player_index: int, amount: int, ability_name:
         target_player=player_index,
         amount=amount,
     ))
-    log.info(f"  {ability_name}: Player {player_index} gains {amount} life")
+    log.info(f"  {ability_name}: {ctx.player_name(player_index)} gains {amount} life")
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +215,8 @@ def create_token(
     # Track Fealty creation for end-phase condition
     if name == "Fealty":
         state.players[controller_index].turn_counters.fealty_created_this_turn = True
-    log.info(f"  Created {name} token for Player {controller_index}")
+    pname = state.players[controller_index].hero.definition.name.split(",")[0] if state.players[controller_index].hero else f"Player {controller_index}"
+    log.info(f"  Created {name} token for {pname}")
 
     # Register token abilities if the event bus is provided
     if event_bus is not None and effect_engine is not None:
@@ -342,7 +343,7 @@ def destroy_arsenal(
     """Destroy all cards in a player's arsenal. Returns count destroyed."""
     player = ctx.state.players[player_index]
     if not player.arsenal:
-        log.info(f"  {ability_name}: Player {player_index}'s arsenal is empty")
+        log.info(f"  {ability_name}: {ctx.player_name(player_index)}'s arsenal is empty")
         return 0
 
     count = len(player.arsenal)
@@ -352,7 +353,7 @@ def destroy_arsenal(
     player.arsenal.clear()
     log.info(
         f"  {ability_name}: destroyed {count} card(s) "
-        f"in Player {player_index}'s arsenal"
+        f"in {ctx.player_name(player_index)}'s arsenal"
     )
     return count
 
@@ -391,8 +392,10 @@ def _make_mark_on_hit_trigger_class():
             if self._state is None:
                 return None
             self._state.players[self.target_player_index].is_marked = True
+            ps = self._state.players[self.target_player_index]
+            pname = ps.hero.definition.name.split(",")[0] if ps.hero else f"Player {self.target_player_index}"
             log.info(
-                f"  {self.card_name}: Player {self.target_player_index} is now marked"
+                f"  {self.card_name}: {pname} is now marked"
             )
             return None
 

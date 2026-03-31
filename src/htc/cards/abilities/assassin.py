@@ -80,7 +80,8 @@ def _create_graphene_chelicera(state, controller_index: int) -> None:
     )
     # Add as a weapon so the weapon activation system handles it
     player.weapons.append(token)
-    log.info(f"  Equipped Graphene Chelicera token for Player {controller_index}")
+    pname = state.players[controller_index].hero.definition.name.split(",")[0] if state.players[controller_index].hero else f"Player {controller_index}"
+    log.info(f"  Equipped Graphene Chelicera token for {pname}")
 
 
 def _is_dagger_attack(attack, link=None) -> bool:
@@ -474,7 +475,7 @@ def _frailty_trap(ctx: AbilityContext) -> None:
             type_text="Token - Aura",
             event_bus=ctx.events, effect_engine=ctx.effect_engine,
         )
-        log.info(f"  Frailty Trap: Created Frailty token for Player {attacker_index}")
+        log.info(f"  Frailty Trap: Created Frailty token for {ctx.player_name(attacker_index)}")
     else:
         log.info(f"  Frailty Trap: no effect (attack has no Go Again)")
 
@@ -501,7 +502,7 @@ def _inertia_trap(ctx: AbilityContext) -> None:
             event_bus=ctx.events, effect_engine=ctx.effect_engine,
         )
         log.info(
-            f"  Inertia Trap: Created Inertia token for Player {attacker_index} "
+            f"  Inertia Trap: Created Inertia token for {ctx.player_name(attacker_index)} "
             f"(power {modified_power} > base {base_power})"
         )
     else:
@@ -529,7 +530,7 @@ def _cut_from_the_same_cloth(ctx: AbilityContext) -> None:
     has_ar = any(c.definition.is_attack_reaction for c in opponent.hand)
     if has_ar:
         opponent.is_marked = True
-        log.info(f"  Cut from the Same Cloth: Marked Player {opponent_index} (has attack reaction)")
+        log.info(f"  Cut from the Same Cloth: Marked {ctx.player_name(opponent_index)} (has attack reaction)")
     else:
         log.info(f"  Cut from the Same Cloth: No attack reaction found in opponent's hand")
 
@@ -585,7 +586,8 @@ def _codex_template(
             player.hand.remove(discarded)
             discarded.zone = Zone.GRAVEYARD
             player.graveyard.append(discarded)
-            log.info(f"  {codex_name}: Player {i} discards {discarded.name}")
+            pname = ctx.player_name(i)
+            log.info(f"  {codex_name}: {pname} discards {discarded.name}")
 
     create_token(
         ctx.state, ctx.controller_index, "Ponder", SubType.AURA,
@@ -600,7 +602,7 @@ def _codex_template(
         type_text="Token - Aura",
         event_bus=ctx.events, effect_engine=ctx.effect_engine, ask=ctx.ask,
     )
-    log.info(f"  {codex_name}: Created Ponder for P{ctx.controller_index}, {debuff_token_name} for P{opponent_index}")
+    log.info(f"  {codex_name}: Created Ponder for {ctx.player_name(ctx.controller_index)}, {debuff_token_name} for {ctx.player_name(opponent_index)}")
 
 
 def _codex_of_frailty(ctx: AbilityContext) -> None:
@@ -622,7 +624,8 @@ def _codex_of_frailty(ctx: AbilityContext) -> None:
             chosen.zone = Zone.ARSENAL
             chosen.face_up = False
             player.arsenal.append(chosen)
-            log.info(f"  {name}: Player {i} arsenals {chosen.name} from graveyard")
+            pn = player.hero.definition.name.split(",")[0] if player.hero else f"Player {i}"
+            log.info(f"  {name}: {pn} arsenals {chosen.name} from graveyard")
             return True
         return False
 
@@ -650,7 +653,8 @@ def _codex_of_inertia(ctx: AbilityContext) -> None:
             top.zone = Zone.ARSENAL
             top.face_up = False
             player.arsenal.append(top)
-            log.info(f"  {name}: Player {i} arsenals top card face down")
+            pn = player.hero.definition.name.split(",")[0] if player.hero else f"Player {i}"
+            log.info(f"  {name}: {pn} arsenals top card face down")
             return True
         return False
 
@@ -672,7 +676,7 @@ def _relentless_pursuit(ctx: AbilityContext) -> None:
     """
     opponent_index = 1 - ctx.controller_index
     ctx.state.players[opponent_index].is_marked = True
-    log.info(f"  Relentless Pursuit: Marked Player {opponent_index}")
+    log.info(f"  Relentless Pursuit: Marked {ctx.player_name(opponent_index)}")
 
     # If we've attacked this turn, put this on the bottom of the deck
     player = ctx.state.players[ctx.controller_index]
@@ -819,7 +823,9 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
             return None
         player = state.players[self.controller_index]
         if player.deck:
-            log.info(f"  Savor Bloodshed: Player {self.controller_index} draws a card (dagger hit marked hero)")
+            ps = state.players[self.controller_index]
+            pname = ps.hero.definition.name.split(",")[0] if ps.hero else f"Player {self.controller_index}"
+            log.info(f"  Savor Bloodshed: {pname} draws a card (dagger hit marked hero)")
             return GameEvent(
                 event_type=EventType.DRAW_CARD,
                 target_player=self.controller_index,
@@ -883,7 +889,7 @@ def _kiss_of_death_on_hit(ctx: AbilityContext) -> None:
         target_player=link.attack_target_index,
         amount=1,
     ))
-    log.info(f"  Kiss of Death: Player {link.attack_target_index} loses 1 life (now {ctx.state.players[link.attack_target_index].life_total})")
+    log.info(f"  Kiss of Death: {ctx.player_name(link.attack_target_index)} loses 1 life (now {ctx.state.players[link.attack_target_index].life_total})")
 
 
 @require_chain_link
@@ -911,7 +917,7 @@ def _mark_of_the_black_widow_on_hit(ctx: AbilityContext) -> None:
     # Opponent chooses a card to banish (simplified: first card)
     banished_card = target.hand[0]
     ctx.banish_card(banished_card, link.attack_target_index)
-    log.info(f"  Mark of the Black Widow: Player {link.attack_target_index} banishes {banished_card.name}")
+    log.info(f"  Mark of the Black Widow: {ctx.player_name(link.attack_target_index)} banishes {banished_card.name}")
 
 
 @require_chain_link
@@ -937,15 +943,15 @@ def _meet_madness_on_hit(ctx: AbilityContext) -> None:
         # They choose a card in hand to banish (simplified: first card)
         card = target.hand[0]
         ctx.banish_card(card, target_index)
-        log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from hand")
+        log.info(f"  Meet Madness: {ctx.player_name(target_index)} banishes {card.name} from hand")
     elif chosen == 2 and target.arsenal:
         card = target.arsenal[0]
         ctx.banish_card(card, target_index)
-        log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from arsenal")
+        log.info(f"  Meet Madness: {ctx.player_name(target_index)} banishes {card.name} from arsenal")
     elif chosen == 3 and target.deck:
         card = target.deck[0]
         ctx.banish_card(card, target_index)
-        log.info(f"  Meet Madness: Player {target_index} banishes {card.name} from top of deck")
+        log.info(f"  Meet Madness: {ctx.player_name(target_index)} banishes {card.name} from top of deck")
     else:
         log.info(f"  Meet Madness: chosen mode {chosen} has no valid target")
 
@@ -993,7 +999,7 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
     if actual_damage > 0:
         log.info(
             f"  Pain in the Backside: {dagger.name} deals {actual_damage} damage "
-            f"to Player {target_index} (now {ctx.state.players[target_index].life_total})"
+            f"to {ctx.player_name(target_index)} (now {ctx.state.players[target_index].life_total})"
         )
     else:
         log.info("  Pain in the Backside: Damage was prevented")
@@ -1112,7 +1118,7 @@ def _death_touch_on_hit(ctx: AbilityContext) -> None:
         type_text="Token - Aura",
         event_bus=ctx.events, effect_engine=ctx.effect_engine, ask=ctx.ask,
     )
-    log.info(f"  Death Touch: Created {token_name} token for Player {target_index}")
+    log.info(f"  Death Touch: Created {token_name} token for {ctx.player_name(target_index)}")
 
 
 @require_chain_link
@@ -1175,7 +1181,7 @@ def _reapers_call_instant(ctx: AbilityContext) -> None:
     opponent_index = 1 - ctx.controller_index
     ctx.state.players[opponent_index].is_marked = True
     log.info(
-        f"  Reaper's Call: Marked Player {opponent_index} (instant discard)"
+        f"  Reaper's Call: Marked {ctx.player_name(opponent_index)} (instant discard)"
     )
 
 

@@ -42,6 +42,13 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _pname(state: GameState, player_index: int) -> str:
+    """Short hero name for logging (standalone helper)."""
+    if state.players[player_index].hero:
+        return state.players[player_index].hero.definition.name.split(",")[0]
+    return f"Player {player_index}"
+
+
 def _destroy_token(state: GameState, controller_index: int, token: CardInstance) -> None:
     """Remove a token from permanents and mark as destroyed.
 
@@ -53,7 +60,7 @@ def _destroy_token(state: GameState, controller_index: int, token: CardInstance)
         player.permanents.remove(token)
         token.zone = Zone.GRAVEYARD
         player.graveyard.append(token)
-        log.info(f"  Token destroyed: {token.name} (Player {controller_index})")
+        log.info(f"  Token destroyed: {token.name} ({_pname(state, controller_index)})")
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +101,13 @@ class TokenEndPhaseTrigger(TriggeredEffect):
             return self._state_getter()
         return None
 
+    def _player_name(self, player_index: int) -> str:
+        """Short hero name for logging."""
+        state = self._get_state()
+        if state and state.players[player_index].hero:
+            return state.players[player_index].hero.definition.name.split(",")[0]
+        return f"Player {player_index}"
+
     def _get_token(self) -> CardInstance | None:
         """Return the token CardInstance if it still exists, else None."""
         state = self._get_state()
@@ -123,7 +137,7 @@ class PonderEndPhaseTrigger(TokenEndPhaseTrigger):
             return None
         state = self._get_state()
         _destroy_token(state, self.controller_index, token)
-        log.info(f"  Ponder: Player {self.controller_index} draws a card")
+        log.info(f"  Ponder: {self._player_name(self.controller_index)} draws a card")
         return GameEvent(
             event_type=EventType.DRAW_CARD,
             target_player=self.controller_index,
@@ -149,7 +163,7 @@ class FrailtyEndPhaseTrigger(TokenEndPhaseTrigger):
             return None
         state = self._get_state()
         _destroy_token(state, self.controller_index, token)
-        log.info(f"  Frailty: Destroyed at end of turn (Player {self.controller_index})")
+        log.info(f"  Frailty: Destroyed at end of turn ({self._player_name(self.controller_index)})")
         return None
 
 
@@ -192,7 +206,7 @@ def register_frailty_continuous_effect(
     )
     effect.source_zone = Zone.PERMANENT
     effect_engine.add_continuous_effect(state, effect)
-    log.info(f"  Frailty: Registered -1 power debuff for Player {controller_index}")
+    log.info(f"  Frailty: Registered -1 power debuff for {_pname(state, controller_index)}")
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +246,7 @@ class InertiaEndPhaseTrigger(TokenEndPhaseTrigger):
             cards_moved += 1
 
         log.info(
-            f"  Inertia: Player {self.controller_index} puts {cards_moved} cards "
+            f"  Inertia: {self._player_name(self.controller_index)} puts {cards_moved} cards "
             f"from hand and arsenal to bottom of deck"
         )
         return None
@@ -323,13 +337,13 @@ class BloodrotPoxEndPhaseTrigger(TokenEndPhaseTrigger):
                     cost_remaining -= rp_used
 
                 log.info(
-                    f"  Bloodrot Pox: Player {self.controller_index} pays 3 resources"
+                    f"  Bloodrot Pox: {self._player_name(self.controller_index)} pays 3 resources"
                 )
                 return None
 
         # Take 2 damage
         log.info(
-            f"  Bloodrot Pox: Player {self.controller_index} takes 2 damage"
+            f"  Bloodrot Pox: {self._player_name(self.controller_index)} takes 2 damage"
         )
         return GameEvent(
             event_type=EventType.DEAL_DAMAGE,
@@ -377,7 +391,7 @@ class FealtyEndPhaseTrigger(TokenEndPhaseTrigger):
         _destroy_token(state, self.controller_index, token)
         log.info(
             f"  Fealty: Self-destructed at end of turn — no Fealty created "
-            f"and no Draconic card played (Player {self.controller_index})"
+            f"and no Draconic card played ({self._player_name(self.controller_index)})"
         )
         return None
 
@@ -445,13 +459,13 @@ def _silver_action(ctx: AbilityContext) -> None:
             event_type=EventType.DRAW_CARD,
             target_player=ctx.controller_index,
         ))
-        log.info(f"  Silver: Player {ctx.controller_index} draws a card")
+        log.info(f"  Silver: {ctx.player_name(ctx.controller_index)} draws a card")
 
     # Go again — gain an action point
     ctx.state.action_points[ctx.controller_index] = (
         ctx.state.action_points.get(ctx.controller_index, 0) + 1
     )
-    log.info(f"  Silver: Player {ctx.controller_index} gains an action point (go again)")
+    log.info(f"  Silver: {ctx.player_name(ctx.controller_index)} gains an action point (go again)")
 
 
 # ---------------------------------------------------------------------------
@@ -484,7 +498,7 @@ def register_token_triggers(
             one_shot=True,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Ponder end-phase trigger for Player {controller_index}")
+        log.info(f"  Registered Ponder end-phase trigger for {_pname(state, controller_index)}")
 
     elif token.name == "Frailty":
         trigger = FrailtyEndPhaseTrigger(
@@ -495,7 +509,7 @@ def register_token_triggers(
         )
         event_bus.register_trigger(trigger)
         register_frailty_continuous_effect(effect_engine, state, controller_index, token)
-        log.info(f"  Registered Frailty triggers for Player {controller_index}")
+        log.info(f"  Registered Frailty triggers for {_pname(state, controller_index)}")
 
     elif token.name == "Inertia":
         trigger = InertiaEndPhaseTrigger(
@@ -505,7 +519,7 @@ def register_token_triggers(
             one_shot=True,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Inertia end-phase trigger for Player {controller_index}")
+        log.info(f"  Registered Inertia end-phase trigger for {_pname(state, controller_index)}")
 
     elif token.name == "Bloodrot Pox":
         trigger = BloodrotPoxEndPhaseTrigger(
@@ -516,7 +530,7 @@ def register_token_triggers(
             one_shot=True,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Bloodrot Pox end-phase trigger for Player {controller_index}")
+        log.info(f"  Registered Bloodrot Pox end-phase trigger for {_pname(state, controller_index)}")
 
     elif token.name == "Fealty":
         trigger = FealtyEndPhaseTrigger(
@@ -526,7 +540,7 @@ def register_token_triggers(
             one_shot=True,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Fealty end-phase trigger for Player {controller_index}")
+        log.info(f"  Registered Fealty end-phase trigger for {_pname(state, controller_index)}")
 
 
 # ---------------------------------------------------------------------------

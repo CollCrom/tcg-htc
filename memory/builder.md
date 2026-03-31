@@ -209,3 +209,11 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **TurnCounters tracking** — Added `fealty_created_this_turn` and `draconic_card_played_this_turn` flags. Set in `create_token()` (Fealty name check), `_create_fealty_token()` on Game, and `_play_card()` (Draconic supertype check).
 - **Functional text corrections** — All 7 tokens now have authoritative text from card database instead of stale/wrong text.
 - **658 tests passing** — 34 new tests for token abilities.
+
+## Player Name Logging Pattern (2026-03-30)
+
+- **`AbilityContext.player_name(player_index)`** — canonical way to get hero name for logging in ability handlers. Returns `hero.definition.name.split(",")[0]` (e.g. "Cindra") or falls back to `f"Player {player_index}"`.
+- **`TokenEndPhaseTrigger._player_name(player_index)`** — same pattern for TriggeredEffect subclasses (tokens.py). Uses `self._get_state()` to access game state.
+- **`_pname(state, player_index)`** — standalone module-level helper for contexts without ctx or self (tokens.py, equipment.py). Used in registration functions and `_destroy_token`.
+- **Game._pname()** — already existed in game.py, now used consistently for all game.py log messages.
+- **Pattern**: always use hero name in logs, never "Player N". Fallback to "Player N" only when hero is None (test scaffolding).

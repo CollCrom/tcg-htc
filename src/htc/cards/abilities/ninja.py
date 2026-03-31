@@ -137,7 +137,7 @@ def _throw_dagger(ctx: AbilityContext) -> None:
     actual_damage = deal_dagger_damage(ctx, chosen_dagger, defender_index, link)
     if actual_damage > 0:
         log.info(
-            f"  Throw Dagger: {chosen_dagger.name} deals {actual_damage} damage to Player {defender_index}"
+            f"  Throw Dagger: {chosen_dagger.name} deals {actual_damage} damage to {ctx.player_name(defender_index)}"
         )
         draw_card(ctx, "Throw Dagger")
     else:
@@ -171,7 +171,7 @@ def _exposed(ctx: AbilityContext) -> None:
     # Mark the defending hero
     defender = ctx.state.players[link.attack_target_index]
     defender.is_marked = True
-    log.info(f"  Exposed: Player {link.attack_target_index} is now marked")
+    log.info(f"  Exposed: {ctx.player_name(link.attack_target_index)} is now marked")
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +214,7 @@ def _warmongers_diplomacy(ctx: AbilityContext) -> None:
     # Store restriction on the opponent — enforced by ActionBuilder next turn
     ctx.state.players[opponent_index].diplomacy_restriction = choice
     log.info(
-        f"  Warmonger's Diplomacy: Player {opponent_index} chose {choice} "
+        f"  Warmonger's Diplomacy: {ctx.player_name(opponent_index)} chose {choice} "
         "(restriction active next turn)"
     )
 
@@ -334,12 +334,12 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
     options = [
         ActionOption(
             action_id=f"target_{defender_index}",
-            description=f"Deal 2 damage to opponent (Player {defender_index})",
+            description=f"Deal 2 damage to opponent ({ctx.player_name(defender_index)})",
             action_type=ActionType.ACTIVATE_ABILITY,
         ),
         ActionOption(
             action_id=f"target_{ctx.controller_index}",
-            description=f"Deal 2 damage to yourself (Player {ctx.controller_index})",
+            description=f"Deal 2 damage to yourself ({ctx.player_name(ctx.controller_index)})",
             action_type=ActionType.ACTIVATE_ABILITY,
         ),
     ]
@@ -373,7 +373,7 @@ def _art_of_the_dragon_fire_on_attack(ctx: AbilityContext) -> None:
     actual_damage = damage_event.amount if not damage_event.cancelled else 0
     if actual_damage > 0:
         log.info(
-            f"  Art of the Dragon: Fire: deals {actual_damage} damage to Player {target_index}"
+            f"  Art of the Dragon: Fire: deals {actual_damage} damage to {ctx.player_name(target_index)}"
         )
     else:
         log.info("  Art of the Dragon: Fire: Damage was prevented")
@@ -525,7 +525,7 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
         actual_damage = deal_dagger_damage(ctx, dagger, defender_index, link)
         if actual_damage > 0:
             log.info(
-                f"  Blood Runs Deep: {dagger.name} deals {actual_damage} damage to Player {defender_index}"
+                f"  Blood Runs Deep: {dagger.name} deals {actual_damage} damage to {ctx.player_name(defender_index)}"
             )
         else:
             log.info(f"  Blood Runs Deep: {dagger.name} damage was prevented")
@@ -731,7 +731,7 @@ def _hunt_to_the_ends_on_attack(ctx: AbilityContext) -> None:
     if hero is not None and "Arakni" in hero.name:
         defender.is_marked = True
         log.info(
-            f"  Hunt to the Ends of Rathe: marked Player {defender_index} (Arakni)"
+            f"  Hunt to the Ends of Rathe: marked {ctx.player_name(defender_index)} (Arakni)"
         )
 
     # "If attacking a marked hero, +2 power"

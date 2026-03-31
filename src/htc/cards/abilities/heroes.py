@@ -281,8 +281,10 @@ class CindraRetributionTrigger(TriggeredEffect):
             # Fallback: create a simple token representation
             _create_fealty_token_simple(state, self.controller_index)
 
+        state = self._get_state()
+        pname = state.players[self.controller_index].hero.definition.name.split(",")[0] if state and state.players[self.controller_index].hero else f"Player {self.controller_index}"
         log.info(
-            f"  Cindra ability: Player {self.controller_index} creates a "
+            f"  Cindra ability: {pname} creates a "
             f"Fealty token (hit marked hero)"
         )
         return None
@@ -369,7 +371,7 @@ def register_hero_abilities(
             _state_getter=state_getter,
         )
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Arakni Marionette ability for Player {controller_index}")
+        log.info(f"  Registered Arakni Marionette ability for {hero_name.split(',')[0]}")
 
     elif trigger_cls is CindraRetributionTrigger:
         trigger = CindraRetributionTrigger(
@@ -382,4 +384,4 @@ def register_hero_abilities(
         # Cindra needs to listen to both ATTACK_DECLARED (to record mark state)
         # and HIT (to create token). We register once and handle both in condition().
         event_bus.register_trigger(trigger)
-        log.info(f"  Registered Cindra ability for Player {controller_index}")
+        log.info(f"  Registered Cindra ability for {hero_name.split(',')[0]}")
