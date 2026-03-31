@@ -283,6 +283,16 @@ Persistent learnings across sessions. Update this after each review.
 - **Missing test**: No test for Authority of Ataya effect expiring at end of turn (duration is `END_OF_TURN` but no test verifies the effect is removed after the turn ends).
 - 595 tests all passing. 20 new tests across 4 categories (2 Pain in the Backside, 5 Authority of Ataya, 5 Shelter from the Storm, 5 Take Up the Mantle, 3 definition_override infrastructure).
 
+### feat/pregame-equipment-selection — Pre-Game Equipment Selection (2026-03-30)
+- **Round 1 verdict: APPROVE** — No critical issues. No minor issues.
+- **Rule 4.1.4**: "Each player selects arena-cards from their card-pool for equipment zones." Implementation correctly groups equipment by slot, auto-selects uncontested slots, and presents CHOOSE_EQUIPMENT decision for contested slots.
+- **Slot grouping**: Uses existing `_equipment_slot()` method (HEAD/CHEST/ARMS/LEGS subtypes). Stable iteration via enum order.
+- **Decision flow**: `min_selections=1, max_selections=1` per contested slot. Action IDs use `equip_{name}` pattern. Fallback to first option on invalid response.
+- **Backward compatibility**: `_build_player_state` accepts `selected_equipment: list[str] | None = None`. Existing callers and `make_game_shell` unaffected.
+- **RandomPlayer**: Updated to handle CHOOSE_EQUIPMENT in the single-option branch. Correct.
+- **Test coverage**: 9 new tests covering auto-select, multi-option, specific choices, player state integration, RandomPlayer, empty pool, action ID format, Cindra decklist, per-player independence.
+- 878 tests all passing.
+
 ### refactor/dry-pass (round 2) — DRY Refactor (2026-03-30)
 - **Round 1 verdict: REQUEST CHANGES** — 1 critical issue (4 guard downgrades).
 - **Critical**: 4 functions changed from `@require_active_attack` to `@require_chain_link`, losing the `link.active_attack is None` guard. All 4 access `link.active_attack` in their body and will crash with `AttributeError` if `active_attack` is `None`:
