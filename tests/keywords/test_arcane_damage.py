@@ -244,8 +244,8 @@ def test_arcane_weapon_deals_arcane_damage():
     assert game.stack_mgr.is_empty(game.state)
     # Damage dealt to opponent
     assert game.state.players[1].life_total == 18
-    # Weapon tapped
-    assert staff.is_tapped is True
+    # Weapon marked as activated this turn
+    assert staff.activated_this_turn is True
 
 
 def test_arcane_weapon_go_again():

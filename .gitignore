@@ -32,3 +32,4 @@ htmlcov/
 .env
 .env.local
 .env.*.local
+game_log*.txt

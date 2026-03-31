@@ -296,10 +296,18 @@ class ActionBuilder:
 
     @staticmethod
     def _can_activate_weapon(state: GameState, player_index: int, weapon: CardInstance) -> bool:
-        """Check if a weapon can be activated (untapped, has AP, can pay cost)."""
+        """Check if a weapon can be activated.
+
+        Checks: not already activated this turn (once-per-turn), not tapped
+        (for weapons with tap cost), has AP, can pay resource cost.
+        """
         # Peace restriction blocks weapon activations
         if state.players[player_index].diplomacy_restriction == "peace":
             return False
+        # Once-per-turn check (separate from tap)
+        if weapon.activated_this_turn:
+            return False
+        # Tap check (for weapons that use tap as activation cost)
         if weapon.is_tapped:
             return False
         # Weapons need an action point to activate
@@ -351,6 +359,9 @@ class ActionBuilder:
         player = state.players[player_index]
         for _slot, eq in player.equipment.items():
             if eq is None:
+                continue
+            # Once-per-turn equipment check
+            if eq.activated_this_turn:
                 continue
             handler = self.ability_registry.lookup("attack_reaction_effect", eq.name)
             if handler is None:
