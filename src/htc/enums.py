@@ -271,6 +271,7 @@ class DecisionType(Enum):
     OPTIONAL_ABILITY = "optional_ability"
     ORDER_PITCH_TO_DECK = "pitch_order"
     CHOOSE_AGENT = "choose_agent"  # Choose Agent of Chaos for Mask of Deceit
+    CHOOSE_EQUIPMENT = "choose_equipment"  # Pre-game equipment selection per slot
 
 
 class ActionType(Enum):
