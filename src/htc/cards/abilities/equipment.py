@@ -400,9 +400,10 @@ class SpringTunicTrigger(TriggeredEffect):
 
         tunic.counters["energy"] = tunic.counters.get("energy", 0) + 1
         energy = tunic.counters["energy"]
+        state = self._get_state()
+        owner = state.players[self.controller_index].hero.definition.name.split(",")[0] if state and state.players[self.controller_index].hero else f"Player {self.controller_index}"
         log.info(
-            f"  Fyendal's Spring Tunic: Player {self.controller_index} "
-            f"adds energy counter ({energy}/3)"
+            f"  {owner}'s Spring Tunic: adds energy counter ({energy}/3)"
         )
 
         return None
@@ -921,9 +922,9 @@ def _fyendals_spring_tunic_instant(ctx: AbilityContext) -> None:
     ctx.state.resource_points[ctx.controller_index] = (
         ctx.state.resource_points.get(ctx.controller_index, 0) + 1
     )
+    owner = ctx.state.players[ctx.controller_index].hero.definition.name.split(",")[0] if ctx.state.players[ctx.controller_index].hero else f"Player {ctx.controller_index}"
     log.info(
-        f"  Fyendal's Spring Tunic: Player {ctx.controller_index} "
-        f"removes 3 energy counters, gains 1 resource"
+        f"  {owner}'s Spring Tunic: removes 3 energy counters, gains 1 resource"
     )
 
 
