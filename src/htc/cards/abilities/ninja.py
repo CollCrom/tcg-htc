@@ -634,6 +634,8 @@ def _devotion_never_dies_on_hit(ctx: AbilityContext) -> None:
     # Banish the attack card via ctx.banish_card (emits BANISH event)
     attack = link.active_attack
     ctx.banish_card(attack, ctx.controller_index)
+    # Clear the chain link reference so close_chain won't try to move it again
+    link.active_attack = None
 
     # Mark as playable from banish this turn (goes to graveyard normally)
     player = ctx.state.players[ctx.controller_index]
