@@ -48,12 +48,30 @@ Persistent learnings across sessions. Update this as you go.
 - **Phase 6 complete** (PR #68): All 7 token abilities implemented — Fealty (instant + conditional end-phase), Frailty (continuous -1 power + end-phase destroy), Inertia (end-phase deck bottom), Bloodrot Pox (end-phase pay-or-damage), Ponder (end-phase draw), Silver (action activation), Graphene Chelicera (weapon token). New `permanent_action_effect` timing. 658 tests passing.
 - **Recurring pattern**: `definition.supertypes` / `definition.keywords` bypasses continue to be the #1 bug class. Every new feature needs skeptic verification on this.
 
+### 2026-03-30 (cont): Skeptic loop + DRY pass 2 + Phase 7 start (PRs #69-#74)
+
+- **Consumed-closure bug class** (PR #69): `target_filter` closures with `consumed = [False]` side effects were consumed by display/cost queries before the actual effect resolution. Affected: dagger attack bonus (3 cards), Fealty Draconic grant, Orb-Weaver stealth bonus. Fixed with idempotent `applied_to: set[int]` / `granted_id` patterns. Extracted `make_once_filter()` helper.
+- **Overpower fix** (PR #69): Arsenal Ambush action cards now correctly counted against Overpower restriction (no "from hand" qualifier).
+- **DRY pass 2** (PR #70): -182 lines. `make_once_filter` helper, `TokenEndPhaseTrigger` base class, `_build_ability_context` extraction, test fixture consolidation.
+- **Phase 7 stress tests** (PR #71): 200 full games (100 seeds × 2 player orders). Found Devotion Never Dies stale chain reference bug. 869 tests, 0 crashes.
+- **Pre-game equipment selection** (PR #72): Players choose equipment per slot before game starts. `CHOOSE_EQUIPMENT` decision type.
+- **Equipment reaction preconditions** (PR #73): Tide Flippers, Blacktek Whisperers, Stalker's Steps, Flick Knives now check target eligibility before being offered. Destruction reordered to be activation cost (before effect).
+- **Once-per-turn vs tap separation** (PR #74): New `activated_this_turn` field on CardInstance. Weapons use this instead of `is_tapped` for once-per-turn. Matters for weapons with tap cost (Shield Beater) and untap effects.
+
+### 2026-03-31: Log review + gameplay fixes
+
+- **Attack reaction target validation**: Hand-played attack reactions now check target requirements (dagger, stealth, Ninja, Assassin, off-chain dagger) before being offered. Found via log review — To the Point was played on non-dagger attacks.
+- **FaB turn numbering**: Logs now use FaB convention — turn 0 is opening turn, both players share same turn number after that.
+- **Log improvements**: Player names in all log lines (attacks, defends, hits, blocks, reactions, equipment). Hands shown at start of each turn. Pitching logged. Arsenal actions logged. Spring Tunic shows owner name.
+- **Log review is high-value**: User reviewing game logs found Tide Flippers, Flick Knives, and To the Point bugs that 888 tests missed. Log review should be a standard phase after stress tests.
+
 ## Open TODOs
 
-- Phase 7 (Talishar verification for Cindra vs Arakni) is next.
+- Phase 7 scenario tests (key Cindra vs Arakni interactions) still to do.
 - Minor: Frailty -1 power applies to all attack actions, not just those played from arsenal (no `played_from_zone` tracking exists).
 - Minor: Contract keyword scoped to on-hit banishes only (should be global trigger for any banish of opponent's red card).
 - Minor: `Layer.has_go_again` is dead code, cleanup candidate.
+- Minor: Flick Knives damage log still says "Player 1" instead of hero name.
 
 ## Process Notes
 
