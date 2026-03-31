@@ -638,8 +638,11 @@ class Game:
     def _run_turn(self) -> None:
         tp = self.state.turn_player
         opp = self.state.players[1 - tp.index]
+        # FaB turn numbering: turn 0 is the opening turn, then both players
+        # share the same turn number (turn 1, turn 1, turn 2, turn 2, ...)
+        fab_turn = self.state.turn_number // 2
         log.info(
-            f"=== Turn {self.state.turn_number} ({self._pname(tp.index)}'s turn) "
+            f"=== Turn {fab_turn} ({self._pname(tp.index)}'s turn) "
             f"| Life: {self._pname(0)} {self.state.players[0].life_total} — "
             f"{self._pname(1)} {self.state.players[1].life_total} ==="
         )
