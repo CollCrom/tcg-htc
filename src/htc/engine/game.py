@@ -493,6 +493,31 @@ class Game:
         # Fire on_become ability for the new demi-hero
         self._apply_card_ability(agent_card, player_index, "on_become")
 
+        # Register return-to-brood: at the beginning of the controller's
+        # NEXT end phase, revert to original hero. Uses a flag to skip
+        # the current end phase (transformation happens during end phase).
+        skip_first = [True]
+        fired = [False]
+
+        def _return_to_brood(event: GameEvent) -> None:
+            if fired[0] or event.target_player != player_index:
+                return
+            if skip_first[0]:
+                skip_first[0] = False
+                return
+            fired[0] = True
+            p = self.state.players[player_index]
+            if p.original_hero is not None and p.hero != p.original_hero:
+                old_name = p.hero.name if p.hero else "unknown"
+                p.hero = p.original_hero
+                p.original_hero = None
+                log.info(
+                    f"  {self._pname(player_index)} returns to the brood "
+                    f"(was {old_name})"
+                )
+
+        self.events.register_handler(EventType.END_OF_TURN, _return_to_brood)
+
     def _banish_card(
         self, card: CardInstance, player_index: int, *, face_down: bool = False,
     ) -> None:
