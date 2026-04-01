@@ -363,13 +363,17 @@ class ArakniEndPhaseTranformTrigger(TriggeredEffect):
         if state is None:
             return False
 
+        # Don't re-transform if we just returned to brood this end phase
+        player = state.players[self.controller_index]
+        if player.turn_counters.returned_to_brood_this_turn:
+            return False
+
         # Check if any opponent is marked
         opponent = state.players[1 - self.controller_index]
         if not opponent.is_marked:
             return False
 
         # Must have demi-heroes available
-        player = state.players[self.controller_index]
         if not player.demi_heroes:
             return False
 
