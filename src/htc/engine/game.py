@@ -511,6 +511,7 @@ class Game:
                 old_name = p.hero.name if p.hero else "unknown"
                 p.hero = p.original_hero
                 p.original_hero = None
+                p.turn_counters.returned_to_brood_this_turn = True
                 log.info(
                     f"  {self._pname(player_index)} returns to the brood "
                     f"(was {old_name})"
