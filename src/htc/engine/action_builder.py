@@ -470,6 +470,8 @@ class ActionBuilder:
 
         if equipment.name == "Tide Flippers":
             # Must be an attack action card (not weapon proxy)
+            if attack.is_proxy:
+                return False
             if CardType.ACTION not in attack.definition.types:
                 return False
             if SubType.ATTACK not in attack.definition.subtypes:
@@ -480,7 +482,9 @@ class ActionBuilder:
                 return False
 
         elif equipment.name == "Blacktek Whisperers":
-            # Must be an Assassin attack action card
+            # Must be an Assassin attack action card (not weapon proxy)
+            if attack.is_proxy:
+                return False
             if CardType.ACTION not in attack.definition.types:
                 return False
             if SubType.ATTACK not in attack.definition.subtypes:
@@ -546,7 +550,7 @@ class ActionBuilder:
 
         # "Target attack action card with stealth" — Take Up the Mantle
         elif card.name == "Take Up the Mantle":
-            if not attack.definition.is_attack_action:
+            if attack.is_proxy or not attack.definition.is_attack_action:
                 return False
             kws = self.effect_engine.get_modified_keywords(state, attack)
             if Keyword.STEALTH not in kws:
@@ -554,7 +558,7 @@ class ActionBuilder:
 
         # "Target Ninja attack action card" — Ancestral Empowerment
         elif card.name == "Ancestral Empowerment":
-            if not attack.definition.is_attack_action:
+            if attack.is_proxy or not attack.definition.is_attack_action:
                 return False
             supertypes = self.effect_engine.get_modified_supertypes(state, attack)
             if SuperType.NINJA not in supertypes:

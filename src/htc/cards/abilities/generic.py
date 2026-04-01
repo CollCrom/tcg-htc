@@ -319,6 +319,17 @@ def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
 
     prevention = ShelterPrevention(controller, ctx.source_card)
     ctx.events.register_replacement(prevention)
+
+    # Remove at end of turn — card says "this turn"
+    expired = [False]
+
+    def _expire_shelter(event: GameEvent) -> None:
+        if not expired[0] and event.target_player == controller:
+            expired[0] = True
+            ctx.events.unregister_replacement(prevention)
+
+    ctx.events.register_handler(EventType.END_OF_TURN, _expire_shelter)
+
     log.info(
         f"  Shelter from the Storm: damage prevention active "
         f"(3 uses, {ctx.player_name(controller)})"
