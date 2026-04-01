@@ -1266,7 +1266,8 @@ class Game:
         if not self.state.combat_chain.is_open:
             self.combat_mgr.open_chain(self.state)
 
-        log.info(f"  {self._pname(player_index)} attacks with {weapon.name} (power={weapon.base_power or 0})")
+        mod_power = self.effect_engine.get_modified_power(self.state, proxy)
+        log.info(f"  {self._pname(player_index)} attacks with {weapon.name} (power={mod_power})")
 
     def _activate_arcane_weapon(self, player_index: int, weapon: CardInstance) -> None:
         """Activate an arcane weapon — deal arcane damage directly (no combat chain)."""
