@@ -602,11 +602,33 @@ def _codex_template(
     for i, player in enumerate(ctx.state.players):
         arsenalled = arsenal_fn(player, i, codex_name)
         if arsenalled and player.hand:
-            discarded = player.hand[0]
+            pname = ctx.player_name(i)
+            if len(player.hand) == 1:
+                discarded = player.hand[0]
+            else:
+                options = [
+                    ActionOption(
+                        action_id=f"discard_{c.instance_id}",
+                        description=f"Discard {c.name}{c.definition.color_label}",
+                        action_type=ActionType.PASS,
+                        card_instance_id=c.instance_id,
+                    )
+                    for c in player.hand
+                ]
+                decision = Decision(
+                    player_index=i,
+                    decision_type=DecisionType.CHOOSE_MODE,
+                    prompt=f"{codex_name}: Choose a card to discard",
+                    options=options,
+                    min_selections=1,
+                    max_selections=1,
+                )
+                response = ctx.ask(decision)
+                chosen_id = int(response.first.replace("discard_", "")) if response.first else player.hand[0].instance_id
+                discarded = next((c for c in player.hand if c.instance_id == chosen_id), player.hand[0])
             player.hand.remove(discarded)
             discarded.zone = Zone.GRAVEYARD
             player.graveyard.append(discarded)
-            pname = ctx.player_name(i)
             log.info(f"  {codex_name}: {pname} discards {discarded.name}")
 
     create_token(
