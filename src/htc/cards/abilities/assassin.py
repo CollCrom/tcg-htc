@@ -42,17 +42,38 @@ log = logging.getLogger(__name__)
 
 
 
-def _create_graphene_chelicera(state, controller_index: int) -> None:
-    """Create a Graphene Chelicera token as a weapon in the Arms equipment slot.
+def _count_weapon_hand_slots(player) -> int:
+    """Count how many 1H weapon hand slots are occupied."""
+    count = 0
+    for w in player.weapons:
+        if SubType.TWO_HAND in w.definition.subtypes:
+            count += 2
+        else:
+            count += 1
+    return count
+
+
+MAX_WEAPON_HAND_SLOTS = 2  # Two 1H weapons or one 2H weapon
+
+
+def _create_graphene_chelicera(state, controller_index: int) -> bool:
+    """Create a Graphene Chelicera token as a weapon.
 
     "Once per Turn Action - {r}: Attack with this for 1, with go again."
     Created as a weapon (not a permanent) so the weapon activation system handles it.
+
+    Returns True if the token was created, False if no weapon slot available.
     """
     from htc.cards.card import CardDefinition
     from htc.cards.instance import CardInstance
-    from htc.enums import EquipmentSlot
 
     player = state.players[controller_index]
+    pname = player.hero.definition.name.split(",")[0] if player.hero else f"Player {controller_index}"
+
+    # Check weapon slot availability (max 2 hand slots: two 1H or one 2H)
+    if _count_weapon_hand_slots(player) >= MAX_WEAPON_HAND_SLOTS:
+        log.info(f"  {pname}: No open weapon slot for Graphene Chelicera")
+        return False
 
     token_def = CardDefinition(
         unique_id="graphene-chelicera-token",
@@ -78,10 +99,9 @@ def _create_graphene_chelicera(state, controller_index: int) -> None:
         owner_index=controller_index,
         zone=Zone.WEAPON_1,
     )
-    # Add as a weapon so the weapon activation system handles it
     player.weapons.append(token)
-    pname = state.players[controller_index].hero.definition.name.split(",")[0] if state.players[controller_index].hero else f"Player {controller_index}"
     log.info(f"  Equipped Graphene Chelicera token for {pname}")
+    return True
 
 
 def _is_dagger_attack(attack, link=None) -> bool:
