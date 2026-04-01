@@ -91,7 +91,13 @@ def parse_markdown_decklist(text: str) -> DeckList:
             if entry:
                 cards.append(entry)
 
-    return DeckList(hero_name=hero_name, weapons=weapons, equipment=equipment, cards=cards)
+    # Auto-include Agent of Chaos Demi-Heroes for Arakni, Marionette
+    from htc.decks.loader import AGENT_OF_CHAOS_DEMI_HEROES
+    demi_heroes: list[str] = []
+    if "arakni" in hero_name.lower() and "marionette" in hero_name.lower():
+        demi_heroes = list(AGENT_OF_CHAOS_DEMI_HEROES)
+
+    return DeckList(hero_name=hero_name, weapons=weapons, equipment=equipment, cards=cards, demi_heroes=demi_heroes)
 
 
 def _parse_equipment_line(line: str) -> str | None:
