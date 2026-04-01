@@ -189,7 +189,8 @@ def _warmongers_diplomacy(ctx: AbilityContext) -> None:
     Stores the choice on the opponent's PlayerState. ActionBuilder enforces
     the restriction during their next turn. Cleared at end of their turn.
     """
-    opponent_index = 1 - ctx.controller_index
+    # Each hero chooses war or peace, starting with the opponent.
+    # Both are restricted until the end of their own next turn.
     options = [
         ActionOption(
             action_id="war",
@@ -202,21 +203,23 @@ def _warmongers_diplomacy(ctx: AbilityContext) -> None:
             action_type=ActionType.PASS,
         ),
     ]
-    decision = Decision(
-        player_index=opponent_index,
-        decision_type=DecisionType.CHOOSE_MODE,
-        prompt="Warmonger's Diplomacy: Choose war or peace",
-        options=options,
-    )
-    response = ctx.ask(decision)
-    choice = response.first if response.first in ("war", "peace") else "peace"
 
-    # Store restriction on the opponent — enforced by ActionBuilder next turn
-    ctx.state.players[opponent_index].diplomacy_restriction = choice
-    log.info(
-        f"  Warmonger's Diplomacy: {ctx.player_name(opponent_index)} chose {choice} "
-        "(restriction active next turn)"
-    )
+    opponent_index = 1 - ctx.controller_index
+    for player_index in [opponent_index, ctx.controller_index]:
+        decision = Decision(
+            player_index=player_index,
+            decision_type=DecisionType.CHOOSE_MODE,
+            prompt="Warmonger's Diplomacy: Choose war or peace",
+            options=options,
+        )
+        response = ctx.ask(decision)
+        choice = response.first if response.first in ("war", "peace") else "peace"
+
+        ctx.state.players[player_index].diplomacy_restriction = choice
+        log.info(
+            f"  Warmonger's Diplomacy: {ctx.player_name(player_index)} chose {choice} "
+            "(restriction active next turn)"
+        )
 
 
 def _authority_of_ataya(ctx: AbilityContext) -> None:

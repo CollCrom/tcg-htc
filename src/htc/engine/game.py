@@ -646,10 +646,16 @@ class Game:
             f"| Life: {self._pname(0)} {self.state.players[0].life_total} — "
             f"{self._pname(1)} {self.state.players[1].life_total} ==="
         )
-        # Log hands at start of turn
+        # Log hands and arsenal at start of turn
         for p in self.state.players:
             hand_str = ", ".join(f"{c.name}{c.definition.color_label}" for c in p.hand) or "(empty)"
+            arsenal_str = ", ".join(
+                f"{c.name}{c.definition.color_label} (face-down)" if not c.face_up
+                else f"{c.name}{c.definition.color_label}"
+                for c in p.arsenal
+            ) or "(empty)"
             log.info(f"  {self._pname(p.index)}'s hand: [{hand_str}]")
+            log.info(f"  {self._pname(p.index)}'s arsenal: [{arsenal_str}]")
         # Reset turn counters for ALL players at start of each turn
         for player in self.state.players:
             player.turn_counters.reset()
@@ -850,9 +856,10 @@ class Game:
 
         # 5.1.2: Announce — remove from zone and put on stack
         played_from_banish = card in player.banished and self._is_playable_from_banish(card, player_index)
+        played_from_arsenal = card in player.arsenal
         if card in player.hand:
             player.hand.remove(card)
-        elif card in player.arsenal:
+        elif played_from_arsenal:
             player.arsenal.remove(card)
         elif played_from_banish:
             player.banished.remove(card)
@@ -917,15 +924,16 @@ class Game:
         self._process_pending_triggers()
 
         color_str = card.definition.color_label
+        from_str = " (from arsenal)" if played_from_arsenal else " (from banish)" if played_from_banish else ""
 
         # If it's an attack and combat chain is closed, open it (7.0.2a)
         if card.definition.is_attack and not self.state.combat_chain.is_open:
             self.combat_mgr.open_chain(self.state)
-            log.info(f"  {self._pname(player_index)} attacks with {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
+            log.info(f"  {self._pname(player_index)} attacks with {card.name}{color_str}{from_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
         elif card.definition.is_attack:
-            log.info(f"  {self._pname(player_index)} chains {card.name}{color_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
+            log.info(f"  {self._pname(player_index)} chains {card.name}{color_str}{from_str} (power={self.effect_engine.get_modified_power(self.state, card)})")
         else:
-            log.info(f"  {self._pname(player_index)} plays {card.name}{color_str}")
+            log.info(f"  {self._pname(player_index)} plays {card.name}{color_str}{from_str}")
 
     # --- Arcane Damage ---
 
