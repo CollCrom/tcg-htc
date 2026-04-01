@@ -338,6 +338,68 @@ def _create_fealty_token_simple(state: GameState, controller_index: int) -> None
 # ---------------------------------------------------------------------------
 
 
+@dataclass
+class ArakniEndPhaseTranformTrigger(TriggeredEffect):
+    """Arakni hero ability — end-of-turn Agent of Chaos transformation.
+
+    'At the beginning of your end phase, if an opponent is marked,
+     you become a random Agent of Chaos.'
+    """
+
+    controller_index: int = 0
+    one_shot: bool = False  # persists all game
+
+    _state_getter: object = None
+    _game: object = None
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.END_OF_TURN:
+            return False
+        # Only fires on Arakni's own end phase
+        if event.target_player != self.controller_index:
+            return False
+
+        state = self._get_state()
+        if state is None:
+            return False
+
+        # Check if any opponent is marked
+        opponent = state.players[1 - self.controller_index]
+        if not opponent.is_marked:
+            return False
+
+        # Must have demi-heroes available
+        player = state.players[self.controller_index]
+        if not player.demi_heroes:
+            return False
+
+        return True
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        """Become a random Agent of Chaos."""
+        state = self._get_state()
+        if state is None or self._game is None:
+            return None
+
+        player = state.players[self.controller_index]
+        if not player.demi_heroes:
+            return None
+
+        chosen = state.rng.choice(player.demi_heroes)
+        pname = state.players[self.controller_index].hero.definition.name.split(",")[0] if state.players[self.controller_index].hero else f"Player {self.controller_index}"
+        log.info(
+            f"  Arakni end phase: {pname} becomes {chosen.name} "
+            f"(opponent is marked)"
+        )
+        self._game._become_agent_of_chaos(self.controller_index, chosen)
+        return None
+
+    def _get_state(self) -> GameState | None:
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+
 HERO_ABILITY_MAP: dict[str, type] = {
     "Arakni, Marionette": ArakniMarionetteTrigger,
     "Arakni, Web of Deceit": ArakniMarionetteTrigger,  # young version, same ability
@@ -371,6 +433,14 @@ def register_hero_abilities(
             _state_getter=state_getter,
         )
         event_bus.register_trigger(trigger)
+
+        # Also register end-phase Agent of Chaos transformation
+        transform_trigger = ArakniEndPhaseTranformTrigger(
+            controller_index=controller_index,
+            _state_getter=state_getter,
+            _game=game,
+        )
+        event_bus.register_trigger(transform_trigger)
         log.info(f"  Registered Arakni Marionette ability for {hero_name.split(',')[0]}")
 
     elif trigger_cls is CindraRetributionTrigger:
