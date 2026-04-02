@@ -58,20 +58,40 @@ Persistent learnings across sessions. Update this as you go.
 - **Equipment reaction preconditions** (PR #73): Tide Flippers, Blacktek Whisperers, Stalker's Steps, Flick Knives now check target eligibility before being offered. Destruction reordered to be activation cost (before effect).
 - **Once-per-turn vs tap separation** (PR #74): New `activated_this_turn` field on CardInstance. Weapons use this instead of `is_tapped` for once-per-turn. Matters for weapons with tap cost (Shield Beater) and untap effects.
 
-### 2026-03-31: Log review + gameplay fixes
+### 2026-03-31 — 2026-04-01: Log review + gameplay fixes
 
 - **Attack reaction target validation**: Hand-played attack reactions now check target requirements (dagger, stealth, Ninja, Assassin, off-chain dagger) before being offered. Found via log review — To the Point was played on non-dagger attacks.
 - **FaB turn numbering**: Logs now use FaB convention — turn 0 is opening turn, both players share same turn number after that.
 - **Log improvements**: Player names in all log lines (attacks, defends, hits, blocks, reactions, equipment). Hands shown at start of each turn. Pitching logged. Arsenal actions logged. Spring Tunic shows owner name.
 - **Log review is high-value**: User reviewing game logs found Tide Flippers, Flick Knives, and To the Point bugs that 888 tests missed. Log review should be a standard phase after stress tests.
 
+### 2026-03-31 — 2026-04-02: Log review + gameplay fixes + retroactive audit (PRs #75-84)
+
+- **Player names in all logs** (PR #75): `player_name()` helper on AbilityContext, swept 70+ log messages.
+- **Gameplay fixes from log review** (PR #76): Attack reaction target validation, weapon proxy exclusion, Warmonger's both players, Shelter end-of-turn expiry, Arakni end-phase transformation.
+- **Demi-heroes loading** (PR #77): Test parser wasn't auto-including Agent of Chaos demi-heroes.
+- **HTML game log viewer** (PR #78): `tools/log_to_html.py` — collapsible turns, life bars, icons.
+- **Return-to-brood** (PR #79): Demi-heroes revert at controller's next end phase.
+- **Weapon slot limit** (PR #80): Graphene Chelicera can't equip with full weapon slots.
+- **Codex discard choice** (PR #81): Player chooses which card to discard (was auto-discarding hand[0]).
+- **No re-transform after brood** (PR #82): `returned_to_brood_this_turn` flag prevents infinite transform loop.
+- **Weapon log modified power** (PR #83): Shows proxy power after effects (Frailty -1 visible).
+- **Retroactive skeptic audit** (PR #84): Caught 3 bugs in PRs #76-83:
+  - Warmonger's Diplomacy: controller restriction never applied (cleared same turn). Fixed with `diplomacy_restriction_expires_turn`.
+  - Shelter from the Storm: never expired (target_player check wrong). Fixed by removing the check.
+  - Return-to-brood: `skip_first` caused one-turn-late reversion. Removed redundant flag.
+- **Test Generator agent** created: 43 scenario tests across 5 files, all passing.
+- **Strategy reference docs** saved: Arakni masterclass, Redline Cindra, Blue Cindra post-BNR.
+- **CRITICAL LESSON**: Skeptic must ALWAYS run before PRs. "Skeptic: N/A" is never acceptable. PRs #76-83 shipped without review and had 2 critical bugs.
+
 ## Open TODOs
 
-- Phase 7 scenario tests (key Cindra vs Arakni interactions) still to do.
+- Tide Flippers: verify it does NOT have Blade Break (card DB confirms Arcane Barrier 1 only). Check if engine ever incorrectly applies Blade Break to it.
+- Stress test seed 16 was a false positive (duplicate detection counting equipment in both equipment slot and combat chain defending_cards). Fixed with deduplication.
 - Minor: Frailty -1 power applies to all attack actions, not just those played from arsenal (no `played_from_zone` tracking exists).
 - Minor: Contract keyword scoped to on-hit banishes only (should be global trigger for any banish of opponent's red card).
 - Minor: `Layer.has_go_again` is dead code, cleanup candidate.
-- Minor: Flick Knives damage log still says "Player 1" instead of hero name.
+- Next steps: Continue log review, build smarter AI player using strategy articles, move toward game analysis phase.
 
 ## Process Notes
 
