@@ -345,6 +345,58 @@ Persistent learnings across sessions. Update this after each review.
   - **Action builder**: Correct offering of hand + arsenal + banish cards for actions. Reactions correctly limited (attack reactions to attacker, defense reactions to defender). Equipment instants, permanent instants, instant-discard all offered. No illegal actions offered.
 - 669 tests all passing.
 
+### Retroactive Audit: PRs #76-83 (shipped without skeptic review, 2026-03-30)
+- **Scope**: 10 gameplay changes across 7 files. 888 tests passing. No prior skeptic review.
+- **Verdict: REQUEST CHANGES** — 2 critical issues, 1 minor issue.
+
+#### Critical Issues
+
+1. **Warmonger's Diplomacy: controller restriction never applies (PR #76)**
+   Card text: "each hero chooses war or peace. [restriction] next turn."
+   Both players' restrictions are stored immediately on `PlayerState.diplomacy_restriction`.
+   Restriction is cleared in `_run_end_phase()` via `tp.diplomacy_restriction = None` (only clears turn player).
+   For the **opponent**: set on controller's turn, active during opponent's turn, cleared at end of opponent's turn. **Correct.**
+   For the **controller**: set on controller's turn, cleared at end of controller's OWN turn (same turn it was set), never active during controller's NEXT turn. **Bug — controller restriction is a no-op.**
+   File: `src/htc/engine/game.py` line 1867 (clearing), `src/htc/cards/abilities/ninja.py` line 218 (setting).
+   Fix: Track which turn each player's restriction should expire. Could use a `diplomacy_restriction_turn` counter, or defer setting the controller's restriction until their next turn starts.
+
+2. **Shelter from the Storm: expires on wrong player's end-of-turn (PR #76)**
+   Card text: "The next 3 times you would be dealt damage **this turn**, prevent 1 of that damage."
+   Expiry handler: `if event.target_player == controller` on END_OF_TURN.
+   Shelter is a defense reaction — played on the **opponent's** turn. END_OF_TURN fires with `target_player = turn_player_index` (the opponent). The check `event.target_player == controller` does NOT match during the opponent's end phase. The prevention persists into the controller's own turn and expires at end of THAT turn.
+   File: `src/htc/cards/abilities/generic.py` lines 326-331.
+   Fix: Change `event.target_player == controller` to match the turn player at the time the card was played (i.e., track `current_turn_player` at play time and expire when that player's turn ends), OR simply expire at the next END_OF_TURN regardless of target_player.
+
+#### Minor Issues
+
+3. **Return-to-brood `skip_first` causes one-turn-late reversion (PR #79/82)**
+   `_return_to_brood` handler is registered AFTER handlers have already run for the current END_OF_TURN event (registered during trigger processing in `_check_triggers`). The handler can never fire on the event that caused its registration. `skip_first` therefore skips the NEXT matching end phase (Arakni's next turn), causing return-to-brood to happen one Arakni-turn too late.
+   Sequence: Transform at Turn X end phase -> handler registered -> Turn X+2 (Arakni's next turn) skip_first consumed -> Turn X+4 (Arakni's turn after that) return-to-brood fires.
+   Should be: Transform at Turn X -> return at Turn X+2.
+   File: `src/htc/engine/game.py` lines 499-520.
+   Fix: Remove `skip_first` logic entirely. The handler is already safe from firing during the current event.
+   **Severity downgrade consideration**: This may be minor rather than critical depending on whether the `_process_pending_triggers` call after `emit()` in `_run_end_phase` could re-enter event processing. If so, skip_first might be needed but should skip differently. Marking as minor pending confirmation of execution order.
+
+#### Correct
+
+- **Attack reaction target validation (PR #76)**: Correctly validates dagger, stealth, Ninja, Assassin, and off-chain dagger requirements for hand-played reactions. Proxy source check for dagger weapons is correct. `_can_play_attack_reaction` placement in `build_reaction_decision` is correct.
+- **Weapon proxy exclusion (PR #76)**: `attack.is_proxy` checks correctly added for Tide Flippers, Blacktek Whisperers, Take Up the Mantle, Ancestral Empowerment. Weapon attacks (proxies) should not match "attack action card" requirements.
+- **Arakni end-phase transformation trigger (PR #76)**: `ArakniEndPhaseTranformTrigger` correctly checks: own end phase, opponent is marked, demi-heroes available. `one_shot=False` correct (persists all game). Direct call to `_become_agent_of_chaos` rather than returning a triggered event is unorthodox but functional.
+- **Demi-heroes loading (PR #77)**: Auto-inclusion of 6 Agent of Chaos demi-heroes for Arakni, Marionette in both loader and test parser. Correct.
+- **Return-to-brood mechanism (PR #79)**: `_become_agent_of_chaos` saves `original_hero`, registers return-to-brood handler. Handler reverts hero and sets `returned_to_brood_this_turn`. Core mechanism is correct (timing issue aside).
+- **No re-transform after return-to-brood (PR #82)**: `returned_to_brood_this_turn` flag checked in `ArakniEndPhaseTranformTrigger.condition()`. Cleared by `TurnCounters.reset()` at turn start. Correct — prevents infinite transform/revert loop.
+- **Weapon slot limit for Graphene Chelicera (PR #80)**: `_count_weapon_hand_slots` correctly counts 1H=1, 2H=2. Max 2 hand slots. Returns False if full. Correct.
+- **Codex of Frailty/Inertia player choice (PR #81)**: When hand has >1 card, presents CHOOSE_MODE decision with all hand cards. Fallback to first card on invalid response. Correct — player should choose which card to discard.
+- **Weapon attack log shows modified power (PR #83)**: `effect_engine.get_modified_power(state, proxy)` instead of `weapon.base_power`. Correct (displays actual damage, not base).
+
+#### Missing Tests
+
+- No test verifying controller's own Warmonger's Diplomacy restriction persists to their next turn.
+- No test verifying Shelter from the Storm expires when played as a defense reaction (opponent's turn ends).
+- No test verifying return-to-brood fires exactly one Arakni-turn after transformation.
+- No test verifying Graphene Chelicera creation fails when 2H weapon equipped.
+- No test for Codex discard choice when hand has exactly 2 cards (boundary).
+
 ## Talishar Discrepancies
 
 *(None found yet)*

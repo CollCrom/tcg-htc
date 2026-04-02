@@ -21,12 +21,26 @@ To spawn an agent, use the Agent tool with the agent's role file as context (e.g
 | Building features, fixing bugs, writing tests | Spawn **Builder** |
 | Reviewing engine code for rules correctness | Spawn **Skeptic** |
 | PR ready for review | Spawn **Skeptic** on the diff |
+| Generating targeted scenario/interaction tests | Spawn **Test Generator** |
 | Planning, discussing, answering questions | Handle directly — no spawn needed |
+
+## CRITICAL: Skeptic Gate is MANDATORY
+
+**Every PR must be reviewed by the Skeptic before creation. There are NO exceptions.** This includes:
+- Bug fixes (even "obvious" ones)
+- Log improvements that touch game logic
+- User-directed fixes from log review
+- Refactors
+- Test-only changes
+- Tooling changes that touch engine code
+
+"Skeptic: N/A" is never acceptable. If the change touches any code in `src/htc/`, the skeptic reviews it. The skeptic may approve quickly for simple changes, but it must always run.
 
 ## Available Agents
 
 - `agents/builder.md` — Implements engine features, owns architecture and testing
 - `agents/skeptic.md` — Reviews for rules correctness against comprehensive rules + Talishar
+- `agents/test-generator.md` — Generates targeted scenario tests for card interactions and edge cases
 
 ## Files You Maintain
 

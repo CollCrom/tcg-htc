@@ -493,17 +493,17 @@ class Game:
         # Fire on_become ability for the new demi-hero
         self._apply_card_ability(agent_card, player_index, "on_become")
 
-        # Register return-to-brood: at the beginning of the controller's
-        # NEXT end phase, revert to original hero. Uses a flag to skip
-        # the current end phase (transformation happens during end phase).
-        skip_first = [True]
+        # Register return-to-brood: at the controller's NEXT end phase,
+        # revert to original hero.  The handler is registered on END_OF_TURN
+        # during combat (DEFEND_DECLARED processing), so the first END_OF_TURN
+        # it sees is the opponent's turn end (filtered by target_player check).
+        # The second is the controller's turn end — which is when it fires.
+        # No skip_first needed because the handler is NOT called for an
+        # in-flight event (it's appended after iteration has passed).
         fired = [False]
 
         def _return_to_brood(event: GameEvent) -> None:
             if fired[0] or event.target_player != player_index:
-                return
-            if skip_first[0]:
-                skip_first[0] = False
                 return
             fired[0] = True
             p = self.state.players[player_index]
@@ -1863,8 +1863,16 @@ class Game:
         ))
         self._process_pending_triggers()
 
-        # Clear diplomacy restriction at end of the restricted player's turn
-        tp.diplomacy_restriction = None
+        # Clear diplomacy restriction if this is the turn it's set to expire.
+        # The restriction persists until the end of the player's NEXT turn,
+        # which may be 1 or 2 game turns after it was set (opponent vs self).
+        if (
+            tp.diplomacy_restriction is not None
+            and tp.diplomacy_restriction_expires_turn is not None
+            and self.state.turn_number >= tp.diplomacy_restriction_expires_turn
+        ):
+            tp.diplomacy_restriction = None
+            tp.diplomacy_restriction_expires_turn = None
 
         # Expire "end_of_turn" banish playability
         self._expire_playable_from_banish_end_of_turn()

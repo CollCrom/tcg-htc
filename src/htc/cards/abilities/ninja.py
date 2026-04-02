@@ -215,10 +215,18 @@ def _warmongers_diplomacy(ctx: AbilityContext) -> None:
         response = ctx.ask(decision)
         choice = response.first if response.first in ("war", "peace") else "peace"
 
-        ctx.state.players[player_index].diplomacy_restriction = choice
+        player = ctx.state.players[player_index]
+        player.diplomacy_restriction = choice
+        # The restriction applies during the player's NEXT turn and expires
+        # at the end of that turn.  The opponent's next turn is turn_number+1;
+        # the controller's next turn is turn_number+2.
+        if player_index == ctx.controller_index:
+            player.diplomacy_restriction_expires_turn = ctx.state.turn_number + 2
+        else:
+            player.diplomacy_restriction_expires_turn = ctx.state.turn_number + 1
         log.info(
             f"  Warmonger's Diplomacy: {ctx.player_name(player_index)} chose {choice} "
-            "(restriction active next turn)"
+            f"(restriction active next turn, expires turn {player.diplomacy_restriction_expires_turn})"
         )
 
 

@@ -185,11 +185,17 @@ def _collect_all_cards(state) -> list[CardInstance]:
                 if eq.zone == Zone.COMBAT_CHAIN:
                     continue
                 cards.append(eq)
-    # Combat chain cards
+    # Combat chain cards (skip any already collected — equipment that defended
+    # and was then destroyed ends up in both graveyard and defending_cards)
+    seen_ids = {c.instance_id for c in cards}
     for link in state.combat_chain.chain_links:
-        if link.active_attack:
+        if link.active_attack and link.active_attack.instance_id not in seen_ids:
             cards.append(link.active_attack)
-        cards.extend(link.defending_cards)
+            seen_ids.add(link.active_attack.instance_id)
+        for dc in link.defending_cards:
+            if dc.instance_id not in seen_ids:
+                cards.append(dc)
+                seen_ids.add(dc.instance_id)
     # Stack
     for layer in state.stack:
         if layer.card:

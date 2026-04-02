@@ -320,11 +320,16 @@ def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
     prevention = ShelterPrevention(controller, ctx.source_card)
     ctx.events.register_replacement(prevention)
 
-    # Remove at end of turn — card says "this turn"
+    # Remove at end of turn — card says "this turn".
+    # The prevention expires on the FIRST END_OF_TURN after registration,
+    # regardless of which player's turn it is.  Shelter is played during the
+    # opponent's turn as a defense reaction, so the turn player is the
+    # opponent — not the controller.  Checking target_player == controller
+    # would cause the prevention to persist incorrectly.
     expired = [False]
 
     def _expire_shelter(event: GameEvent) -> None:
-        if not expired[0] and event.target_player == controller:
+        if not expired[0]:
             expired[0] = True
             ctx.events.unregister_replacement(prevention)
 

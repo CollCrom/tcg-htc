@@ -623,9 +623,11 @@ class TestDiplomacyRestrictionClearing:
     """Diplomacy restriction is cleared at end of the restricted player's turn."""
 
     def test_war_restriction_cleared_at_end_of_turn(self):
-        """War restriction is cleared when the restricted player's turn ends."""
+        """War restriction is cleared when the expiry turn matches."""
         game = make_game_shell(action_points={0: 0, 1: 0})
+        game.state.turn_number = 3
         game.state.players[0].diplomacy_restriction = "war"
+        game.state.players[0].diplomacy_restriction_expires_turn = 3
         game.state.turn_player_index = 0
 
         # Provide an interface so _run_end_phase can ask about arsenaling
@@ -636,9 +638,11 @@ class TestDiplomacyRestrictionClearing:
         assert game.state.players[0].diplomacy_restriction is None
 
     def test_peace_restriction_cleared_at_end_of_turn(self):
-        """Peace restriction is cleared when the restricted player's turn ends."""
+        """Peace restriction is cleared when the expiry turn matches."""
         game = make_game_shell(action_points={0: 0, 1: 0})
+        game.state.turn_number = 5
         game.state.players[0].diplomacy_restriction = "peace"
+        game.state.players[0].diplomacy_restriction_expires_turn = 5
         game.state.turn_player_index = 0
 
         game.interfaces = _make_mock_interfaces(make_mock_ask({}))
@@ -647,10 +651,28 @@ class TestDiplomacyRestrictionClearing:
 
         assert game.state.players[0].diplomacy_restriction is None
 
+    def test_restriction_not_cleared_before_expiry(self):
+        """Restriction is NOT cleared before the expiry turn."""
+        game = make_game_shell(action_points={0: 0, 1: 0})
+        game.state.turn_number = 3
+        game.state.players[0].diplomacy_restriction = "war"
+        # Expires on turn 5 (controller's next turn, 2 turns later)
+        game.state.players[0].diplomacy_restriction_expires_turn = 5
+        game.state.turn_player_index = 0
+
+        game.interfaces = _make_mock_interfaces(make_mock_ask({}))
+
+        game._run_end_phase()
+
+        # Restriction should still be active — not yet at expiry turn
+        assert game.state.players[0].diplomacy_restriction == "war"
+
     def test_restriction_not_cleared_for_other_player(self):
         """Restriction on player 1 is NOT cleared when player 0's turn ends."""
         game = make_game_shell(action_points={0: 0, 1: 0})
+        game.state.turn_number = 2
         game.state.players[1].diplomacy_restriction = "war"
+        game.state.players[1].diplomacy_restriction_expires_turn = 3
         game.state.turn_player_index = 0
 
         game.interfaces = _make_mock_interfaces(make_mock_ask({}))
