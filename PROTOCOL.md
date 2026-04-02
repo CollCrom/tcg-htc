@@ -28,10 +28,12 @@ The core workflow is: **Builder builds, Orchestrator gates, Skeptic reviews.**
 
 ## Communication
 
-| Channel | Use for |
-|---------|---------|
-| `memory/{agent}.md` | What you need across sessions. What you wish you'd known. |
-| Spawn prompts | Orchestrator passes context and skeptic feedback to builder/skeptic. |
+
+| Channel             | Use for                                                              |
+| ------------------- | -------------------------------------------------------------------- |
+| `memory/{agent}.md` | What you need across sessions. What you wish you'd known.            |
+| Spawn prompts       | Orchestrator passes context and skeptic feedback to builder/skeptic. |
+
 
 ## Memory Policy
 
@@ -40,18 +42,21 @@ Each agent writes to `memory/{agent-name}.md`. Write learnings **during** work, 
 ### What each agent writes
 
 **Orchestrator** (`memory/orchestrator.md`):
+
 - Session summaries: which PRs shipped, what changed, test counts
 - Process learnings: what workflows worked or failed
 - Open TODOs and deferred items
 - User corrections on FaB rules
 
 **Builder** (`memory/builder.md`):
+
 - Architecture decisions and why (e.g., "used namedtuple for X because...")
 - Gotchas discovered during implementation (e.g., "target_filter closures can't have side effects")
 - Patterns established that future work should follow (e.g., "use `make_once_filter` for single-use effects")
 - Bug classes encountered and their fixes
 
 **Skeptic** (`memory/skeptic.md`):
+
 - Known accepted simplifications (with justification)
 - Recurring bug patterns to check for (e.g., `definition.supertypes` bypasses)
 - Rules clarifications from the user
@@ -75,3 +80,4 @@ Each agent writes to `memory/{agent-name}.md`. Write learnings **during** work, 
 - Read before acting — understand docs and existing code before making changes
 - Be specific — file paths, line numbers, rule numbers, concrete details in posts
 - Don't modify `CLAUDE.md` unless explicitly asked by a human
+

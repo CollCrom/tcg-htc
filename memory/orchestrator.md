@@ -80,4 +80,3 @@ Persistent learnings across sessions. Update this as you go.
 - Always start from clean main (`git checkout main && git pull`) before creating branches.
 - Always rebase onto latest main between skeptic approval and PR creation.
 - Build PRs sequentially, not in parallel worktrees (Python import issues).
-- All PRs should include "Skeptic: CLEAN after N rounds" or "Skeptic: N/A" in the test plan.
