@@ -217,3 +217,11 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **`_pname(state, player_index)`** — standalone module-level helper for contexts without ctx or self (tokens.py, equipment.py). Used in registration functions and `_destroy_token`.
 - **Game._pname()** — already existed in game.py, now used consistently for all game.py log messages.
 - **Pattern**: always use hero name in logs, never "Player N". Fallback to "Player N" only when hero is None (test scaffolding).
+
+## Skeptic Retroactive Audit Fixes (2026-03-30)
+
+- **Warmonger's Diplomacy turn-based expiry** — `diplomacy_restriction_expires_turn: int | None` added to `PlayerState`. Set to `turn_number+1` for opponent, `turn_number+2` for controller. `_run_end_phase` only clears when `turn_number >= expires_turn`. This ensures the controller's restriction survives through their own turn and the opponent's turn.
+- **Shelter from the Storm expiry** — The `_expire_shelter` handler must NOT check `event.target_player == controller`. Shelter is played during the opponent's turn, so END_OF_TURN fires with `target_player = turn_player` (the attacker, not the defender). Just expire on the first END_OF_TURN unconditionally.
+- **Return-to-brood skip_first removal** — Handlers registered via `register_handler` during event processing do NOT fire for the current in-flight event (the handler list is iterated by reference, but the new handler is appended after the iteration index). Since `_return_to_brood` is registered during DEFEND_DECLARED processing, the first END_OF_TURN it sees is the opponent's turn end (filtered by `target_player != player_index`). `skip_first` was incorrectly skipping the controller's first end phase.
+- **Gotcha: stress test seed sensitivity** — Changing game logic (like diplomacy restriction persistence) changes random game paths, which can expose latent bugs in other systems (e.g., duplicate Tide Flippers instance_id in seed 16).
+- **900 tests passing** — 12 new tests for the three fixes.
