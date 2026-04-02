@@ -67,8 +67,12 @@ class PlayerState:
     # Warmonger's Diplomacy restriction: "war" or "peace" or None.
     # War: only weapon attacks and attack action cards next turn.
     # Peace: only non-weapon, non-attack actions next turn.
-    # Cleared at end of the restricted player's turn.
+    # Cleared at end of the turn indicated by diplomacy_restriction_expires_turn.
     diplomacy_restriction: str | None = None
+    # The game turn_number on which the restriction should be cleared (at end
+    # of that turn).  For the opponent, this is the next turn.  For the
+    # controller, this is two turns later (their next action turn).
+    diplomacy_restriction_expires_turn: int | None = None
 
     # Banished cards that are currently playable.
     # Each entry tracks (instance_id, expiry, redirect_to_banish).
