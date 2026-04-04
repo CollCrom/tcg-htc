@@ -19,7 +19,6 @@ class Layer:
     source_instance_id: int | None = None
     controller_index: int = 0
     targets: list[int] = field(default_factory=list)  # instance_ids
-    has_go_again: bool = False
 
 
 @dataclass

@@ -187,7 +187,7 @@ def test_weapon_stays_in_weapon_zone():
 
 
 def test_go_again_from_weapon():
-    """Weapon with Go Again should set has_go_again on the stack layer."""
+    """Weapon with Go Again: proxy inherits Go Again keyword, resolved dynamically."""
     game = make_game_shell(action_points={0: 1, 1: 0})
     weapon = _make_weapon(keywords=frozenset({Keyword.GO_AGAIN}))
     game.state.players[0].weapons.append(weapon)
@@ -195,7 +195,10 @@ def test_go_again_from_weapon():
 
     layer = game.stack_mgr.top(game.state)
     assert layer is not None
-    assert layer.has_go_again is True
+    # Go again is now resolved dynamically via effect engine, not snapshotted.
+    # Verify the proxy card has Go Again keyword.
+    proxy_kws = game.effect_engine.get_modified_keywords(game.state, layer.card)
+    assert Keyword.GO_AGAIN in proxy_kws
 
 
 # ---------------------------------------------------------------------------

@@ -28,7 +28,9 @@ def _is_keyword_inherent(keyword: Keyword, functional_text: str) -> bool:
 
     A keyword is inherent if it appears as standalone bold text (e.g. ``**Go again**``)
     without being preceded in the same sentence by a conditional verb
-    ("gets", "gains", "has", "loses").
+    ("gets", "gains", "has", "loses").  Note that "with" is NOT treated as
+    conditional — cards like "attack with go again" use "with" in a
+    descriptive sense, not a conditional grant.
 
     Returns True if the keyword is inherent OR if it doesn't appear in the text
     at all (trust the Card Keywords field for keywords not mentioned in text).

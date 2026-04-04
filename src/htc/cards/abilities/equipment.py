@@ -73,13 +73,6 @@ def _is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
     return False
 
 
-def _is_draconic_attack(attack: CardInstance | None) -> bool:
-    """Check if an attack is Draconic (supertype)."""
-    if attack is None:
-        return False
-    return SuperType.DRACONIC in attack.definition.supertypes
-
-
 def _destroy_equipment(state: GameState, card: CardInstance) -> None:
     """Move equipment to its owner's graveyard and clear the slot."""
     player = state.players[card.owner_index]

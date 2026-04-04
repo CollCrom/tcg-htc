@@ -1289,7 +1289,6 @@ class Game:
 
         proxy = self._create_attack_proxy(weapon, player_index)
         layer = self.stack_mgr.add_card_layer(self.state, proxy, player_index)
-        layer.has_go_again = weapon.definition.has_go_again
 
         player.turn_counters.num_attacks_played += 1
         player.turn_counters.has_attacked = True
