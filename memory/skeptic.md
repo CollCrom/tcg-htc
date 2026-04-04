@@ -453,6 +453,15 @@ Persistent learnings across sessions. Update this after each review.
 - Updated tests in `test_token_abilities.py` (Frailty), `test_skeptic_audit_fixes.py` (Contract), `test_full_game.py` (Hunter's Klaive), `test_weapon_attacks.py` (Go Again), `test_post_phase5_audit.py` (state_getter).
 - 959 tests all passing.
 
+### fix/stealth-effective-definition — Stealth keyword check in target_filters (2026-04-04)
+- **Round 1 verdict: APPROVE** — No critical issues. No minor issues.
+- **Scope**: 2-line change in `agents.py` (line 152) and `assassin.py` (line 795). Both Orb-Weaver Stealth target_filters changed from `card.definition.keywords` to `card._effective_definition.keywords`.
+- **Why not full effect engine**: `get_modified_keywords()` sets/deletes `_resolved_supertypes` on the card, which conflicts when the target_filter is evaluated during `_resolve_numeric_property` (power resolution). Re-entrancy would corrupt the `_resolved_supertypes` temporary attribute. Confirmed by code inspection (effects.py lines 121-134 vs 205-224).
+- **Why `_effective_definition`**: Handles copy effects (Take Up the Mantle `definition_override`). No effects currently grant Stealth, so equivalent to full effect engine for all current cards.
+- **Pattern note**: This is the same approach used by `get_modified_keywords()` itself (line 124), `get_modified_supertypes()` (line 108), and other effect engine methods — they all read from `_effective_definition` as their base value.
+- **Remaining `definition.keywords` Stealth check**: `assassin.py` line 314 (Take Up the Mantle graveyard search) still uses `definition.keywords`. Acceptable — graveyard cards have no active continuous effects, so `definition` is correct there.
+- 959 tests all passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
