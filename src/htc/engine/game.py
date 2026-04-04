@@ -1021,6 +1021,7 @@ class Game:
                 amount=remaining,
                 data={"damage_type": "arcane"},
             ))
+            self._process_pending_triggers()
             log.info(
                 f"  Arcane damage: {remaining} to {self._pname(target_player_index)} "
                 f"(life: {self.state.players[target_player_index].life_total})"
@@ -1339,7 +1340,7 @@ class Game:
             arcane=None,
             types=frozenset({CardType.ACTION}),
             subtypes=frozenset({SubType.ATTACK}),
-            supertypes=weapon.definition.supertypes,
+            supertypes=self.effect_engine.get_modified_supertypes(self.state, weapon),
             keywords=modified_keywords,
             functional_text="",
             type_text="Weapon attack proxy",
@@ -1906,6 +1907,7 @@ class Game:
             and self.state.turn_number >= tp.diplomacy_restriction_expires_turn
         ):
             tp.diplomacy_restriction = None
+            tp.diplomacy_restriction_active_turn = None
             tp.diplomacy_restriction_expires_turn = None
 
         # Expire "end_of_turn" banish playability

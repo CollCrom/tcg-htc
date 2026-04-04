@@ -124,7 +124,7 @@ def _throw_dagger(ctx: AbilityContext) -> None:
     attack_source_id = link.attack_source.instance_id if link.attack_source else None
     daggers = []
     for weapon in player.weapons:
-        if SubType.DAGGER in weapon.definition.subtypes:
+        if SubType.DAGGER in ctx.effect_engine.get_modified_subtypes(ctx.state, weapon):
             if weapon.instance_id != active_atk_id and weapon.instance_id != attack_source_id:
                 daggers.append(weapon)
 
@@ -223,8 +223,10 @@ def _warmongers_diplomacy(ctx: AbilityContext) -> None:
         # at the end of that turn.  The opponent's next turn is turn_number+1;
         # the controller's next turn is turn_number+2.
         if player_index == ctx.controller_index:
+            player.diplomacy_restriction_active_turn = ctx.state.turn_number + 2
             player.diplomacy_restriction_expires_turn = ctx.state.turn_number + 2
         else:
+            player.diplomacy_restriction_active_turn = ctx.state.turn_number + 1
             player.diplomacy_restriction_expires_turn = ctx.state.turn_number + 1
         log.info(
             f"  Warmonger's Diplomacy: {ctx.player_name(player_index)} chose {choice} "
@@ -413,6 +415,7 @@ def _art_of_the_dragon_scale_on_attack(ctx: AbilityContext) -> None:
         controller_index=ctx.controller_index,
         target_player_index=link.attack_target_index,
         _state_getter=lambda _s=ctx.state: _s,
+        _effect_engine=ctx.effect_engine,
         _ask=ctx.ask,
         one_shot=True,
     )
@@ -431,6 +434,7 @@ class _ArtOfDragonScaleHitTrigger(TriggeredEffect):
     target_player_index: int = 0
     one_shot: bool = True
     _state_getter: object = None
+    _effect_engine: object = None
     _ask: object = None
 
     def condition(self, event: GameEvent) -> bool:
@@ -497,7 +501,10 @@ class _ArtOfDragonScaleHitTrigger(TriggeredEffect):
 
         # Put -1 defense counter using card.counters dict (visible to effect engine)
         chosen.counters["defense"] = chosen.counters.get("defense", 0) - 1
-        effective_defense = (chosen.definition.defense or 0) + chosen.counters["defense"]
+        if self._effect_engine is not None and state is not None:
+            effective_defense = self._effect_engine.get_modified_defense(state, chosen)
+        else:
+            effective_defense = (chosen.definition.defense or 0) + chosen.counters["defense"]
         log.info(
             f"  Art of the Dragon: Scale: {chosen.name} gets -1 defense counter "
             f"(now {effective_defense} defense)"
@@ -533,7 +540,7 @@ def _blood_runs_deep_on_attack(ctx: AbilityContext) -> None:
     defender_index = link.attack_target_index
 
     # Find all daggers the player controls
-    daggers = [w for w in player.weapons if SubType.DAGGER in w.definition.subtypes]
+    daggers = [w for w in player.weapons if SubType.DAGGER in ctx.effect_engine.get_modified_subtypes(ctx.state, w)]
 
     if not daggers:
         log.info("  Blood Runs Deep: no daggers to deal damage")

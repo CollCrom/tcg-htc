@@ -262,9 +262,13 @@ class ActionBuilder:
         if card.name == "Death Touch" and card.zone != Zone.ARSENAL:
             return False
 
-        # Warmonger's Diplomacy restriction
-        restriction = state.players[player_index].diplomacy_restriction
-        if restriction is not None:
+        # Warmonger's Diplomacy restriction (only active once active_turn is reached)
+        player_st = state.players[player_index]
+        restriction = player_st.diplomacy_restriction
+        if restriction is not None and (
+            player_st.diplomacy_restriction_active_turn is None
+            or state.turn_number >= player_st.diplomacy_restriction_active_turn
+        ):
             if restriction == "war":
                 # War: only attack action cards allowed (weapons handled separately)
                 if not defn.is_attack:
@@ -304,8 +308,15 @@ class ActionBuilder:
         Checks: not already activated this turn (once-per-turn), not tapped
         (for weapons with tap cost), has AP, can pay resource cost.
         """
-        # Peace restriction blocks weapon activations
-        if state.players[player_index].diplomacy_restriction == "peace":
+        # Peace restriction blocks weapon activations (only when active)
+        player_st = state.players[player_index]
+        if (
+            player_st.diplomacy_restriction == "peace"
+            and (
+                player_st.diplomacy_restriction_active_turn is None
+                or state.turn_number >= player_st.diplomacy_restriction_active_turn
+            )
+        ):
             return False
         # Once-per-turn check (separate from tap)
         if weapon.activated_this_turn:
@@ -474,7 +485,7 @@ class ActionBuilder:
                 return False
             if CardType.ACTION not in attack.definition.types:
                 return False
-            if SubType.ATTACK not in attack.definition.subtypes:
+            if SubType.ATTACK not in self.effect_engine.get_modified_subtypes(state, attack):
                 return False
             # Base power must be 2 or less
             base_power = attack.definition.power or 0
@@ -487,7 +498,7 @@ class ActionBuilder:
                 return False
             if CardType.ACTION not in attack.definition.types:
                 return False
-            if SubType.ATTACK not in attack.definition.subtypes:
+            if SubType.ATTACK not in self.effect_engine.get_modified_subtypes(state, attack):
                 return False
             supertypes = self.effect_engine.get_modified_supertypes(state, attack)
             if SuperType.ASSASSIN not in supertypes:
@@ -506,7 +517,7 @@ class ActionBuilder:
             source_id = link.attack_source.instance_id if link.attack_source else None
             has_off_chain_dagger = False
             for weapon in player.weapons:
-                if SubType.DAGGER in weapon.definition.subtypes:
+                if SubType.DAGGER in self.effect_engine.get_modified_subtypes(state, weapon):
                     if weapon.instance_id != source_id and weapon.instance_id != active_attack_id:
                         has_off_chain_dagger = True
                         break
@@ -531,11 +542,11 @@ class ActionBuilder:
         # "Target dagger attack" — Incision, To the Point, Scar Tissue
         if card.name in ("Incision", "To the Point", "Scar Tissue"):
             is_dagger = (
-                SubType.DAGGER in attack.definition.subtypes
+                SubType.DAGGER in self.effect_engine.get_modified_subtypes(state, attack)
                 or (attack.is_proxy and attack.proxy_source_id is not None
                     and any(
                         w.instance_id == attack.proxy_source_id
-                        and SubType.DAGGER in w.definition.subtypes
+                        and SubType.DAGGER in self.effect_engine.get_modified_subtypes(state, w)
                         for w in state.players[player_index].weapons
                     ))
             )
@@ -578,7 +589,7 @@ class ActionBuilder:
             source_id = link.attack_source.instance_id if link.attack_source else None
             active_id = attack.instance_id
             has_dagger = any(
-                SubType.DAGGER in w.definition.subtypes
+                SubType.DAGGER in self.effect_engine.get_modified_subtypes(state, w)
                 and w.instance_id != source_id
                 and w.instance_id != active_id
                 for w in player.weapons
