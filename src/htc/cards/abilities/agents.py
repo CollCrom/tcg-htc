@@ -91,7 +91,7 @@ def _trap_door_on_become(ctx: AbilityContext) -> None:
     ctx.state.rng.shuffle(player.deck)
 
     # If it's a Trap, mark as playable from banish until start of next turn
-    if SubType.TRAP in target.definition.subtypes:
+    if SubType.TRAP in ctx.effect_engine.get_modified_subtypes(ctx.state, target):
         player.playable_from_banish.append(
             BanishPlayability(target.instance_id, EXPIRY_START_OF_NEXT_TURN, False),
         )
@@ -137,7 +137,7 @@ def _orb_weaver_instant(ctx: AbilityContext) -> None:
     player = ctx.state.players[ctx.controller_index]
 
     # Create Graphene Chelicera as a weapon token
-    created = _create_graphene_chelicera(ctx.state, ctx.controller_index)
+    created = _create_graphene_chelicera(ctx.state, ctx.controller_index, effect_engine=ctx.effect_engine)
     if not created:
         log.info("  Orb-Weaver: No weapon slot available for Graphene Chelicera")
         return

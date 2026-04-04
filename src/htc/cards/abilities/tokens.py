@@ -190,7 +190,7 @@ def register_frailty_continuous_effect(
         # have -1{p}.")
         if (
             CardType.ACTION in card.definition.types
-            and SubType.ATTACK in card.definition.subtypes
+            and SubType.ATTACK in card._effective_definition.subtypes
             and getattr(card, 'played_from_zone', None) == Zone.ARSENAL
         ):
             return True

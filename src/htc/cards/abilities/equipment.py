@@ -107,6 +107,7 @@ class MaskOfMomentumTrigger(TriggeredEffect):
     one_shot: bool = False  # persists all game
     _used_this_turn: bool = False
     _state_getter: object = None
+    _effect_engine: object = None
     _event_bus: EventBus | None = None
 
     def condition(self, event: GameEvent) -> bool:
@@ -132,10 +133,15 @@ class MaskOfMomentumTrigger(TriggeredEffect):
         # Must be an attack action card (not weapon proxy)
         if CardType.ACTION not in event.source.definition.types:
             return False
-        if SubType.ATTACK not in event.source.definition.subtypes:
+        state = self._get_state()
+        source_subtypes = (
+            self._effect_engine.get_modified_subtypes(state, event.source)
+            if self._effect_engine is not None and state is not None
+            else event.source.definition.subtypes
+        )
+        if SubType.ATTACK not in source_subtypes:
             return False
 
-        state = self._get_state()
         if state is None:
             return False
 
@@ -211,7 +217,7 @@ def _flick_knives(ctx: AbilityContext) -> None:
 
     dagger = None
     for weapon in player.weapons:
-        if SubType.DAGGER in weapon.definition.subtypes:
+        if SubType.DAGGER in ctx.effect_engine.get_modified_subtypes(ctx.state, weapon):
             # Not the weapon currently attacking
             if weapon.instance_id != source_id and weapon.instance_id != active_attack_id:
                 dagger = weapon
@@ -272,6 +278,7 @@ class BloodSplatteredVestTrigger(TriggeredEffect):
     controller_index: int = 0
     one_shot: bool = False
     _state_getter: object = None
+    _effect_engine: object = None
     _equipment_instance_id: int = 0
 
     def condition(self, event: GameEvent) -> bool:
@@ -286,11 +293,14 @@ class BloodSplatteredVestTrigger(TriggeredEffect):
 
         # Check if it's a dagger attack
         chain_link = event.data.get("chain_link")
-        if not is_dagger_attack(event.source, chain_link):
+        state = self._get_state()
+        if not is_dagger_attack(
+            event.source, chain_link,
+            effect_engine=self._effect_engine, state=state,
+        ):
             return False
 
         # Equipment must still be in play
-        state = self._get_state()
         if state is None:
             return False
 
@@ -814,6 +824,7 @@ def register_equipment_triggers(
         trigger = MaskOfMomentumTrigger(
             controller_index=player_index,
             _state_getter=state_getter,
+            _effect_engine=effect_engine,
             _event_bus=event_bus,
         )
         event_bus.register_trigger(trigger)
@@ -826,6 +837,7 @@ def register_equipment_triggers(
         trigger = BloodSplatteredVestTrigger(
             controller_index=player_index,
             _state_getter=state_getter,
+            _effect_engine=effect_engine,
             _equipment_instance_id=chest_eq.instance_id,
         )
         event_bus.register_trigger(trigger)

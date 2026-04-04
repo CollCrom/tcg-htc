@@ -46,11 +46,16 @@ log = logging.getLogger(__name__)
 
 
 
-def _count_weapon_hand_slots(player) -> int:
+def _count_weapon_hand_slots(player, *, effect_engine=None, state=None) -> int:
     """Count how many 1H weapon hand slots are occupied."""
     count = 0
     for w in player.weapons:
-        if SubType.TWO_HAND in w.definition.subtypes:
+        subtypes = (
+            effect_engine.get_modified_subtypes(state, w)
+            if effect_engine is not None and state is not None
+            else w.definition.subtypes
+        )
+        if SubType.TWO_HAND in subtypes:
             count += 2
         else:
             count += 1
@@ -60,7 +65,7 @@ def _count_weapon_hand_slots(player) -> int:
 MAX_WEAPON_HAND_SLOTS = 2  # Two 1H weapons or one 2H weapon
 
 
-def _create_graphene_chelicera(state, controller_index: int) -> bool:
+def _create_graphene_chelicera(state, controller_index: int, *, effect_engine=None) -> bool:
     """Create a Graphene Chelicera token as a weapon.
 
     "Once per Turn Action - {r}: Attack with this for 1, with go again."
@@ -75,7 +80,7 @@ def _create_graphene_chelicera(state, controller_index: int) -> bool:
     pname = get_player_name(state, controller_index)
 
     # Check weapon slot availability (max 2 hand slots: two 1H or one 2H)
-    if _count_weapon_hand_slots(player) >= MAX_WEAPON_HAND_SLOTS:
+    if _count_weapon_hand_slots(player, effect_engine=effect_engine, state=state) >= MAX_WEAPON_HAND_SLOTS:
         log.info(f"  {pname}: No open weapon slot for Graphene Chelicera")
         return False
 
@@ -151,7 +156,7 @@ def _incision(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    if not is_dagger_attack(attack, link):
+    if not is_dagger_attack(attack, link, effect_engine=ctx.effect_engine, state=ctx.state):
         log.info(f"  Incision: no effect -- {attack.name} is not a dagger attack")
         return
 
@@ -170,7 +175,7 @@ def _to_the_point(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    if not is_dagger_attack(attack, link):
+    if not is_dagger_attack(attack, link, effect_engine=ctx.effect_engine, state=ctx.state):
         log.info(f"  To the Point: no effect -- {attack.name} is not a dagger attack")
         return
 
@@ -369,7 +374,7 @@ def _tarantula_toxin(ctx: AbilityContext) -> None:
     attack = link.active_attack
     bonus = 3  # Red only in this deck
 
-    mode1_valid = is_dagger_attack(attack, link)
+    mode1_valid = is_dagger_attack(attack, link, effect_engine=ctx.effect_engine, state=ctx.state)
     mode2_valid = _has_stealth(attack, ctx) and bool(link.defending_cards)
 
     if not mode1_valid and not mode2_valid:
@@ -561,7 +566,7 @@ def _grant_next_dagger_attack_bonus(ctx: AbilityContext, bonus: int, source_name
     target_filter = make_once_filter(lambda card: (
         card.zone == Zone.COMBAT_CHAIN
         and card.owner_index == controller
-        and (SubType.DAGGER in card.definition.subtypes or card.is_proxy)
+        and (SubType.DAGGER in card._effective_definition.subtypes or card.is_proxy)
     ))
 
     effect = make_power_modifier(
@@ -740,7 +745,7 @@ def _up_sticks_and_run(ctx: AbilityContext) -> None:
     """
     # Retrieve a dagger from graveyard
     def dagger_filter(card):
-        return SubType.DAGGER in card.definition.subtypes
+        return SubType.DAGGER in card._effective_definition.subtypes
 
     ctx.keyword_engine.perform_retrieve(ctx.state, ctx.controller_index, dagger_filter)
 
@@ -761,7 +766,7 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     weapon activation system (activated_this_turn flag).
     """
     # Create Graphene Chelicera as a weapon token
-    _create_graphene_chelicera(ctx.state, ctx.controller_index)
+    _create_graphene_chelicera(ctx.state, ctx.controller_index, effect_engine=ctx.effect_engine)
 
     # Next stealth attack bonus — use make_once_filter so the bonus only
     # applies to the first matching stealth attack (not all of them).
@@ -803,6 +808,7 @@ def _savor_bloodshed(ctx: AbilityContext) -> None:
     trigger = _SavorBloodshedDrawOnHit(
         controller_index=ctx.controller_index,
         _state_getter=lambda _s=ctx.state: _s,
+        _effect_engine=ctx.effect_engine,
         one_shot=True,
     )
     ctx.events.register_trigger(trigger)
@@ -814,6 +820,7 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
     """One-shot: next dagger hit on a marked hero this turn -> draw a card."""
     controller_index: int = 0
     _state_getter: object = None
+    _effect_engine: object = None
     one_shot: bool = True
 
     def _get_state(self):
@@ -829,7 +836,12 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
         # Must be a dagger attack by controller
         if event.source.owner_index != self.controller_index:
             return False
-        if SubType.DAGGER not in event.source.definition.subtypes:
+        state = self._get_state()
+        if self._effect_engine is not None and state is not None:
+            source_subtypes = self._effect_engine.get_modified_subtypes(state, event.source)
+        else:
+            source_subtypes = event.source.definition.subtypes
+        if SubType.DAGGER not in source_subtypes:
             return False
         # Target must have been marked at the time of the hit.
         # Check pre-recorded state from event data first (set by _damage_step
@@ -872,7 +884,7 @@ def _pick_up_the_point_on_attack(ctx: AbilityContext) -> None:
     Go again (keyword).
     """
     def dagger_filter(card):
-        return SubType.DAGGER in card.definition.subtypes
+        return SubType.DAGGER in card._effective_definition.subtypes
 
     ctx.keyword_engine.perform_retrieve(ctx.state, ctx.controller_index, dagger_filter)
     log.info(f"  Pick Up the Point: Retrieved dagger (if available)")
@@ -889,7 +901,7 @@ def _whittle_from_bone_on_attack(ctx: AbilityContext) -> None:
 
     defender = ctx.state.players[link.attack_target_index]
     if defender.is_marked:
-        _create_graphene_chelicera(ctx.state, ctx.controller_index)
+        _create_graphene_chelicera(ctx.state, ctx.controller_index, effect_engine=ctx.effect_engine)
         log.info(f"  Whittle from Bone: Equipped Graphene Chelicera (attacking marked hero)")
     else:
         log.info(f"  Whittle from Bone: no effect (target not marked)")
@@ -1011,7 +1023,7 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
     controller = ctx.state.players[ctx.controller_index]
 
     # Find daggers the controller owns
-    daggers = [w for w in controller.weapons if SubType.DAGGER in w.definition.subtypes]
+    daggers = [w for w in controller.weapons if SubType.DAGGER in ctx.effect_engine.get_modified_subtypes(ctx.state, w)]
 
     if not daggers:
         log.info("  Pain in the Backside: No dagger found — no damage dealt")
@@ -1359,7 +1371,7 @@ def _overcrowded_on_attack(ctx: AbilityContext) -> None:
     for player in ctx.state.players:
         for perm in player.permanents:
             if (CardType.TOKEN in perm.definition.types and
-                    SubType.AURA in perm.definition.subtypes):
+                    SubType.AURA in ctx.effect_engine.get_modified_subtypes(ctx.state, perm)):
                 aura_token_names.add(perm.name)
 
     bonus = len(aura_token_names)
@@ -1396,7 +1408,7 @@ def _scar_tissue(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    if not is_dagger_attack(attack, link):
+    if not is_dagger_attack(attack, link, effect_engine=ctx.effect_engine, state=ctx.state):
         log.info(f"  Scar Tissue: no effect -- {attack.name} is not a dagger attack")
         return
 
@@ -1432,7 +1444,7 @@ def _under_the_trap_door_instant(ctx: AbilityContext) -> None:
     player = ctx.state.players[ctx.controller_index]
 
     # Find traps in graveyard
-    traps = [c for c in player.graveyard if SubType.TRAP in c.definition.subtypes]
+    traps = [c for c in player.graveyard if SubType.TRAP in c._effective_definition.subtypes]
     if not traps:
         log.info("  Under the Trap-Door: no traps in graveyard")
         return
