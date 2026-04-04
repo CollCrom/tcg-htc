@@ -138,12 +138,15 @@ def _setup_dagger_test(*, num_daggers: int = 2):
 class TestFlickKnivesDestroysDagger:
     """Flick Knives activation destroys an off-chain dagger."""
 
-    def test_flick_destroys_off_chain_dagger(self):
+    def test_flick_destroys_off_chain_dagger(self, scenario_recorder):
         """Flick Knives should destroy one dagger (move to graveyard)."""
         game, flick, daggers = _setup_dagger_test(num_daggers=2)
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         dagger1, dagger2 = daggers
+
+        recorder.snap("Setup: 2 daggers + Flick Knives equipped")
 
         # Open chain, attack with dagger1 (dagger2 is off-chain)
         game.combat_mgr.open_chain(state)
@@ -151,8 +154,12 @@ class TestFlickKnivesDestroysDagger:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = dagger1
 
+        recorder.snap("Dagger1 attacking on chain — dagger2 is off-chain")
+
         ctx = make_ability_context(game, flick, controller_index=0, chain_link=link)
         _flick_knives(ctx)
+
+        recorder.snap("After Flick Knives activation — dagger2 should be destroyed")
 
         # dagger2 should be destroyed
         assert dagger2 not in state.players[0].weapons, (
