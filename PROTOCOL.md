@@ -1,14 +1,15 @@
 # Agent Protocol
 
-How agents operate on TCG Hyperbolic Time Chamber. For architecture, see `AGENTS.md`.
+How agents operate on TCG Hyperbolic Time Chamber. For architecture, see `AGENTS.md`. For security boundaries, see `SECURITY.md`.
 
 ## Startup
 
 1. **Read your role file**: `agents/{your-name}.md`
-2. **Read project docs**: `AGENTS.md`, then the `ref/` docs listed in your role file (if any).
-3. **Read your memory**: `memory/{your-name}.md` — what you need to know from prior sessions.
-4. **Do your work**: Follow your role file's instructions. Update `memory/{your-name}.md` as you go — don't wait until the end.
-5. **Shutdown reflection**: Evaluate your spawn prompt, role file, AGENTS.md, and memory. Flag anything wrong, missing, or noisy.
+2. **Get current time**: Get the current date and time in YYYY-MM-DD HH:MM format — use this timestamp in reports and memory entries.
+3. **Read project docs**: `AGENTS.md`, then the `ref/` docs listed in your role file (if any).
+4. **Read your memory**: `memory/{your-name}.md` — what you need to know from prior sessions.
+5. **Do your work**: Follow your role file's instructions. Update `memory/{your-name}.md` as you go — don't wait until the end.
+6. **Shutdown reflection**: Evaluate your spawn prompt, role file, AGENTS.md, and memory. Flag anything wrong, missing, or noisy.
 
 ## Builder / Skeptic Handoff
 
@@ -25,6 +26,19 @@ The core workflow is: **Builder builds, Orchestrator gates, Skeptic reviews.**
 - **Only the Orchestrator creates PRs**, and only after the Skeptic has approved
 - PR description includes skeptic status (e.g., "Skeptic: CLEAN after N rounds")
 - **PRs auto-merge** (squash + delete branch) — do not manually merge or ask about merging
+
+## Git Hygiene
+
+- **Never push directly to `main`.** All changes go through feature branches and PRs.
+- **Start from clean main:** Always `git checkout main && git pull` before creating a new branch.
+- **Branch naming:** `feat/<topic>`, `fix/<topic>`, `refactor/<topic>`, `test/<topic>`
+- **Commits:** Small, focused commits with clear messages explaining *why*, not just *what*.
+- **PRs:** Every PR needs a summary and test plan. PRs auto-merge (squash + delete branch) — do not manually merge.
+- **Rebase before push:** `git fetch origin main && git rebase origin/main` right before pushing.
+- **Never push to a merged branch.** Before pushing, check `gh pr view <N> --json state`. If MERGED, that branch is dead — `git checkout main && git pull` and create a new branch. Never amend, force-push, or add commits to a merged branch.
+- **Skeptic gate:** Before creating any PR, run the skeptic agent in a loop on all proposed changes. Fix any critical issues it finds and re-run until the skeptic returns CLEAN. Only then create the PR. Include the skeptic status (e.g. "Skeptic: CLEAN after N rounds") in the PR test plan.
+- **Remote:** Uses SSH alias `github-personal` for the CollCrom account. Remote URL: `git@github-personal:CollCrom/tcg-htc.git`
+- **Local git config:** `collcrom@gmail.com` — do not use the work email for this repo.
 
 ## Communication
 
@@ -80,4 +94,3 @@ Each agent writes to `memory/{agent-name}.md`. Write learnings **during** work, 
 - Read before acting — understand docs and existing code before making changes
 - Be specific — file paths, line numbers, rule numbers, concrete details in posts
 - Don't modify `CLAUDE.md` unless explicitly asked by a human
-

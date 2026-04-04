@@ -16,9 +16,11 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 - `CLAUDE.md` → Boots the orchestrator
 - `AGENTS.md` → This file (project docs, architecture, roadmap)
 - `PROTOCOL.md` → Agent startup, communication, and handoff rules
+- `SECURITY.md` → What agent prompt files are/aren't allowed to do
 - `agents/orchestrator.md` → Coordinates work, spawns other agents
 - `agents/builder.md` → Implements engine features, owns architecture
 - `agents/skeptic.md` → Rules correctness reviewer
+- `agents/test-generator.md` → Generates targeted scenario tests for card interactions
 
 ## Architecture
 
