@@ -98,8 +98,8 @@ Persistent learnings across sessions. Update this as you go.
 
 ## Open TODOs
 
-- **NEXT SESSION: Build smarter AI player.** Replace RandomPlayer with a strategy-aware player using the pro articles (ref/strategy-*.md). This is the foundation for game analysis and deck optimization.
-- PR #84 is open and needs to merge first. Check CI.
+- **NEXT SESSION: Wire board viewer into scenario tests.** The 43 scenario tests need to run through the board viewer so the user can visually step through each interaction and verify correctness. Currently the viewer only works on the demo game — need to instrument scenario tests to capture snapshots and generate viewable HTML.
+- After that: build smarter AI player using strategy articles (ref/strategy-*.md).
 - Minor: duplicate Hunter's Klaive on_hit log (keyword handler + registry both fire for proxy attacks). Harmless but noisy.
 - Minor: Frailty -1 power applies to all attack actions, not just those played from arsenal (no `played_from_zone` tracking exists).
 - Minor: Contract keyword scoped to on-hit banishes only (should be global trigger for any banish of opponent's red card).
