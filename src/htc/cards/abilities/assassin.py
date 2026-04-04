@@ -822,7 +822,7 @@ def _savor_bloodshed(ctx: AbilityContext) -> None:
     # Register one-shot trigger: next dagger hit on marked hero -> draw
     trigger = _SavorBloodshedDrawOnHit(
         controller_index=ctx.controller_index,
-        _state=ctx.state,
+        _state_getter=lambda _s=ctx.state: _s,
         one_shot=True,
     )
     ctx.events.register_trigger(trigger)
@@ -833,8 +833,13 @@ def _savor_bloodshed(ctx: AbilityContext) -> None:
 class _SavorBloodshedDrawOnHit(TriggeredEffect):
     """One-shot: next dagger hit on a marked hero this turn -> draw a card."""
     controller_index: int = 0
-    _state: object = None
+    _state_getter: object = None
     one_shot: bool = True
+
+    def _get_state(self):
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
 
     def condition(self, event: GameEvent) -> bool:
         if event.event_type != EventType.HIT:
@@ -856,20 +861,14 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
         if was_marked is not None:
             return was_marked
         # Fallback: check live state (only reached in unit tests)
-        if self._state is None:
-            return False
-        from htc.state.game_state import GameState
-        state = self._state
-        if not isinstance(state, GameState):
+        state = self._get_state()
+        if state is None:
             return False
         return state.players[event.target_player].is_marked
 
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        if self._state is None:
-            return None
-        from htc.state.game_state import GameState
-        state = self._state
-        if not isinstance(state, GameState):
+        state = self._get_state()
+        if state is None:
             return None
         player = state.players[self.controller_index]
         if player.deck:
@@ -1427,7 +1426,7 @@ def _scar_tissue(ctx: AbilityContext) -> None:
         attack_instance_id=attack.instance_id,
         target_player_index=link.attack_target_index,
         card_name="Scar Tissue",
-        _state=ctx.state,
+        _state_getter=lambda _s=ctx.state: _s,
         one_shot=True,
     )
     ctx.events.register_trigger(hit_trigger)
