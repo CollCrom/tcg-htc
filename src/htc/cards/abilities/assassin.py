@@ -1068,6 +1068,8 @@ class _LeaveNoWitnessesContractTrigger(TriggeredEffect):
     opponent_index: int = 0
     one_shot: bool = False
     _state_getter: object = None
+    _event_bus_getter: object = None
+    _effect_engine_getter: object = None
 
     def condition(self, event: GameEvent) -> bool:
         if event.event_type != EventType.BANISH:
@@ -1084,7 +1086,9 @@ class _LeaveNoWitnessesContractTrigger(TriggeredEffect):
         if self._state_getter is None or not callable(self._state_getter):
             return None
         state = self._state_getter()
-        _create_silver_token(state, self.controller_index)
+        event_bus = self._event_bus_getter() if self._event_bus_getter and callable(self._event_bus_getter) else None
+        effect_engine = self._effect_engine_getter() if self._effect_engine_getter and callable(self._effect_engine_getter) else None
+        _create_silver_token(state, self.controller_index, event_bus=event_bus, effect_engine=effect_engine)
         card_name = triggering_event.card.name if triggering_event.card else "unknown"
         log.info(
             f"  Leave No Witnesses: Contract completed — {card_name} is red, "
@@ -1111,6 +1115,8 @@ def _leave_no_witnesses_on_attack(ctx: AbilityContext) -> None:
         controller_index=ctx.controller_index,
         opponent_index=opponent_index,
         _state_getter=lambda _s=ctx.state: _s,
+        _event_bus_getter=lambda _eb=ctx.events: _eb,
+        _effect_engine_getter=lambda _ee=ctx.effect_engine: _ee,
     )
     ctx.events.register_trigger(trigger)
     log.info(f"  Leave No Witnesses: Contract registered — Silver on opponent red banish")
