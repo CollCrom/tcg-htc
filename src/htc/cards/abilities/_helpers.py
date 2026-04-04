@@ -318,32 +318,39 @@ def is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
     return False
 
 
-def choose_dagger(
+def choose_card(
     ctx: AbilityContext,
-    daggers: list[CardInstance],
+    candidates: list[CardInstance],
     prompt: str,
     *,
+    id_prefix: str = "card",
     decision_type: str = "CHOOSE_MODE",
+    describe: Callable[[CardInstance], str] | None = None,
 ) -> CardInstance:
-    """Pick a dagger: auto-pick if only one, else ask the player.
+    """Auto-select if one candidate, else ask the player to choose.
 
-    Returns the chosen dagger CardInstance.
+    *id_prefix* is used for action_id formatting (e.g. ``"dagger"`` ->
+    ``"dagger_123"``).  *describe* optionally customizes the description
+    shown for each card; defaults to ``card.name (ID N)``.
+
+    Returns the chosen CardInstance.
     """
     from htc.engine.actions import ActionOption, Decision
     from htc.enums import ActionType, DecisionType
 
-    if len(daggers) == 1:
-        return daggers[0]
+    if len(candidates) == 1:
+        return candidates[0]
 
+    desc_fn = describe or (lambda c: f"{c.name} (ID {c.instance_id})")
     dtype = getattr(DecisionType, decision_type)
     options = [
         ActionOption(
-            action_id=f"dagger_{d.instance_id}",
-            description=f"{d.name} (ID {d.instance_id})",
+            action_id=f"{id_prefix}_{c.instance_id}",
+            description=desc_fn(c),
             action_type=ActionType.ACTIVATE_ABILITY,
-            card_instance_id=d.instance_id,
+            card_instance_id=c.instance_id,
         )
-        for d in daggers
+        for c in candidates
     ]
     decision = Decision(
         player_index=ctx.controller_index,
@@ -353,13 +360,27 @@ def choose_dagger(
     )
     response = ctx.ask(decision)
     chosen_id = (
-        int(response.first.replace("dagger_", ""))
+        int(response.first.replace(f"{id_prefix}_", ""))
         if response.first
-        else daggers[0].instance_id
+        else candidates[0].instance_id
     )
     return next(
-        (d for d in daggers if d.instance_id == chosen_id), daggers[0]
+        (c for c in candidates if c.instance_id == chosen_id), candidates[0]
     )
+
+
+def choose_dagger(
+    ctx: AbilityContext,
+    daggers: list[CardInstance],
+    prompt: str,
+    *,
+    decision_type: str = "CHOOSE_MODE",
+) -> CardInstance:
+    """Pick a dagger: auto-pick if only one, else ask the player.
+
+    Returns the chosen dagger CardInstance. Delegates to choose_card().
+    """
+    return choose_card(ctx, daggers, prompt, id_prefix="dagger", decision_type=decision_type)
 
 
 def deal_dagger_damage(
