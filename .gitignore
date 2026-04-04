@@ -38,3 +38,5 @@ game_log*.html
 # Board viewer generated output
 demo_snapshots.json
 board_view.html
+scenario_snapshots/
+scenario_combined.html
