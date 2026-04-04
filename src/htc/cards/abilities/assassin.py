@@ -775,9 +775,9 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
      Your next attack with stealth this turn gets +N{p}.'
     Red=+3, Yellow=+2, Blue=+1. Go again (keyword).
 
-    TODO: Graphene Chelicera is an equipment token (Arms) with
-    "Once per Turn Action - {r}: Attack with this for 1, with go again."
-    For now we create the token as a permanent.
+    Graphene Chelicera is created as a weapon token (Arms, Dagger, 1H)
+    with power 1 and Go Again.  Once-per-turn is enforced by the
+    weapon activation system (activated_this_turn flag).
     """
     # Create Graphene Chelicera as a weapon token
     _create_graphene_chelicera(ctx.state, ctx.controller_index)
