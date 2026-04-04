@@ -788,12 +788,10 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     controller = ctx.controller_index
     source_id = ctx.source_card.instance_id
 
-    # Note: ideally check Stealth via effect engine, but target_filter
-    # doesn't have access to state/effect_engine. Stealth is innate.
     target_filter = make_once_filter(lambda card: (
         card.zone == Zone.COMBAT_CHAIN
         and card.owner_index == controller
-        and Keyword.STEALTH in card.definition.keywords
+        and Keyword.STEALTH in card._effective_definition.keywords
     ))
 
     effect = make_power_modifier(
