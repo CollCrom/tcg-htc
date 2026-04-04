@@ -40,6 +40,24 @@ def get_player_name(state: GameState, player_index: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Zone transition helper
+# ---------------------------------------------------------------------------
+
+
+def move_card(card: CardInstance, from_list: list, to_list: list, new_zone: Zone) -> None:
+    """Move a card between zone lists, updating its zone attribute.
+
+    Performs the standard 3-step zone transition:
+      1. Remove from source list
+      2. Set card.zone
+      3. Append to destination list
+    """
+    from_list.remove(card)
+    card.zone = new_zone
+    to_list.append(card)
+
+
+# ---------------------------------------------------------------------------
 # Once-filter factory
 # ---------------------------------------------------------------------------
 

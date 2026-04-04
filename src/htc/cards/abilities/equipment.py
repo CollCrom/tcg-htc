@@ -31,6 +31,7 @@ from htc.cards.abilities._helpers import (
     get_player_name,
     grant_keyword,
     grant_power_bonus,
+    move_card,
     require_active_attack,
     require_chain_link,
 )
@@ -763,9 +764,7 @@ class KunaiDestroyOnChainClose(TriggeredEffect):
         # Find and destroy the weapon
         for weapon in list(player.weapons):
             if weapon.instance_id == self.weapon_instance_id:
-                player.weapons.remove(weapon)
-                weapon.zone = Zone.GRAVEYARD
-                player.graveyard.append(weapon)
+                move_card(weapon, player.weapons, player.graveyard, Zone.GRAVEYARD)
                 log.info(
                     f"  Kunai of Retribution: Destroyed on combat chain close "
                     f"({_pname(state, self.controller_index)})"

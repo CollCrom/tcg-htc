@@ -20,6 +20,7 @@ from htc.cards.abilities._helpers import (
     get_mark_on_hit_trigger_class,
     grant_keyword,
     grant_power_bonus,
+    move_card,
     require_active_attack,
     require_chain_link,
 )
@@ -828,9 +829,7 @@ def _enlightened_strike_on_attack(ctx: AbilityContext) -> None:
                 (c for c in player.hand if c.instance_id == card_id), None
             )
             if card:
-                player.hand.remove(card)
-                card.zone = Zone.DECK
-                player.deck.append(card)
+                move_card(card, player.hand, player.deck, Zone.DECK)
                 log.info(
                     f"  Enlightened Strike: put {card.name} on bottom of deck "
                     "(additional cost)"

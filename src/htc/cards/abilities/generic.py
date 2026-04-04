@@ -14,6 +14,7 @@ from htc.cards.abilities._helpers import (
     color_bonus,
     draw_card,
     grant_power_bonus,
+    move_card,
     require_active_attack,
 )
 from htc.engine.abilities import AbilityContext, AbilityRegistry
@@ -269,9 +270,7 @@ def _sink_below(ctx: AbilityContext) -> None:
             (c for c in player.hand if c.instance_id == instance_id), None
         )
         if card:
-            player.hand.remove(card)
-            card.zone = Zone.DECK
-            player.deck.append(card)
+            move_card(card, player.hand, player.deck, Zone.DECK)
             log.info(
                 f"  Sink Below: {ctx.player_name(ctx.controller_index)} puts "
                 f"{card.name} on bottom of deck"

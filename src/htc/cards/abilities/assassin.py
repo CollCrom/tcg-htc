@@ -24,6 +24,7 @@ from htc.cards.abilities._helpers import (
     grant_power_bonus,
     make_once_filter,
     mark_attacker,
+    move_card,
     require_active_attack,
     require_chain_link,
 )
@@ -634,9 +635,7 @@ def _codex_template(
                 response = ctx.ask(decision)
                 chosen_id = int(response.first.replace("discard_", "")) if response.first else player.hand[0].instance_id
                 discarded = next((c for c in player.hand if c.instance_id == chosen_id), player.hand[0])
-            player.hand.remove(discarded)
-            discarded.zone = Zone.GRAVEYARD
-            player.graveyard.append(discarded)
+            move_card(discarded, player.hand, player.graveyard, Zone.GRAVEYARD)
             log.info(f"  {codex_name}: {pname} discards {discarded.name}")
 
     create_token(
@@ -1361,9 +1360,7 @@ def _amulet_of_echoes_instant(ctx: AbilityContext) -> None:
             if chosen is None:
                 chosen = target.hand[0]
 
-        target.hand.remove(chosen)
-        chosen.zone = Zone.GRAVEYARD
-        target.graveyard.append(chosen)
+        move_card(chosen, target.hand, target.graveyard, Zone.GRAVEYARD)
         log.info(f"  Amulet of Echoes: P{opponent_index} discards {chosen.name}")
 
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from htc.cards.abilities._helpers import get_player_name, make_once_filter
+from htc.cards.abilities._helpers import get_player_name, make_once_filter, move_card
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.continuous import (
     EffectDuration,
@@ -55,9 +55,7 @@ def _destroy_token(state: GameState, controller_index: int, token: CardInstance)
     """
     player = state.players[controller_index]
     if token in player.permanents:
-        player.permanents.remove(token)
-        token.zone = Zone.GRAVEYARD
-        player.graveyard.append(token)
+        move_card(token, player.permanents, player.graveyard, Zone.GRAVEYARD)
         log.info(f"  Token destroyed: {token.name} ({_pname(state, controller_index)})")
 
 
@@ -234,16 +232,12 @@ class InertiaEndPhaseTrigger(TokenEndPhaseTrigger):
         # Move all cards from hand to bottom of deck
         cards_moved = 0
         for card in list(player.hand):
-            player.hand.remove(card)
-            card.zone = Zone.DECK
-            player.deck.append(card)
+            move_card(card, player.hand, player.deck, Zone.DECK)
             cards_moved += 1
 
         # Move all cards from arsenal to bottom of deck
         for card in list(player.arsenal):
-            player.arsenal.remove(card)
-            card.zone = Zone.DECK
-            player.deck.append(card)
+            move_card(card, player.arsenal, player.deck, Zone.DECK)
             cards_moved += 1
 
         log.info(
@@ -407,9 +401,7 @@ def _fealty_instant(ctx: AbilityContext) -> None:
     # Destroy the Fealty token
     token = ctx.source_card
     if token in player.permanents:
-        player.permanents.remove(token)
-        token.zone = Zone.GRAVEYARD
-        player.graveyard.append(token)
+        move_card(token, player.permanents, player.graveyard, Zone.GRAVEYARD)
         log.info(f"  Fealty: Destroyed (instant activation)")
 
     # Grant Draconic supertype to the next card played this turn
@@ -449,9 +441,7 @@ def _silver_action(ctx: AbilityContext) -> None:
     # Destroy the Silver token
     token = ctx.source_card
     if token in player.permanents:
-        player.permanents.remove(token)
-        token.zone = Zone.GRAVEYARD
-        player.graveyard.append(token)
+        move_card(token, player.permanents, player.graveyard, Zone.GRAVEYARD)
         log.info(f"  Silver: Destroyed (action activation)")
 
     # Draw a card
