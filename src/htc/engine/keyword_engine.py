@@ -162,7 +162,7 @@ class KeywordEngine:
             modified_power = self.effect_engine.get_modified_power(state, card)
             if (
                 card.definition.is_attack_action
-                and SuperType.ILLUSIONIST not in card.definition.supertypes
+                and SuperType.ILLUSIONIST not in self.effect_engine.get_modified_supertypes(state, card)
                 and modified_power >= 6
             ):
                 log.info(

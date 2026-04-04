@@ -252,7 +252,7 @@ def _authority_of_ataya(ctx: AbilityContext) -> None:
             source_instance_id=ctx.source_card.instance_id,
             duration=EffectDuration.END_OF_TURN,
             target_filter=lambda c, _oi=opp_idx: (
-                c.definition.is_defense_reaction and c.owner_index == _oi
+                c._effective_definition.is_defense_reaction and c.owner_index == _oi
             ),
         )
         ctx.effect_engine.add_continuous_effect(ctx.state, effect)
@@ -410,7 +410,7 @@ def _art_of_the_dragon_scale_on_attack(ctx: AbilityContext) -> None:
         attack_instance_id=attack.instance_id,
         controller_index=ctx.controller_index,
         target_player_index=link.attack_target_index,
-        _state=ctx.state,
+        _state_getter=lambda _s=ctx.state: _s,
         _ask=ctx.ask,
         one_shot=True,
     )
@@ -428,7 +428,7 @@ class _ArtOfDragonScaleHitTrigger(TriggeredEffect):
     controller_index: int = 0
     target_player_index: int = 0
     one_shot: bool = True
-    _state: object = None
+    _state_getter: object = None
     _ask: object = None
 
     def condition(self, event: GameEvent) -> bool:
@@ -438,10 +438,15 @@ class _ArtOfDragonScaleHitTrigger(TriggeredEffect):
             return False
         return event.source.instance_id == self.attack_instance_id
 
+    def _get_state(self):
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-        if self._state is None:
+        state = self._get_state()
+        if state is None:
             return None
-        state = self._state
         target = state.players[self.target_player_index]
 
         # Find equipment the target controls
@@ -682,7 +687,7 @@ def _hot_on_their_heels_on_attack(ctx: AbilityContext) -> None:
     hit_trigger = get_mark_on_hit_trigger_class()(
         attack_instance_id=attack.instance_id,
         target_player_index=link.attack_target_index,
-        _state=ctx.state,
+        _state_getter=lambda _s=ctx.state: _s,
         card_name="Hot on Their Heels",
         one_shot=True,
     )
@@ -715,7 +720,7 @@ def _mark_with_magma_on_attack(ctx: AbilityContext) -> None:
     hit_trigger = get_mark_on_hit_trigger_class()(
         attack_instance_id=attack.instance_id,
         target_player_index=link.attack_target_index,
-        _state=ctx.state,
+        _state_getter=lambda _s=ctx.state: _s,
         card_name="Mark with Magma",
         one_shot=True,
     )

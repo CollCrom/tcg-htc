@@ -297,6 +297,8 @@ class TestContractSilverToken:
         game.combat_mgr.open_chain(game.state)
         game.combat_mgr.add_chain_link(game.state, lnw, 1)
 
+        # Register the contract trigger first (on_attack), then fire on_hit
+        game._apply_card_ability(lnw, 0, "on_attack")
         game._apply_card_ability(lnw, 0, "on_hit")
 
         controller = game.state.players[0]
@@ -337,6 +339,7 @@ class TestContractSilverToken:
         game.combat_mgr.open_chain(game.state)
         game.combat_mgr.add_chain_link(game.state, lnw, 1)
 
+        game._apply_card_ability(lnw, 0, "on_attack")
         game._apply_card_ability(lnw, 0, "on_hit")
 
         controller = game.state.players[0]
@@ -359,6 +362,7 @@ class TestContractSilverToken:
         game.combat_mgr.open_chain(game.state)
         game.combat_mgr.add_chain_link(game.state, lnw, 1)
 
+        game._apply_card_ability(lnw, 0, "on_attack")
         game._apply_card_ability(lnw, 0, "on_hit")
 
         controller = game.state.players[0]

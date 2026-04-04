@@ -379,7 +379,7 @@ def _make_mark_on_hit_trigger_class():
         target_player_index: int = 0
         card_name: str = ""
         one_shot: bool = True
-        _state: object = None
+        _state_getter: object = None
 
         def condition(self, event: GameEvent) -> bool:
             if event.event_type != EventType.HIT:
@@ -388,11 +388,17 @@ def _make_mark_on_hit_trigger_class():
                 return False
             return event.source.instance_id == self.attack_instance_id
 
+        def _get_state(self):
+            if self._state_getter and callable(self._state_getter):
+                return self._state_getter()
+            return None
+
         def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
-            if self._state is None:
+            state = self._get_state()
+            if state is None:
                 return None
-            self._state.players[self.target_player_index].is_marked = True
-            ps = self._state.players[self.target_player_index]
+            state.players[self.target_player_index].is_marked = True
+            ps = state.players[self.target_player_index]
             pname = ps.hero.definition.name.split(",")[0] if ps.hero else f"Player {self.target_player_index}"
             log.info(
                 f"  {self.card_name}: {pname} is now marked"

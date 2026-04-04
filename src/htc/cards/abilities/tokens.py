@@ -186,13 +186,16 @@ def register_frailty_continuous_effect(
     def frailty_filter(card: CardInstance) -> bool:
         if card.owner_index != ctrl:
             return False
-        # Weapon proxy attack
+        # Weapon proxy attack (always affected)
         if card.is_proxy:
             return True
-        # Attack action card on the combat chain
+        # Attack action card played from arsenal only (per token text:
+        # "Your attack action cards played from arsenal and weapon attacks
+        # have -1{p}.")
         if (
             CardType.ACTION in card.definition.types
             and SubType.ATTACK in card.definition.subtypes
+            and getattr(card, 'played_from_zone', None) == Zone.ARSENAL
         ):
             return True
         return False

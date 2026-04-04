@@ -23,7 +23,6 @@ class StackManager:
             source_instance_id=card.instance_id,
             controller_index=controller_index,
             targets=targets or [],
-            has_go_again=card.definition.has_go_again,
         )
         card.zone = Zone.STACK
         state.stack.append(layer)

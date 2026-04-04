@@ -41,8 +41,8 @@ def _ancestral_empowerment(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    # Check: must be a Ninja attack action card
-    is_ninja = SuperType.NINJA in attack.definition.supertypes
+    # Check: must be a Ninja attack action card (use effect engine for supertypes)
+    is_ninja = SuperType.NINJA in ctx.effect_engine.get_modified_supertypes(ctx.state, attack)
     is_attack_action = attack.definition.is_attack_action
     if not (is_ninja and is_attack_action):
         log.info(
@@ -152,7 +152,7 @@ def _razor_reflex(ctx: AbilityContext) -> None:
             controller_index=ctx.controller_index,
             source_instance_id=ctx.source_card.instance_id,
             _effect_engine=ctx.effect_engine,
-            _state=ctx.state,
+            _state_getter=lambda _s=ctx.state: _s,
             one_shot=True,
         )
         ctx.events.register_trigger(hit_trigger)
@@ -180,7 +180,7 @@ class _RazorReflexGoAgainOnHit(TriggeredEffect):
     one_shot: bool = True
 
     _effect_engine: object = None  # EffectEngine
-    _state: object = None  # GameState
+    _state_getter: object = None  # callable returning GameState
 
     def condition(self, event: GameEvent) -> bool:
         if event.event_type != EventType.HIT:
@@ -189,9 +189,15 @@ class _RazorReflexGoAgainOnHit(TriggeredEffect):
             return False
         return event.source.instance_id == self.attack_instance_id
 
+    def _get_state(self):
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
         """Grant Go Again to the attack via continuous effect."""
-        if self._effect_engine is None or self._state is None:
+        state = self._get_state()
+        if self._effect_engine is None or state is None:
             return None
 
         atk_id = self.attack_instance_id
@@ -202,7 +208,7 @@ class _RazorReflexGoAgainOnHit(TriggeredEffect):
             duration=EffectDuration.END_OF_COMBAT,
             target_filter=lambda c, _id=atk_id: c.instance_id == _id,
         )
-        self._effect_engine.add_continuous_effect(self._state, go_again_effect)
+        self._effect_engine.add_continuous_effect(state, go_again_effect)
         log.info(f"  Razor Reflex: attack gets Go Again on hit")
         return None
 

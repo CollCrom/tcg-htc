@@ -19,7 +19,8 @@ import logging
 
 from htc.engine.abilities import AbilityContext, AbilityRegistry
 from htc.engine.actions import ActionOption, Decision, PlayerResponse
-from htc.enums import ActionType, DecisionType, SubType, Zone
+from htc.engine.continuous import EffectDuration, make_power_modifier
+from htc.enums import ActionType, DecisionType, Keyword, SubType, SuperType, Zone
 from htc.state.player_state import BanishPlayability, EXPIRY_START_OF_NEXT_TURN
 
 log = logging.getLogger(__name__)
@@ -108,8 +109,8 @@ def _trap_door_on_become(ctx: AbilityContext) -> None:
 # The cost reduction is handled by the action builder and weapon activation
 # cost calculation (checking if current hero is Orb-Weaver).
 #
-# The instant ability to create Graphene Chelicera tokens is a future TODO —
-# it requires token weapon creation infrastructure.
+# The instant ability is registered as a hero_instant_effect so the
+# ActionBuilder can offer it during priority windows.
 
 
 def _orb_weaver_on_become(ctx: AbilityContext) -> None:
@@ -121,6 +122,47 @@ def _orb_weaver_on_become(ctx: AbilityContext) -> None:
     log.info("  Orb-Weaver: active — Graphene Chelicera activation costs reduced by 1")
 
 
+def _orb_weaver_instant(ctx: AbilityContext) -> None:
+    """Orb-Weaver hero instant: discard an Assassin card, equip Graphene Chelicera.
+
+    'Once per Turn Instant - Discard an Assassin card: Equip a Graphene
+     Chelicera token. Your next attack with stealth this turn gets +3{p}.'
+
+    The discard cost is handled before this handler runs (ActionBuilder
+    validates an Assassin card is available; Game discards the chosen card).
+    """
+    from htc.cards.abilities.assassin import _create_graphene_chelicera
+    from htc.cards.abilities._helpers import make_once_filter
+
+    player = ctx.state.players[ctx.controller_index]
+
+    # Create Graphene Chelicera as a weapon token
+    created = _create_graphene_chelicera(ctx.state, ctx.controller_index)
+    if not created:
+        log.info("  Orb-Weaver: No weapon slot available for Graphene Chelicera")
+        return
+
+    # Next stealth attack this turn gets +3 power
+    controller = ctx.controller_index
+    source_id = ctx.source_card.instance_id if ctx.source_card else 0
+
+    target_filter = make_once_filter(lambda card: (
+        card.zone == Zone.COMBAT_CHAIN
+        and card.owner_index == controller
+        and Keyword.STEALTH in card.definition.keywords
+    ))
+
+    effect = make_power_modifier(
+        3,
+        controller,
+        source_instance_id=source_id,
+        duration=EffectDuration.END_OF_TURN,
+        target_filter=target_filter,
+    )
+    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
+    log.info(f"  Orb-Weaver: Equipped Graphene Chelicera, next Stealth attack gets +3 power")
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -130,3 +172,4 @@ def register_agent_abilities(registry: AbilityRegistry) -> None:
     """Register all Agent of Chaos demi-hero on_become abilities."""
     registry.register("on_become", "Arakni, Trap-Door", _trap_door_on_become)
     registry.register("on_become", "Arakni, Orb-Weaver", _orb_weaver_on_become)
+    registry.register("hero_instant_effect", "Arakni, Orb-Weaver", _orb_weaver_instant)

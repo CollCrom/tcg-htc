@@ -397,6 +397,62 @@ Persistent learnings across sessions. Update this after each review.
 - No test verifying Graphene Chelicera creation fails when 2H weapon equipped.
 - No test for Codex discard choice when hand has exactly 2 cards (boundary).
 
+### fix/todo-cleanup — TODO Cleanup (24 items) (2026-04-04)
+- **Round 1 verdict: REQUEST CHANGES** — 1 critical issue, 2 minor issues.
+- **Round 2 verdict: APPROVE** — Critical fix verified correct.
+  - `_LeaveNoWitnessesContractTrigger` now stores `_event_bus_getter` and `_effect_engine_getter` callables (lines 1071-1072).
+  - `create_triggered_event` resolves both getters with null-safe checks and passes to `_create_silver_token` (lines 1089-1091).
+  - Trigger instantiation in `_leave_no_witnesses_on_attack` captures `ctx.events` and `ctx.effect_engine` via default-arg lambdas (lines 1118-1119), consistent with existing `_state_getter` pattern.
+  - No new issues introduced. 959 tests all passing.
+
+#### Critical Issues
+
+1. **Contract trigger creates Silver tokens without event bus** (assassin.py `_LeaveNoWitnessesContractTrigger.create_triggered_event`):
+   The Contract trigger calls `_create_silver_token(state, self.controller_index)` without passing `event_bus` or `effect_engine`. This means:
+   - No `CREATE_TOKEN` event is emitted for Contract-created Silver tokens
+   - No continuous effects are registered for the Silver token (if any were needed)
+   - Any triggers listening for CREATE_TOKEN (which this branch adds `_process_pending_triggers()` calls for) will not fire
+   The old code in on_hit passed `event_bus=ctx.events, effect_engine=ctx.effect_engine`.
+   Fix: Store event_bus/effect_engine references in the trigger class (via getters), or restructure so Contract token creation flows through the game engine's event system.
+
+#### Minor Issues (non-blocking)
+
+1. **New `definition.keywords` bypass in Orb-Weaver instant** (agents.py line 152):
+   `Keyword.STEALTH in card.definition.keywords` should use effect engine. Currently no effects grant Stealth, so no wrong outcomes, but violates the established pattern. Consistent with pre-existing Spinneret code (assassin.py line 796) which has the same bypass.
+
+2. **Contract trigger accumulation (ambiguous — needs user clarification)**: The trigger is registered on_attack and persists forever (`one_shot=False`). If Leave No Witnesses attacks 3 times (3 copies), 3 independent Contract triggers accumulate. Each banish of a red card creates 3 Silver tokens. This may be correct if each card copy has its own independent Contract, or wrong if Contract is a single global ability. FaB expert should confirm whether multiple copies of the same Contract should stack.
+
+#### Correct
+
+- **Frailty arsenal-only fix** (tokens.py): Frailty functional_text says "Your attack action cards **played from arsenal** and weapon attacks have -1{p}." The `played_from_zone == Zone.ARSENAL` check is correct per card text. `played_from_zone` tracking in game.py is set at the right point in `_play_card`. Tests cover both arsenal (debuffed) and hand (not debuffed) paths.
+- **`played_from_zone` tracking** (instance.py + game.py): New field on CardInstance, set after zone detection but before stack addition. Uses existing `played_from_arsenal`/`played_from_banish` booleans. Correct.
+- **`_state_getter` callable standardization**: All 7 trigger classes migrated from `_state: object` to `_state_getter: callable`. Each uses `_get_state()` helper with null/callable guard. Correct.
+- **`Layer.has_go_again` removal** (game_state.py + stack.py + game.py): Dead field removed. Go Again is resolved dynamically via effect engine at resolution time (line 1709-1713). Weapon proxies inherit Go Again keyword via proxy creation. Correct.
+- **`_is_draconic_attack` dead code removal** (equipment.py): Function was defined but never called (noted in prior reviews). Removed cleanly.
+- **Phantasm supertype fix** (keyword_engine.py line 165): Now uses `self.effect_engine.get_modified_supertypes(state, card)` instead of `card.definition.supertypes`. Fixes previously noted minor issue.
+- **`_is_assassin_attack` effect engine** (assassin.py): Now takes optional `ctx` parameter. Shred call site passes ctx. Backward-compatible fallback for callers without ctx. Correct.
+- **Ancestral Empowerment supertype fix** (generic.py line 422): Now uses `ctx.effect_engine.get_modified_supertypes(ctx.state, attack)` instead of `attack.definition.supertypes`. Fixes previously noted minor issue.
+- **Authority of Ataya `_effective_definition`** (ninja.py line 479): Target filter now uses `c._effective_definition.is_defense_reaction` instead of `c.definition.is_defense_reaction`. Correct for copy effect support.
+- **Hunter's Klaive deduplication** (equipment.py): Removed separate `_hunters_klaive_on_hit` handler. Mark is already handled by the Mark keyword handler in game.py (`_handle_hit_mark_keyword`). This eliminates duplicate mark logging. Correct.
+- **Stale docstring fix** (card_db.py): Docstring for `_is_keyword_inherent` updated to note "with" is not conditional. Matches code behavior after prior fix.
+- **`get_modified_subtypes` infrastructure** (continuous.py + effects.py): Follows same pattern as `get_modified_supertypes` — `resolve_subtypes` in StagingResolver, `get_modified_subtypes` in EffectEngine. Uses `ModStage.TYPES` (stage 4). `subtypes_to_add` field on ContinuousEffect. Correct.
+- **`_process_pending_triggers()` after DRAW_CARD** (game.py line 1998): Added inside `_draw_cards` loop. Tests verify triggers fire per draw.
+- **`_process_pending_triggers()` after CREATE_TOKEN** (game.py line 483): Added after Fealty token creation. Test verifies trigger fires.
+- **Graphene Chelicera 2H weapon guard**: Tests cover 2H (fails), 1x 1H (succeeds), 2x 1H (fails).
+- **Orb-Weaver hero instant** (agents.py): `hero_instant_effect` timing added to AbilityRegistry. Handler creates Graphene Chelicera + +3 power to next Stealth attack. `make_once_filter` ensures single-use. Duration END_OF_TURN. Correct per card text.
+
+#### Missing Tests
+
+- No test verifying Contract does NOT create multiple Silver tokens per banish when Leave No Witnesses has attacked multiple times (the accumulation bug).
+- No test verifying Silver token creation from Contract emits CREATE_TOKEN event.
+- No end-to-end test for Orb-Weaver hero instant through game flow (ActionBuilder offering, discard cost, execution).
+
+#### Test Coverage
+
+- 14 new tests in `test_todo_cleanup.py` covering items 18-24.
+- Updated tests in `test_token_abilities.py` (Frailty), `test_skeptic_audit_fixes.py` (Contract), `test_full_game.py` (Hunter's Klaive), `test_weapon_attacks.py` (Go Again), `test_post_phase5_audit.py` (state_getter).
+- 959 tests all passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*

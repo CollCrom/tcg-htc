@@ -26,6 +26,7 @@ class CardInstance:
     is_proxy: bool = False
     proxy_source_id: int | None = None  # instance_id of the weapon that created this proxy
     definition_override: CardDefinition | None = None  # copy effect override
+    played_from_zone: Zone | None = None  # zone card was played from (hand, arsenal, banish)
 
     # --- Delegation to definition ---
 

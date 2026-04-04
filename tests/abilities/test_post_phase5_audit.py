@@ -232,7 +232,7 @@ def test_art_of_dragon_scale_counter_uses_counters_dict():
         attack_instance_id=1,
         controller_index=0,
         target_player_index=1,
-        _state=state,
+        _state_getter=lambda: state,
         _ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
         one_shot=True,
     )
@@ -274,7 +274,7 @@ def test_art_of_dragon_scale_counter_destroys_at_zero():
         attack_instance_id=1,
         controller_index=0,
         target_player_index=1,
-        _state=state,
+        _state_getter=lambda: state,
         _ask=lambda d: PlayerResponse(selected_option_ids=["pass"]),
         one_shot=True,
     )

@@ -480,6 +480,7 @@ class Game:
             card=token,
             data={"token_name": "Fealty"},
         ))
+        self._process_pending_triggers()
         # Track for Fealty end-phase condition
         self.state.players[controller_index].turn_counters.fealty_created_this_turn = True
         return token
@@ -926,6 +927,14 @@ class Game:
             if redirect:
                 self._banish_instead_of_graveyard.add(card.instance_id)
 
+        # Track which zone the card was played from (for Frailty filter, etc.)
+        if played_from_arsenal:
+            card.played_from_zone = Zone.ARSENAL
+        elif played_from_banish:
+            card.played_from_zone = Zone.BANISHED
+        else:
+            card.played_from_zone = Zone.HAND
+
         layer = self.stack_mgr.add_card_layer(
             self.state, card, player_index,
         )
@@ -1281,7 +1290,6 @@ class Game:
 
         proxy = self._create_attack_proxy(weapon, player_index)
         layer = self.stack_mgr.add_card_layer(self.state, proxy, player_index)
-        layer.has_go_again = weapon.definition.has_go_again
 
         player.turn_counters.num_attacks_played += 1
         player.turn_counters.has_attacked = True
@@ -1987,6 +1995,7 @@ class Game:
                 event_type=EventType.DRAW_CARD,
                 target_player=player.index,
             ))
+            self._process_pending_triggers()
 
     def _check_rupture_active(self, link: ChainLink) -> bool:
         """Rupture (8.3): check if the current chain link qualifies for Rupture."""
