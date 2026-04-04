@@ -23,6 +23,7 @@ from htc.cards.abilities._helpers import (
     grant_keyword,
     grant_power_bonus,
     is_dagger_attack,
+    make_instance_id_filter,
     make_once_filter,
     mark_attacker,
     move_card,
@@ -255,13 +256,12 @@ def _shred(ctx: AbilityContext) -> None:
         target_id = int(response.first.replace("shred_", "")) if response.first else link.defending_cards[0].instance_id
         target = next((c for c in link.defending_cards if c.instance_id == target_id), link.defending_cards[0])
 
-    target_id = target.instance_id
     effect = make_defense_modifier(
         penalty,
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=target_id: c.instance_id == _id,
+        target_filter=make_instance_id_filter(target.instance_id),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  Shred: {target.name} gets {penalty} defense")
@@ -404,14 +404,13 @@ def _tarantula_toxin(ctx: AbilityContext) -> None:
     elif mode2_valid:
         apply_mode2 = True
 
-    atk_id = attack.instance_id
     if apply_mode1:
         effect = make_power_modifier(
             bonus,
             ctx.controller_index,
             source_instance_id=ctx.source_card.instance_id,
             duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+            target_filter=make_instance_id_filter(attack.instance_id),
         )
         ctx.effect_engine.add_continuous_effect(ctx.state, effect)
         log.info(f"  Tarantula Toxin: {attack.name} gets +{bonus} power")
@@ -419,13 +418,12 @@ def _tarantula_toxin(ctx: AbilityContext) -> None:
     if apply_mode2 and link.defending_cards:
         # Target the first defending card (simplified)
         defender_card = link.defending_cards[0]
-        def_id = defender_card.instance_id
         effect = make_defense_modifier(
             -bonus,
             ctx.controller_index,
             source_instance_id=ctx.source_card.instance_id,
             duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=def_id: c.instance_id == _id,
+            target_filter=make_instance_id_filter(defender_card.instance_id),
         )
         ctx.effect_engine.add_continuous_effect(ctx.state, effect)
         log.info(f"  Tarantula Toxin: {defender_card.name} gets -{bonus} defense")
@@ -1380,13 +1378,12 @@ def _overcrowded_on_attack(ctx: AbilityContext) -> None:
     grant_power_bonus(ctx, link.active_attack, bonus, "Overcrowded")
 
     # +N defense
-    atk_id = link.active_attack.instance_id
     def_effect = make_defense_modifier(
         bonus,
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=EffectDuration.END_OF_COMBAT,
-        target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+        target_filter=make_instance_id_filter(link.active_attack.instance_id),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, def_effect)
     log.info(f"  Overcrowded: gets +{bonus}/+{bonus} ({bonus} aura token names)")

@@ -14,6 +14,7 @@ from htc.cards.abilities._helpers import (
     color_bonus,
     draw_card,
     grant_power_bonus,
+    make_instance_id_filter,
     move_card,
     require_active_attack,
 )
@@ -201,13 +202,12 @@ class _RazorReflexGoAgainOnHit(TriggeredEffect):
         if self._effect_engine is None or state is None:
             return None
 
-        atk_id = self.attack_instance_id
         go_again_effect = make_keyword_grant(
             frozenset({Keyword.GO_AGAIN}),
             self.controller_index,
             source_instance_id=self.source_instance_id,
             duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+            target_filter=make_instance_id_filter(self.attack_instance_id),
         )
         self._effect_engine.add_continuous_effect(state, go_again_effect)
         log.info(f"  Razor Reflex: attack gets Go Again on hit")

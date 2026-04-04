@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from htc.cards.abilities._helpers import get_player_name
+from htc.cards.abilities._helpers import get_player_name, make_instance_id_filter
 from htc.engine.continuous import EffectDuration, make_keyword_grant, make_power_modifier
 from htc.engine.events import EventType, GameEvent, TriggeredEffect
 from htc.enums import Keyword
@@ -109,7 +109,7 @@ class ArakniMarionetteTrigger(TriggeredEffect):
             self.controller_index,
             source_instance_id=None,  # hero ability, no specific source card
             duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+            target_filter=make_instance_id_filter(atk_id),
         )
         self._effect_engine.add_continuous_effect(state, power_effect)
         log.info(
@@ -163,13 +163,12 @@ class ArakniGoAgainOnHit(TriggeredEffect):
         if state is None:
             return None
 
-        atk_id = self.attack_instance_id
         go_again_effect = make_keyword_grant(
             frozenset({Keyword.GO_AGAIN}),
             self.controller_index,
             source_instance_id=None,
             duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+            target_filter=make_instance_id_filter(self.attack_instance_id),
         )
         self._effect_engine.add_continuous_effect(state, go_again_effect)
         log.info(

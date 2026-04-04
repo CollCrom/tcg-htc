@@ -58,6 +58,19 @@ def move_card(card: CardInstance, from_list: list, to_list: list, new_zone: Zone
 
 
 # ---------------------------------------------------------------------------
+# Instance ID filter factory
+# ---------------------------------------------------------------------------
+
+
+def make_instance_id_filter(target_id: int) -> Callable[[CardInstance], bool]:
+    """Create a target_filter that matches a specific card by instance_id.
+
+    Replaces the repeated pattern: ``lambda c, _id=target_id: c.instance_id == _id``
+    """
+    return lambda c, _id=target_id: c.instance_id == _id
+
+
+# ---------------------------------------------------------------------------
 # Once-filter factory
 # ---------------------------------------------------------------------------
 
@@ -116,13 +129,12 @@ def grant_power_bonus(
     duration: EffectDuration = EffectDuration.END_OF_COMBAT,
 ) -> None:
     """Grant +N power to a target card via continuous effect."""
-    target_id = target_card.instance_id
     effect = make_power_modifier(
         bonus,
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=duration,
-        target_filter=lambda c, _id=target_id: c.instance_id == _id,
+        target_filter=make_instance_id_filter(target_card.instance_id),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  {ability_name}: {target_card.name} gets +{bonus} power")
@@ -141,13 +153,12 @@ def grant_keyword(
     duration: EffectDuration = EffectDuration.END_OF_COMBAT,
 ) -> None:
     """Grant a keyword to a target card via continuous effect."""
-    target_id = target_card.instance_id
     effect = make_keyword_grant(
         frozenset({keyword}),
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=duration,
-        target_filter=lambda c, _id=target_id: c.instance_id == _id,
+        target_filter=make_instance_id_filter(target_card.instance_id),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  {ability_name}: {target_card.name} gets {keyword.value}")

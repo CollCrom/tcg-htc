@@ -20,6 +20,7 @@ from htc.cards.abilities._helpers import (
     get_mark_on_hit_trigger_class,
     grant_keyword,
     grant_power_bonus,
+    make_instance_id_filter,
     move_card,
     require_active_attack,
     require_chain_link,
@@ -941,7 +942,7 @@ def _rising_resentment_on_hit(ctx: AbilityContext) -> None:
                 ctx.controller_index,
                 source_instance_id=ctx.source_card.instance_id,
                 duration=EffectDuration.END_OF_TURN,
-                target_filter=lambda c, _id=card.instance_id: c.instance_id == _id,
+                target_filter=make_instance_id_filter(card.instance_id),
             )
             ctx.effect_engine.add_continuous_effect(ctx.state, cost_effect)
 
