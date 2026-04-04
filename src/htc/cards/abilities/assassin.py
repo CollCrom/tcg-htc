@@ -19,6 +19,7 @@ from htc.cards.abilities._helpers import (
     draw_card,
     gain_life,
     get_mark_on_hit_trigger_class,
+    get_player_name,
     grant_keyword,
     grant_power_bonus,
     make_once_filter,
@@ -68,7 +69,7 @@ def _create_graphene_chelicera(state, controller_index: int) -> bool:
     from htc.cards.instance import CardInstance
 
     player = state.players[controller_index]
-    pname = player.hero.definition.name.split(",")[0] if player.hero else f"Player {controller_index}"
+    pname = get_player_name(state, controller_index)
 
     # Check weapon slot availability (max 2 hand slots: two 1H or one 2H)
     if _count_weapon_hand_slots(player) >= MAX_WEAPON_HAND_SLOTS:
@@ -871,9 +872,7 @@ class _SavorBloodshedDrawOnHit(TriggeredEffect):
             return None
         player = state.players[self.controller_index]
         if player.deck:
-            ps = state.players[self.controller_index]
-            pname = ps.hero.definition.name.split(",")[0] if ps.hero else f"Player {self.controller_index}"
-            log.info(f"  Savor Bloodshed: {pname} draws a card (dagger hit marked hero)")
+            log.info(f"  Savor Bloodshed: {get_player_name(state, self.controller_index)} draws a card (dagger hit marked hero)")
             return GameEvent(
                 event_type=EventType.DRAW_CARD,
                 target_player=self.controller_index,

@@ -24,6 +24,22 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Player name helper
+# ---------------------------------------------------------------------------
+
+
+def get_player_name(state: GameState, player_index: int) -> str:
+    """Short hero name for logging (e.g. 'Cindra' from 'Cindra, Dracai of Retribution').
+
+    Falls back to 'Player N' when hero is not set (test scaffolding).
+    """
+    player = state.players[player_index]
+    if player.hero:
+        return player.hero.definition.name.split(",")[0]
+    return f"Player {player_index}"
+
+
+# ---------------------------------------------------------------------------
 # Once-filter factory
 # ---------------------------------------------------------------------------
 
@@ -215,8 +231,7 @@ def create_token(
     # Track Fealty creation for end-phase condition
     if name == "Fealty":
         state.players[controller_index].turn_counters.fealty_created_this_turn = True
-    pname = state.players[controller_index].hero.definition.name.split(",")[0] if state.players[controller_index].hero else f"Player {controller_index}"
-    log.info(f"  Created {name} token for {pname}")
+    log.info(f"  Created {name} token for {get_player_name(state, controller_index)}")
 
     # Register token abilities if the event bus is provided
     if event_bus is not None and effect_engine is not None:
@@ -398,10 +413,8 @@ def _make_mark_on_hit_trigger_class():
             if state is None:
                 return None
             state.players[self.target_player_index].is_marked = True
-            ps = state.players[self.target_player_index]
-            pname = ps.hero.definition.name.split(",")[0] if ps.hero else f"Player {self.target_player_index}"
             log.info(
-                f"  {self.card_name}: {pname} is now marked"
+                f"  {self.card_name}: {get_player_name(state, self.target_player_index)} is now marked"
             )
             return None
 

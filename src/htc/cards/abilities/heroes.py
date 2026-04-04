@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from htc.cards.abilities._helpers import get_player_name
 from htc.engine.continuous import EffectDuration, make_keyword_grant, make_power_modifier
 from htc.engine.events import EventType, GameEvent, TriggeredEffect
 from htc.enums import Keyword
@@ -282,7 +283,7 @@ class CindraRetributionTrigger(TriggeredEffect):
             _create_fealty_token_simple(state, self.controller_index)
 
         state = self._get_state()
-        pname = state.players[self.controller_index].hero.definition.name.split(",")[0] if state and state.players[self.controller_index].hero else f"Player {self.controller_index}"
+        pname = get_player_name(state, self.controller_index) if state else f"Player {self.controller_index}"
         log.info(
             f"  Cindra ability: {pname} creates a "
             f"Fealty token (hit marked hero)"
@@ -390,9 +391,8 @@ class ArakniEndPhaseTranformTrigger(TriggeredEffect):
             return None
 
         chosen = state.rng.choice(player.demi_heroes)
-        pname = state.players[self.controller_index].hero.definition.name.split(",")[0] if state.players[self.controller_index].hero else f"Player {self.controller_index}"
         log.info(
-            f"  Arakni end phase: {pname} becomes {chosen.name} "
+            f"  Arakni end phase: {get_player_name(state, self.controller_index)} becomes {chosen.name} "
             f"(opponent is marked)"
         )
         self._game._become_agent_of_chaos(self.controller_index, chosen)

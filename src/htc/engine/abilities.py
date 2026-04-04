@@ -61,10 +61,8 @@ class AbilityContext:
 
     def player_name(self, player_index: int) -> str:
         """Short hero name for logging."""
-        ps = self.state.players[player_index]
-        if ps.hero:
-            return ps.hero.definition.name.split(",")[0]
-        return f"Player {player_index}"
+        from htc.cards.abilities._helpers import get_player_name
+        return get_player_name(self.state, player_index)
 
     @property
     def target_was_marked(self) -> bool:
