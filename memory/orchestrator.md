@@ -96,14 +96,22 @@ Persistent learnings across sessions. Update this as you go.
 - **Banished zone**: Visible in board viewer with face-up/face-down indicators.
 - 944 tests, skeptic approved.
 
+### 2026-04-04: TODO cleanup (PR #88) + Stealth fix (PR #89)
+
+- **24 items addressed** from orchestrator memory, skeptic memory, and code TODOs.
+- **Bug fixes**: Frailty -1 power now arsenal-only (added `played_from_zone` on CardInstance), Contract keyword converted to global BANISH trigger with Silver token creation, Hunter's Klaive duplicate on_hit log deduplicated.
+- **Dead code removed**: `Layer.has_go_again`, `_is_draconic_attack` in equipment.py, stale `_is_keyword_inherent` docstring.
+- **definition.X bypasses fixed**: Phantasm supertype, `_is_assassin_attack`, Ancestral Empowerment Ninja check, Authority of Ataya target filter. New `get_modified_subtypes` infrastructure added.
+- **Trigger standardization**: All triggers use `_state_getter` callable pattern.
+- **Orb-Weaver hero instant**: Implemented (discard Assassin card to equip Graphene Chelicera + stealth bonus).
+- **Stealth checks**: Use `_effective_definition.keywords` (not full effect engine) to avoid recursive `_resolved_supertypes` conflicts in target_filters.
+- Contract trigger accumulation is correct per FaB rules — each card with Contract generates an independent continuous effect.
+- 959 tests passing. Skeptic: CLEAN after 2 rounds.
+
 ## Open TODOs
 
-- **NEXT SESSION: Wire board viewer into scenario tests.** The 43 scenario tests need to run through the board viewer so the user can visually step through each interaction and verify correctness. Currently the viewer only works on the demo game — need to instrument scenario tests to capture snapshots and generate viewable HTML.
+- **NEXT SESSION: Wire board viewer into scenario tests.** The 43 scenario tests need to run through the board viewer so the user can visually step through each interaction and verify correctness.
 - After that: build smarter AI player using strategy articles (ref/strategy-*.md).
-- Minor: duplicate Hunter's Klaive on_hit log (keyword handler + registry both fire for proxy attacks). Harmless but noisy.
-- Minor: Frailty -1 power applies to all attack actions, not just those played from arsenal (no `played_from_zone` tracking exists).
-- Minor: Contract keyword scoped to on-hit banishes only (should be global trigger for any banish of opponent's red card).
-- Minor: `Layer.has_go_again` is dead code, cleanup candidate.
 
 ## Process Notes
 
