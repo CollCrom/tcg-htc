@@ -480,6 +480,7 @@ class Game:
             card=token,
             data={"token_name": "Fealty"},
         ))
+        self._process_pending_triggers()
         # Track for Fealty end-phase condition
         self.state.players[controller_index].turn_counters.fealty_created_this_turn = True
         return token
@@ -1994,6 +1995,7 @@ class Game:
                 event_type=EventType.DRAW_CARD,
                 target_player=player.index,
             ))
+            self._process_pending_triggers()
 
     def _check_rupture_active(self, link: ChainLink) -> bool:
         """Rupture (8.3): check if the current chain link qualifies for Rupture."""
