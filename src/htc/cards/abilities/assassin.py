@@ -405,15 +405,7 @@ def _tarantula_toxin(ctx: AbilityContext) -> None:
         apply_mode2 = True
 
     if apply_mode1:
-        effect = make_power_modifier(
-            bonus,
-            ctx.controller_index,
-            source_instance_id=ctx.source_card.instance_id,
-            duration=EffectDuration.END_OF_COMBAT,
-            target_filter=make_instance_id_filter(attack.instance_id),
-        )
-        ctx.effect_engine.add_continuous_effect(ctx.state, effect)
-        log.info(f"  Tarantula Toxin: {attack.name} gets +{bonus} power")
+        grant_power_bonus(ctx, attack, bonus, "Tarantula Toxin")
 
     if apply_mode2 and link.defending_cards:
         # Target the first defending card (simplified)
