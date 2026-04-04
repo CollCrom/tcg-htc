@@ -474,6 +474,81 @@ Persistent learnings across sessions. Update this after each review.
 - **No circular imports**: Verified by import test.
 - **959 tests all passing.**
 
+### Full Codebase Review (Gate Review, 2026-04-04)
+- **Scope**: All source files in `src/htc/` — 959 tests passing, 200 stress tests passing.
+- **Verdict: APPROVE** — No critical issues. 5 minor issues (3 pre-existing, 2 newly identified). No regressions.
+
+#### Prior Critical Issues — All Resolved
+
+1. **Warmonger's Diplomacy controller restriction (PR #76 retroactive audit)**: FIXED. Uses `diplomacy_restriction_expires_turn` with turn-number-based expiry. Controller expires at `turn_number + 2`, opponent at `turn_number + 1`. Clearing logic in `_run_end_phase` at line 1903-1909 checks `self.state.turn_number >= tp.diplomacy_restriction_expires_turn`. Correct.
+2. **Shelter from the Storm wrong-player expiry (PR #76 retroactive audit)**: FIXED. Expires on first END_OF_TURN regardless of target_player (lines 340-347). `expired = [False]` flag ensures single-fire.
+3. **Return-to-brood timing (PR #79/82 retroactive audit)**: FIXED. `skip_first` removed. Handler registered after END_OF_TURN iteration, filters by `event.target_player == player_index`. Fires on controller's next end phase. Comment at line 520-526 correctly explains.
+4. **Orb-Weaver Spinneret "next attack" multi-hit (Part B sweep)**: FIXED. Now uses `make_once_filter` (line 773) which records first matching instance_id.
+5. **`_is_draconic()` called without ctx**: ALL call sites now pass `ctx` (lines 286, 306, 341, 406, 648). Effect engine path used for all Draconic checks.
+6. **Phantasm supertype check**: FIXED. Now uses `self.effect_engine.get_modified_supertypes()` (keyword_engine.py line 165).
+7. **`_is_assassin_attack()` definition bypass**: FIXED. Now takes optional `ctx` parameter with effect engine fallback.
+8. **Ancestral Empowerment supertype check**: FIXED. Now uses `ctx.effect_engine.get_modified_supertypes()`.
+
+#### Minor Issues (non-blocking)
+
+1. **Warmonger's Diplomacy controller restriction immediate activation**: Controller's restriction is set during their own turn and is immediately active for the rest of that turn. Card text says "next turn" — restriction should not apply to the current turn. In practice, Warmonger's Diplomacy has Go Again, so the controller could have remaining actions this turn that are incorrectly restricted. Fix: track a `restriction_starts_turn` field alongside `expires_turn`, or defer setting controller's restriction until their next turn start.
+   File: `src/htc/cards/abilities/ninja.py` line 221, `src/htc/engine/action_builder.py` line 266.
+
+2. **Arcane damage DEAL_DAMAGE missing `_process_pending_triggers()`** (game.py line 1017-1028): Arcane damage emits DEAL_DAMAGE but does not call `_process_pending_triggers()` afterward. No current triggers would fire on arcane DEAL_DAMAGE specifically, but if future cards trigger on any DEAL_DAMAGE, arcane damage would be missed.
+   File: `src/htc/engine/game.py` line 1028.
+
+3. **Weapon proxy supertypes use `definition.supertypes`** (game.py line 1342): Proxy inherits `weapon.definition.supertypes` instead of `get_modified_supertypes()`. No current effects grant supertypes to weapons, so no wrong outcomes.
+
+4. **`definition.subtypes` throughout** (pre-existing, accepted): `get_modified_subtypes` infrastructure exists but is unused. All subtype checks read `definition.subtypes` directly. Consistent; no subtype-granting effects exist.
+
+5. **Art of the Dragon: Scale defense check** (ninja.py line 500): Uses `chosen.definition.defense` instead of `effect_engine.get_modified_defense()`. The counter system is the only modification source for equipment defense currently, and it's accounted for manually. Would miss continuous-effect defense modifiers if any existed.
+
+#### Verified Correct (key mechanics confirmed)
+
+- **Effect engine staging**: Power, defense, cost, keywords, supertypes all resolve through `StagingResolver` with proper `_resolved_supertypes` pre-resolution for target_filter lambdas. Cleanup in `finally` blocks.
+- **Trigger processing coverage**: `_process_pending_triggers()` called after: CREATE_TOKEN, BECOME_AGENT, START_OF_TURN, PLAY_CARD, ATTACK_DECLARED, DEFEND_DECLARED, DEAL_DAMAGE (combat), HIT, COMBAT_CHAIN_CLOSES, END_OF_TURN, DRAW_CARD. 12 of 14 emit sites covered (missing: BANISH, arcane DEAL_DAMAGE).
+- **Combat chain close sequence**: COMBAT_CHAIN_CLOSES event -> triggers -> equipment degradation -> banish redirect -> close_chain -> cleanup. Correct.
+- **Go Again resolution**: Dynamically queried at resolution time via effect engine (line 1709-1713). Not snapshotted. Correct per rule 7.6.2.
+- **Banish playability**: 3-tuple `(instance_id, expiry, redirect_to_banish)`. Correct per-card redirect behavior.
+- **Defense reactions from banish**: Offered in `build_reaction_decision()` for defender only. Correct.
+- **Cost reduction counters**: `uses_remaining` consumed after cost payment. Floor clamp `max(0, result)`. Correct.
+- **`make_once_filter` pattern**: Used by Orb-Weaver Spinneret, Orb-Weaver hero instant, Fealty Draconic grant, dagger attack bonus. Records first matching instance_id, idempotent on repeat evaluation. No consumed-closure bugs remain.
+- **Return-to-brood**: Fires on controller's next end phase. `returned_to_brood_this_turn` prevents re-transform. Correct.
+- **Shelter from the Storm**: Expires on first END_OF_TURN. 3-use prevention. Correct.
+- **Warmonger's Diplomacy expiry**: Turn-number-based. Controller and opponent expire independently. Correct (minor: immediate activation noted above).
+- **959 tests passing** in ~15 seconds. 200 stress tests passing in ~10 seconds.
+
+#### Remaining Deferred Items (known, documented, not blocking)
+
+- Contract trigger accumulation ambiguity (multiple Leave No Witnesses copies).
+- Silver token `functional_text` does not match actual card text.
+- Orb-Weaver creates Graphene Chelicera as weapon, not proper equipment token.
+- BANISH event has no `_process_pending_triggers()` call (no current triggers on BANISH).
+- START_OF_ACTION_PHASE event has no `_process_pending_triggers()` call (no current triggers).
+
+### fix/skeptic-gate-minors — 5 Minor Issue Fixes (2026-04-04)
+- **Round 1 verdict: APPROVE** — No critical issues. No minor issues. All 5 fixes correct.
+- **Scope**: 5 minor issues from the full codebase gate review, across 10 source files + 1 test file.
+- **Fix 1 (Warmonger's Diplomacy deferred restriction)**: New `diplomacy_restriction_active_turn` field on PlayerState. Controller's restriction activates at turn N+2, opponent's at N+1. Both `can_play_card` and `_can_activate_weapon` gate on `turn_number >= active_turn`. Turn math verified correct. 2 new tests.
+- **Fix 2 (Arcane DEAL_DAMAGE trigger processing)**: `_process_pending_triggers()` added after arcane damage event emission. Forward-looking; no current triggers affected.
+- **Fix 3 (Weapon proxy supertypes)**: Proxy creation now uses `get_modified_supertypes()` instead of `definition.supertypes`. Consistent with keyword handling.
+- **Fix 4 (definition.subtypes routed through effect engine)**: Two patterns used correctly: `get_modified_subtypes()` in ability handlers/action_builder, `_effective_definition.subtypes` in target_filters (avoiding re-entrancy). All triggered effects gain `_effect_engine` field with null-safe guards. No circular imports.
+- **Fix 5 (Art of Dragon: Scale defense)**: Uses `get_modified_defense()` which already includes counter values. No double-counting.
+- **961 tests all passing.**
+
+#### Remaining Deferred Items (updated — 5 items resolved)
+
+- ~~Warmonger's Diplomacy controller immediate-activation~~ — FIXED (fix/skeptic-gate-minors).
+- ~~Arcane damage missing trigger processing~~ — FIXED (fix/skeptic-gate-minors).
+- ~~Weapon proxy supertypes from definition~~ — FIXED (fix/skeptic-gate-minors).
+- ~~No `get_modified_subtypes` usage~~ — FIXED (fix/skeptic-gate-minors). Now used throughout ability files and action_builder.
+- ~~Art of Dragon: Scale uses `definition.defense`~~ — FIXED (fix/skeptic-gate-minors).
+- Contract trigger accumulation ambiguity (multiple Leave No Witnesses copies).
+- Silver token `functional_text` does not match actual card text.
+- Orb-Weaver creates Graphene Chelicera as weapon, not proper equipment token.
+- BANISH event has no `_process_pending_triggers()` call (no current triggers on BANISH).
+- START_OF_ACTION_PHASE event has no `_process_pending_triggers()` call (no current triggers).
+
 ## Talishar Discrepancies
 
 *(None found yet)*
