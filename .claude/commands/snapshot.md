@@ -1,26 +1,25 @@
-Run a game with a specific seed and generate a board viewer with step-through snapshots.
+Run a game and generate a board viewer HTML with step-through snapshots.
 
 ## Steps
 
-1. Run the demo scenario tool with the given seed to generate snapshots:
+1. Generate snapshots by running the demo scenario:
 
 ```bash
 python3 tools/demo_scenario.py demo_snapshots.json
 ```
 
-Note: The demo_scenario.py currently uses a hardcoded seed. If the user wants a specific seed, modify the script or tell them.
-
-2. Open the board viewer HTML:
-```bash
-open tools/board_viewer.py  # or serve it
-```
-
-Actually, the board viewer reads from `demo_snapshots.json`. Just run:
+2. Convert snapshots to a self-contained HTML board viewer:
 
 ```bash
-python3 tools/demo_scenario.py demo_snapshots.json && echo "Snapshots captured"
+python3 tools/board_viewer.py demo_snapshots.json board_view.html
 ```
 
-3. Tell the user to open `tools/board_viewer.html` (or the appropriate viewer file) in their browser, and report how many snapshots were captured.
+3. Open the HTML viewer:
 
-If a seed argument is provided: $ARGUMENTS — note that demo_scenario.py may need to be updated to accept a seed argument. Report this to the user if so.
+```bash
+open board_view.html
+```
+
+4. Report how many snapshots were captured and tell the user the board viewer is open. They can step through states with arrow keys or J/K.
+
+Note: `demo_scenario.py` uses a hardcoded seed (0). If the user wants a different seed, the script would need to be modified to accept a seed argument.
