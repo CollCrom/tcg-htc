@@ -305,15 +305,21 @@ def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
             )
 
         def replace(self, event: GameEvent) -> GameEvent:
+            source_name = event.source.name if event.source else "unknown"
             event.amount = max(0, event.amount - 1)
             event.modified = True
             self.uses_remaining -= 1
-            log.info(
-                f"  Shelter from the Storm: prevented 1 damage "
-                f"({self.uses_remaining} uses remaining)"
-            )
-            if self.uses_remaining <= 0:
-                # Remove self from the event bus
+            pname = ctx.player_name(self.target_player)
+            if self.uses_remaining > 0:
+                log.info(
+                    f"  Shelter from the Storm: prevented 1 damage from {source_name} "
+                    f"({self.uses_remaining} use(s) remaining for {pname})"
+                )
+            else:
+                log.info(
+                    f"  Shelter from the Storm: prevented 1 damage from {source_name} "
+                    f"(expired for {pname})"
+                )
                 ctx.events.unregister_replacement(self)
             return event
 

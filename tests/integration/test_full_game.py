@@ -79,13 +79,13 @@ def parse_markdown_decklist(text: str) -> DeckList:
         if section == "hero" and not line.startswith("-"):
             hero_name = line
         elif section == "weapons" and line.startswith("-"):
-            wname = _parse_equipment_line(line)
+            wname, count = _parse_equipment_line_with_count(line)
             if wname:
-                weapons.append(wname)
+                weapons.extend([wname] * count)
         elif section == "equipment" and line.startswith("-"):
-            ename = _parse_equipment_line(line)
+            ename, count = _parse_equipment_line_with_count(line)
             if ename:
-                equipment.append(ename)
+                equipment.extend([ename] * count)
         elif section == "deck" and line.startswith("-"):
             entry = _parse_deck_card_line(line)
             if entry:
@@ -104,16 +104,23 @@ def _parse_equipment_line(line: str) -> str | None:
     """Parse '- 2x Kunai of Retribution (1H Dagger)' or '- Mask of Momentum (Head)'.
 
     Returns just the card name, stripping count and parenthetical annotation.
-    For weapons with counts, the count is handled by repeating in the list.
     """
+    name, _ = _parse_equipment_line_with_count(line)
+    return name
+
+
+def _parse_equipment_line_with_count(line: str) -> tuple[str | None, int]:
+    """Parse equipment line, returning (name, count)."""
     line = line.lstrip("- ").strip()
-    # Strip count prefix like '2x '
+    count = 1
     m = re.match(r"(\d+)x\s+", line)
     if m:
+        count = int(m.group(1))
         line = line[m.end():]
     # Strip parenthetical suffix like '(Head)' or '(1H Dagger)'
     line = re.sub(r"\s*\([^)]*\)\s*$", "", line)
-    return line.strip() if line.strip() else None
+    name = line.strip() if line.strip() else None
+    return name, count
 
 
 def _parse_deck_card_line(line: str) -> DeckEntry | None:
