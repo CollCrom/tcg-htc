@@ -33,3 +33,8 @@ htmlcov/
 .env.local
 .env.*.local
 game_log*.txt
+game_log*.html
+
+# Board viewer generated output
+demo_snapshots.json
+board_view.html

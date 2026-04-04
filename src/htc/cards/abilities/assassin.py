@@ -1044,7 +1044,7 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
             f"to {ctx.player_name(target_index)} (now {ctx.state.players[target_index].life_total})"
         )
     else:
-        log.info("  Pain in the Backside: Damage was prevented")
+        log.info(f"  Pain in the Backside: {dagger.name} damage was prevented")
 
 
 @require_chain_link
