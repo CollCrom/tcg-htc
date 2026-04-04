@@ -149,7 +149,7 @@ def _orb_weaver_instant(ctx: AbilityContext) -> None:
     target_filter = make_once_filter(lambda card: (
         card.zone == Zone.COMBAT_CHAIN
         and card.owner_index == controller
-        and Keyword.STEALTH in card.definition.keywords
+        and Keyword.STEALTH in card._effective_definition.keywords
     ))
 
     effect = make_power_modifier(
