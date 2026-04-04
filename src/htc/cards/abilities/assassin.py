@@ -22,6 +22,7 @@ from htc.cards.abilities._helpers import (
     get_player_name,
     grant_keyword,
     grant_power_bonus,
+    is_dagger_attack,
     make_once_filter,
     mark_attacker,
     move_card,
@@ -106,16 +107,6 @@ def _create_graphene_chelicera(state, controller_index: int) -> bool:
     return True
 
 
-def _is_dagger_attack(attack, link=None) -> bool:
-    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
-    if attack is None:
-        return False
-    if SubType.DAGGER in attack.definition.subtypes:
-        return True
-    if attack.is_proxy and link and link.attack_source:
-        if SubType.DAGGER in link.attack_source.definition.subtypes:
-            return True
-    return False
 
 
 def _is_assassin_attack(attack, ctx: AbilityContext | None = None) -> bool:
@@ -159,7 +150,7 @@ def _incision(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    if not _is_dagger_attack(attack, link):
+    if not is_dagger_attack(attack, link):
         log.info(f"  Incision: no effect -- {attack.name} is not a dagger attack")
         return
 
@@ -178,7 +169,7 @@ def _to_the_point(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    if not _is_dagger_attack(attack, link):
+    if not is_dagger_attack(attack, link):
         log.info(f"  To the Point: no effect -- {attack.name} is not a dagger attack")
         return
 
@@ -378,7 +369,7 @@ def _tarantula_toxin(ctx: AbilityContext) -> None:
     attack = link.active_attack
     bonus = 3  # Red only in this deck
 
-    mode1_valid = _is_dagger_attack(attack, link)
+    mode1_valid = is_dagger_attack(attack, link)
     mode2_valid = _has_stealth(attack, ctx) and bool(link.defending_cards)
 
     if not mode1_valid and not mode2_valid:
@@ -1416,7 +1407,7 @@ def _scar_tissue(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    if not _is_dagger_attack(attack, link):
+    if not is_dagger_attack(attack, link):
         log.info(f"  Scar Tissue: no effect -- {attack.name} is not a dagger attack")
         return
 

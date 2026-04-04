@@ -295,6 +295,18 @@ def require_chain_link(fn: Callable[[AbilityContext], None]) -> Callable[[Abilit
 # ---------------------------------------------------------------------------
 
 
+def is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
+    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
+    if attack is None:
+        return False
+    if SubType.DAGGER in attack.definition.subtypes:
+        return True
+    if attack.is_proxy and link and link.attack_source:
+        if SubType.DAGGER in link.attack_source.definition.subtypes:
+            return True
+    return False
+
+
 def choose_dagger(
     ctx: AbilityContext,
     daggers: list[CardInstance],

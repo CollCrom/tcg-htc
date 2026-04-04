@@ -31,6 +31,7 @@ from htc.cards.abilities._helpers import (
     get_player_name,
     grant_keyword,
     grant_power_bonus,
+    is_dagger_attack,
     move_card,
     require_active_attack,
     require_chain_link,
@@ -68,16 +69,6 @@ def _pname_from_player_state(player_state, player_index: int) -> str:
     return f"Player {player_index}"
 
 
-def _is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
-    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
-    if attack is None:
-        return False
-    if SubType.DAGGER in attack.definition.subtypes:
-        return True
-    if attack.is_proxy and link and link.attack_source:
-        if SubType.DAGGER in link.attack_source.definition.subtypes:
-            return True
-    return False
 
 
 def _destroy_equipment(state: GameState, card: CardInstance) -> None:
@@ -294,7 +285,7 @@ class BloodSplatteredVestTrigger(TriggeredEffect):
 
         # Check if it's a dagger attack
         chain_link = event.data.get("chain_link")
-        if not _is_dagger_attack(event.source, chain_link):
+        if not is_dagger_attack(event.source, chain_link):
             return False
 
         # Equipment must still be in play
