@@ -194,6 +194,7 @@ class Game:
         self.events.register_handler(EventType.LOSE_LIFE, self._handle_lose_life)
         self.events.register_handler(EventType.DRAW_CARD, self._handle_draw_card)
         self.events.register_handler(EventType.HIT, self._handle_hit_mark_removal)
+        self.events.register_handler(EventType.HIT, self._handle_hit_mark_keyword)
         self.events.register_handler(EventType.PITCH_CARD, self._handle_pitch_card)
 
     def _handle_damage(self, event: GameEvent) -> None:
@@ -235,6 +236,23 @@ class Game:
             if source_owner != event.target_player:
                 target.is_marked = False
                 log.info(f"  Mark removed from {self._pname(event.target_player)} (hit by opponent)")
+
+    def _handle_hit_mark_keyword(self, event: GameEvent) -> None:
+        """Apply Mark keyword: when a card with Mark hits, mark the target hero.
+
+        This handles Mark for ALL hit sources (weapon proxies, daggers via
+        Flick Knives / Pain in the Backside, etc.), not just the active attack.
+        """
+        if event.target_player is None or event.source is None:
+            return
+        source = event.source
+        source_keywords = self.effect_engine.get_modified_keywords(self.state, source)
+        if Keyword.MARK not in source_keywords:
+            return
+        target = self.state.players[event.target_player]
+        if not target.is_marked:
+            target.is_marked = True
+            log.info(f"  {source.name}: Marked {self._pname(event.target_player)}")
 
     def _handle_draw_card(self, event: GameEvent) -> None:
         """Draw a card for a player."""
@@ -397,11 +415,16 @@ class Game:
         ps.hero = self._make_instance(hero_def, index, Zone.HERO)
         ps.life_total = hero_def.health or 20
 
-        # Weapons
+        # Weapons (max 2 hand slots: two 1H or one 2H)
+        hand_slots_used = 0
         for wname in deck.weapons:
             wdef = self.db.get_by_name(wname)
             if wdef:
+                slots_needed = 2 if SubType.TWO_HAND in wdef.subtypes else 1
+                if hand_slots_used + slots_needed > 2:
+                    continue  # no room
                 ps.weapons.append(self._make_instance(wdef, index, Zone.WEAPON_1))
+                hand_slots_used += slots_needed
 
         # Equipment — use pre-selected list if provided, otherwise fall back to deck list
         equip_names = selected_equipment if selected_equipment is not None else deck.equipment
@@ -1555,13 +1578,16 @@ class Game:
                 self.combat_mgr.add_defender(self.state, link, card)
                 log.info(f"  {self._pname(defender_index)} defends with {card.name}{card.definition.color_label} (defense={self.effect_engine.get_modified_defense(self.state, card)})")
 
-                # Emit defend event (7.0.5a)
-                self.events.emit(GameEvent(
-                    event_type=EventType.DEFEND_DECLARED,
-                    source=card,
-                    target_player=defender_index,
-                    data={"chain_link": link},
-                ))
+        # Emit defend events AFTER all defenders are declared (7.0.5a).
+        # This ensures "when this defends" triggers (e.g. Mask of Deceit)
+        # fire after the full defense is committed, not mid-declaration.
+        for def_card in link.defending_cards:
+            self.events.emit(GameEvent(
+                event_type=EventType.DEFEND_DECLARED,
+                source=def_card,
+                target_player=defender_index,
+                data={"chain_link": link},
+            ))
 
         # Process triggered effects from defend events (e.g. Mask of Deceit)
         self._process_pending_triggers()
