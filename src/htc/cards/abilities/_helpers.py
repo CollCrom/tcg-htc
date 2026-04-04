@@ -306,14 +306,24 @@ def require_chain_link(fn: Callable[[AbilityContext], None]) -> Callable[[Abilit
 # ---------------------------------------------------------------------------
 
 
-def is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
-    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
+def is_dagger_attack(attack: CardInstance | None, link=None, *, effect_engine=None, state=None) -> bool:
+    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger).
+
+    When *effect_engine* and *state* are provided, uses get_modified_subtypes
+    so that runtime subtype changes are respected.
+    """
     if attack is None:
         return False
-    if SubType.DAGGER in attack.definition.subtypes:
+
+    def _subtypes(card):
+        if effect_engine is not None and state is not None:
+            return effect_engine.get_modified_subtypes(state, card)
+        return card.definition.subtypes
+
+    if SubType.DAGGER in _subtypes(attack):
         return True
     if attack.is_proxy and link and link.attack_source:
-        if SubType.DAGGER in link.attack_source.definition.subtypes:
+        if SubType.DAGGER in _subtypes(link.attack_source):
             return True
     return False
 

@@ -87,14 +87,16 @@ def _razor_reflex(ctx: AbilityContext) -> None:
     # Mode 1: dagger or sword weapon attack
     is_weapon_attack = attack.is_proxy  # weapon attacks are proxies
     has_dagger_or_sword = False
-    if is_weapon_attack and attack.definition.subtypes:
+    if is_weapon_attack:
+        atk_subtypes = ctx.effect_engine.get_modified_subtypes(ctx.state, attack)
         has_dagger_or_sword = bool(
-            attack.definition.subtypes & {SubType.DAGGER, SubType.SWORD}
+            atk_subtypes & {SubType.DAGGER, SubType.SWORD}
         )
     # Also check the attack source (the weapon itself) if available
     if is_weapon_attack and link.attack_source:
+        src_subtypes = ctx.effect_engine.get_modified_subtypes(ctx.state, link.attack_source)
         has_dagger_or_sword = has_dagger_or_sword or bool(
-            link.attack_source.definition.subtypes & {SubType.DAGGER, SubType.SWORD}
+            src_subtypes & {SubType.DAGGER, SubType.SWORD}
         )
     mode1_valid = is_weapon_attack and has_dagger_or_sword
 

@@ -69,6 +69,11 @@ class PlayerState:
     # Peace: only non-weapon, non-attack actions next turn.
     # Cleared at end of the turn indicated by diplomacy_restriction_expires_turn.
     diplomacy_restriction: str | None = None
+    # The game turn_number on which the restriction becomes active.
+    # For the opponent, this is turn_number+1 (their next turn).
+    # For the controller, this is turn_number+2 (their next turn).
+    # The restriction is only enforced when state.turn_number >= this value.
+    diplomacy_restriction_active_turn: int | None = None
     # The game turn_number on which the restriction should be cleared (at end
     # of that turn).  For the opponent, this is the next turn.  For the
     # controller, this is two turns later (their next action turn).

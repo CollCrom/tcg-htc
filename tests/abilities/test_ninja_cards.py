@@ -945,3 +945,206 @@ def test_warmongers_diplomacy_asks_opponent():
 
     # Should not error
     game._apply_card_ability(card, 0, "on_play")
+
+
+def test_warmongers_diplomacy_controller_restriction_deferred():
+    """Controller's Warmonger's Diplomacy restriction should NOT apply on the current turn.
+
+    The card says "next turn", so when the controller plays Warmonger's Diplomacy
+    on turn N, the restriction should only apply on their NEXT turn (turn N+2),
+    not the current turn. The opponent's restriction applies immediately on their
+    next turn (turn N+1).
+    """
+    game = make_game_shell(action_points={0: 1, 1: 0}, resource_points={0: 3, 1: 0})
+    game.state.turn_number = 5
+    game.state.turn_player_index = 0
+
+    # Create the Warmonger's Diplomacy card
+    card_def = CardDefinition(
+        unique_id="wm-1",
+        name="Warmonger's Diplomacy",
+        color=Color.BLUE,
+        pitch=3,
+        cost=0,
+        power=None,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset({SuperType.GENERIC}),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    card = CardInstance(
+        instance_id=1, definition=card_def, owner_index=0, zone=Zone.STACK,
+    )
+
+    # Both players choose "peace" (only non-attack, non-weapon actions allowed)
+    _MockPlayer = type(
+        "P",
+        (),
+        {
+            "decide": lambda s, state, d: PlayerResponse(
+                selected_option_ids=["peace"]
+            )
+        },
+    )
+    game.interfaces = [_MockPlayer(), _MockPlayer()]
+
+    # Play the card (controller is player 0 on turn 5)
+    game._apply_card_ability(card, 0, "on_play")
+
+    # Both players should have the restriction set
+    p0 = game.state.players[0]
+    p1 = game.state.players[1]
+    assert p0.diplomacy_restriction == "peace"
+    assert p1.diplomacy_restriction == "peace"
+
+    # Controller's active_turn is turn 7 (current turn 5 + 2)
+    assert p0.diplomacy_restriction_active_turn == 7
+    # Opponent's active_turn is turn 6 (current turn 5 + 1)
+    assert p1.diplomacy_restriction_active_turn == 6
+
+    # Create a non-attack action card for testing
+    non_attack_def = CardDefinition(
+        unique_id="na-1",
+        name="Test Action",
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=None,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset({SuperType.GENERIC}),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+
+    # Create an attack action card for testing
+    attack_def = CardDefinition(
+        unique_id="atk-1",
+        name="Test Attack",
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=3,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ATTACK}),
+        supertypes=frozenset({SuperType.GENERIC}),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+
+    attack_card = CardInstance(
+        instance_id=10, definition=attack_def, owner_index=0, zone=Zone.HAND,
+    )
+    non_attack_card = CardInstance(
+        instance_id=11, definition=non_attack_def, owner_index=0, zone=Zone.HAND,
+    )
+
+    # On the CURRENT turn (5), the controller should NOT be restricted
+    # Peace restriction would block attack actions, but it should be deferred
+    assert game.action_builder.can_play_card(game.state, 0, attack_card) is True
+    assert game.action_builder.can_play_card(game.state, 0, non_attack_card) is True
+
+    # Simulate advancing to the controller's next turn (turn 7)
+    game.state.turn_number = 7
+    game.state.action_points = {0: 1, 1: 0}
+    # NOW the peace restriction should be active: blocks attack actions
+    assert game.action_builder.can_play_card(game.state, 0, attack_card) is False
+    # Non-attack actions should still be allowed
+    assert game.action_builder.can_play_card(game.state, 0, non_attack_card) is True
+
+
+def test_warmongers_diplomacy_opponent_restriction_immediate_next_turn():
+    """Opponent's Warmonger's Diplomacy restriction applies on their next turn.
+
+    When controller plays on turn N, the opponent's restriction should apply
+    starting on turn N+1 (their next turn).
+    """
+    game = make_game_shell(action_points={0: 0, 1: 1}, resource_points={0: 0, 1: 3})
+    game.state.turn_number = 5
+    game.state.turn_player_index = 0
+
+    card_def = CardDefinition(
+        unique_id="wm-1",
+        name="Warmonger's Diplomacy",
+        color=Color.BLUE,
+        pitch=3,
+        cost=0,
+        power=None,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset({SuperType.GENERIC}),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    card = CardInstance(
+        instance_id=1, definition=card_def, owner_index=0, zone=Zone.STACK,
+    )
+
+    # Opponent chooses "war" (only attack actions and weapon attacks)
+    _MockPlayer = type(
+        "P",
+        (),
+        {
+            "decide": lambda s, state, d: PlayerResponse(
+                selected_option_ids=["war"]
+            )
+        },
+    )
+    game.interfaces = [_MockPlayer(), _MockPlayer()]
+
+    game._apply_card_ability(card, 0, "on_play")
+
+    p1 = game.state.players[1]
+    assert p1.diplomacy_restriction == "war"
+    assert p1.diplomacy_restriction_active_turn == 6
+
+    # Create test cards for opponent (player 1)
+    non_attack_def = CardDefinition(
+        unique_id="na-1",
+        name="Test Action",
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=None,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset({SuperType.GENERIC}),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="",
+    )
+    non_attack_card = CardInstance(
+        instance_id=20, definition=non_attack_def, owner_index=1, zone=Zone.HAND,
+    )
+
+    # On turn 5 (controller's turn), the opponent's restriction is not yet active
+    assert game.action_builder.can_play_card(game.state, 1, non_attack_card) is True
+
+    # On opponent's next turn (turn 6), war restriction blocks non-attack actions
+    game.state.turn_number = 6
+    assert game.action_builder.can_play_card(game.state, 1, non_attack_card) is False
