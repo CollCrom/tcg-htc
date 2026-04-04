@@ -926,6 +926,14 @@ class Game:
             if redirect:
                 self._banish_instead_of_graveyard.add(card.instance_id)
 
+        # Track which zone the card was played from (for Frailty filter, etc.)
+        if played_from_arsenal:
+            card.played_from_zone = Zone.ARSENAL
+        elif played_from_banish:
+            card.played_from_zone = Zone.BANISHED
+        else:
+            card.played_from_zone = Zone.HAND
+
         layer = self.stack_mgr.add_card_layer(
             self.state, card, player_index,
         )

@@ -110,8 +110,8 @@ class TestPonderToken(unittest.TestCase):
 class TestFrailtyToken(unittest.TestCase):
     """Frailty: -1 power to attack actions and weapon attacks. Destroy at end of turn."""
 
-    def test_continuous_debuff_on_attack_action(self):
-        """Frailty gives -1 power to attack action cards."""
+    def test_continuous_debuff_on_attack_action_from_arsenal(self):
+        """Frailty gives -1 power to attack action cards played from arsenal."""
         game = make_game_shell()
 
         token = create_token(
@@ -120,13 +120,31 @@ class TestFrailtyToken(unittest.TestCase):
             event_bus=game.events, effect_engine=game.effect_engine,
         )
 
-        # Create an attack action card
+        # Create an attack action card played from arsenal
         attack = make_card(instance_id=1, name="Test Attack", power=3, is_attack=True)
         attack.owner_index = 0
+        attack.played_from_zone = Zone.ARSENAL
 
         # Check modified power
         modified_power = game.effect_engine.get_modified_power(game.state, attack)
         assert modified_power == 2  # 3 - 1
+
+    def test_no_debuff_on_attack_from_hand(self):
+        """Frailty does NOT debuff attack action cards played from hand."""
+        game = make_game_shell()
+
+        create_token(
+            game.state, 0, "Frailty", SubType.AURA,
+            functional_text="Your attack action cards played from arsenal and weapon attacks have -1{p}.",
+            event_bus=game.events, effect_engine=game.effect_engine,
+        )
+
+        attack = make_card(instance_id=1, name="Test Attack", power=3, is_attack=True)
+        attack.owner_index = 0
+        attack.played_from_zone = Zone.HAND
+
+        modified_power = game.effect_engine.get_modified_power(game.state, attack)
+        assert modified_power == 3  # No debuff from hand
 
     def test_continuous_debuff_on_weapon_proxy(self):
         """Frailty gives -1 power to weapon proxy attacks."""
@@ -180,6 +198,7 @@ class TestFrailtyToken(unittest.TestCase):
         )
 
         attack = make_card(instance_id=1, power=3, is_attack=True, owner_index=0)
+        attack.played_from_zone = Zone.ARSENAL
         assert game.effect_engine.get_modified_power(game.state, attack) == 2
 
         _emit_end_of_turn(game, 0)

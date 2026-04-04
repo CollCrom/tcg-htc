@@ -775,7 +775,8 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     # Create Graphene Chelicera as a weapon token
     _create_graphene_chelicera(ctx.state, ctx.controller_index)
 
-    # Next stealth attack bonus
+    # Next stealth attack bonus — use make_once_filter so the bonus only
+    # applies to the first matching stealth attack (not all of them).
     bonus = color_bonus(ctx)
     controller = ctx.controller_index
     source_id = ctx.source_card.instance_id
@@ -1047,50 +1048,94 @@ def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
         log.info(f"  Pain in the Backside: {dagger.name} damage was prevented")
 
 
+@dataclass
+class _LeaveNoWitnessesContractTrigger(TriggeredEffect):
+    """Contract trigger: whenever an opponent's red card is banished, create a Silver.
+
+    This is a persistent (not one-shot) trigger that lasts as long as Leave No
+    Witnesses is relevant (registered on attack, not one-shot so it fires for
+    every qualifying banish).  We make it one_shot=False so it fires for the
+    on-hit banishes AND any future banishes this game.
+    """
+
+    controller_index: int = 0
+    opponent_index: int = 0
+    one_shot: bool = False
+    _state_getter: object = None
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.BANISH:
+            return False
+        card = event.card
+        if card is None:
+            return False
+        # Must be an opponent's card that is red
+        if card.owner_index != self.opponent_index:
+            return False
+        return card.definition.color == Color.RED
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        if self._state_getter is None or not callable(self._state_getter):
+            return None
+        state = self._state_getter()
+        _create_silver_token(state, self.controller_index)
+        card_name = triggering_event.card.name if triggering_event.card else "unknown"
+        log.info(
+            f"  Leave No Witnesses: Contract completed — {card_name} is red, "
+            f"created Silver token for P{self.controller_index}"
+        )
+        return None
+
+
+def _leave_no_witnesses_on_attack(ctx: AbilityContext) -> None:
+    """Leave No Witnesses (Assassin, Attack Action):
+
+    'Contract - You are contracted to banish opponents' red cards.
+     Whenever you complete this contract, create a Silver token.'
+
+    Register the contract trigger when the card attacks.  The trigger
+    persists for the rest of the game (Contract is a global ability).
+    """
+    link = ctx.chain_link
+    if link is None:
+        return
+
+    opponent_index = link.attack_target_index
+    trigger = _LeaveNoWitnessesContractTrigger(
+        controller_index=ctx.controller_index,
+        opponent_index=opponent_index,
+        _state_getter=lambda _s=ctx.state: _s,
+    )
+    ctx.events.register_trigger(trigger)
+    log.info(f"  Leave No Witnesses: Contract registered — Silver on opponent red banish")
+
+
 @require_chain_link
 def _leave_no_witnesses_on_hit(ctx: AbilityContext) -> None:
     """Leave No Witnesses (Assassin, Attack Action):
 
-    'Contract - You are contracted to banish opponents' red cards.
-     Whenever you complete this contract, create a Silver token.
-     When this hits a hero, banish the top card of their deck and up to 1
+    'When this hits a hero, banish the top card of their deck and up to 1
      card in their arsenal.'
 
-    Contract: when a banished card is red, create a Silver token for the
-    controller.
+    The Contract trigger is registered separately on_attack so it fires
+    for ALL banishes of opponent red cards, not just on-hit banishes.
     """
     link = ctx.chain_link
 
     target_index = link.attack_target_index
     target = ctx.state.players[target_index]
 
-    banished_cards = []
-
     # Banish top card of deck
     if target.deck:
         card = target.deck[0]
         ctx.banish_card(card, target_index)
-        banished_cards.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from top of P{target_index}'s deck")
 
     # Banish up to 1 card in their arsenal
     if target.arsenal:
         card = target.arsenal[0]
         ctx.banish_card(card, target_index)
-        banished_cards.append(card)
         log.info(f"  Leave No Witnesses: Banished {card.name} from P{target_index}'s arsenal")
-
-    # Contract: create a Silver token for each red card banished
-    for card in banished_cards:
-        if card.definition.color == Color.RED:
-            _create_silver_token(
-                ctx.state, ctx.controller_index,
-                event_bus=ctx.events, effect_engine=ctx.effect_engine,
-            )
-            log.info(
-                f"  Leave No Witnesses: Contract completed — {card.name} is red, "
-                f"created Silver token for P{ctx.controller_index}"
-            )
 
 
 def _create_silver_token(
@@ -1487,6 +1532,7 @@ def register_assassin_abilities(registry: AbilityRegistry) -> None:
     registry.register("on_attack", "Pick Up the Point", _pick_up_the_point_on_attack)
     registry.register("on_attack", "Whittle from Bone", _whittle_from_bone_on_attack)
     registry.register("on_attack", "Overcrowded", _overcrowded_on_attack)
+    registry.register("on_attack", "Leave No Witnesses", _leave_no_witnesses_on_attack)
 
     # Attack actions — on_hit
     registry.register("on_hit", "Kiss of Death", _kiss_of_death_on_hit)

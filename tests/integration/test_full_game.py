@@ -438,7 +438,7 @@ class TestCardAbilitiesRegistered:
         assert registry.lookup("attack_reaction_effect", "Flick Knives") is not None
         assert registry.lookup("attack_reaction_effect", "Tide Flippers") is not None
         assert registry.lookup("attack_reaction_effect", "Blacktek Whisperers") is not None
-        assert registry.lookup("on_hit", "Hunter's Klaive (attack)") is not None
+        # Hunter's Klaive Mark is keyword-driven, no separate on_hit entry
 
     def test_full_registry_from_game(
         self, card_db: CardDatabase, cindra_deck: DeckList, arakni_deck: DeckList,
@@ -453,7 +453,7 @@ class TestCardAbilitiesRegistered:
         assert reg.lookup("attack_reaction_effect", "Ancestral Empowerment") is not None
         assert reg.lookup("attack_reaction_effect", "Incision") is not None
         assert reg.lookup("attack_reaction_effect", "Flick Knives") is not None
-        assert reg.lookup("on_hit", "Hunter's Klaive (attack)") is not None
+        # Hunter's Klaive Mark is keyword-driven, no separate on_hit entry
 
 
 # ---------------------------------------------------------------------------

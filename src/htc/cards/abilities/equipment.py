@@ -17,7 +17,7 @@ Equipment abilities implemented:
 
 Weapon abilities implemented:
 - Kunai of Retribution — destroy when combat chain closes (registered on activation)
-- Hunter's Klaive — on-hit: mark target hero (keyword-driven Mark + Piercing already work)
+- Hunter's Klaive — Mark keyword on hit (handled by game.py _handle_hit_mark_keyword)
 - Claw of Vynserakai — no additional ability needed (Spellvoid 1 is keyword-driven)
 """
 
@@ -786,19 +786,11 @@ class KunaiDestroyOnChainClose(TriggeredEffect):
 # "Once per Turn Action — {r}{r}: Attack. Go again.
 #  When this hits a hero, mark them."
 #
-# Mark and Piercing 1 are keyword-driven. The on-hit mark is an additional
-# ability registered as on_hit for the weapon proxy name.
+# Mark is keyword-driven via _handle_hit_mark_keyword in game.py.  The weapon
+# has the Mark keyword, so the HIT handler automatically marks the target.
+# No separate on_hit ability registry entry is needed — that caused duplicate
+# mark logging for proxy attacks.  Piercing 1 is also keyword-driven.
 # ---------------------------------------------------------------------------
-
-
-@require_chain_link
-def _hunters_klaive_on_hit(ctx: AbilityContext) -> None:
-    """Hunter's Klaive on-hit: mark the target hero."""
-    link = ctx.chain_link
-
-    target_index = link.attack_target_index
-    ctx.state.players[target_index].is_marked = True
-    log.info(f"  Hunter's Klaive: Marked {ctx.player_name(target_index)}")
 
 
 # ---------------------------------------------------------------------------
@@ -956,5 +948,5 @@ def register_equipment_abilities(registry: AbilityRegistry) -> None:
     registry.register("equipment_instant_effect", "Dragonscaler Flight Path", _dragonscaler_flight_path)
     registry.register("equipment_instant_effect", "Fyendal's Spring Tunic", _fyendals_spring_tunic_instant)
 
-    # Weapon on-hit (proxy names include " (attack)" suffix)
-    registry.register("on_hit", "Hunter's Klaive (attack)", _hunters_klaive_on_hit)
+    # Hunter's Klaive mark-on-hit is handled by the Mark keyword handler
+    # in game.py (_handle_hit_mark_keyword), no separate registry entry needed.
