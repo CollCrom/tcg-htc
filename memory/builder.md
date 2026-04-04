@@ -225,3 +225,14 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **Return-to-brood skip_first removal** — Handlers registered via `register_handler` during event processing do NOT fire for the current in-flight event (the handler list is iterated by reference, but the new handler is appended after the iteration index). Since `_return_to_brood` is registered during DEFEND_DECLARED processing, the first END_OF_TURN it sees is the opponent's turn end (filtered by `target_player != player_index`). `skip_first` was incorrectly skipping the controller's first end phase.
 - **Gotcha: stress test seed sensitivity** — Changing game logic (like diplomacy restriction persistence) changes random game paths, which can expose latent bugs in other systems (e.g., duplicate Tide Flippers instance_id in seed 16).
 - **900 tests passing** — 12 new tests for the three fixes.
+
+## DRY Refactor Pass 3 (2026-04-04)
+
+- **`get_player_name(state, player_index)`** — canonical hero name helper in `_helpers.py`. Replaces 16+ inline `hero.definition.name.split(",")[0]` patterns. `AbilityContext.player_name()` delegates to it. `_pname()` in equipment.py/tokens.py also delegates.
+- **`move_card(card, from_list, to_list, new_zone)`** — 3-line zone transition pattern extracted. Only used where the pattern is clean (no guards or extra logic). Guarded patterns (e.g., `if card in list: list.remove(card)`) left as-is.
+- **`is_dagger_attack()`** — moved from duplicate definitions in assassin.py and equipment.py to `_helpers.py`.
+- **`make_instance_id_filter(target_id)`** — replaces `lambda c, _id=target_id: c.instance_id == _id` pattern (12 occurrences). Skipped `keyword_engine.py` to avoid engine->cards circular imports.
+- **`choose_card()`** — generalized card selection with auto-pick-if-one. `choose_dagger()` now delegates to it.
+- **BaseTriggeredEffect extraction skipped** — the deferred import pattern needed to avoid circular deps made it too complex for the 3-line savings per class.
+- **`grant_power_bonus()` usage** — only Tarantula Toxin mode1 was a clean match. Most `make_power_modifier` calls have unique params (source_instance_id=None, custom filters, non-standard durations).
+- **Net change: +157/-126 lines** — most additions are the new helpers; the removals come from deduplication across 8 files. 959 tests passing throughout.

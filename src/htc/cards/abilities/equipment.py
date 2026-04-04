@@ -28,8 +28,12 @@ from dataclasses import dataclass
 
 from htc.cards.abilities._helpers import (
     draw_card,
+    get_player_name,
     grant_keyword,
     grant_power_bonus,
+    is_dagger_attack,
+    make_instance_id_filter,
+    move_card,
     require_active_attack,
     require_chain_link,
 )
@@ -55,22 +59,17 @@ log = logging.getLogger(__name__)
 
 
 def _pname(state: "GameState", player_index: int) -> str:
-    """Short hero name for logging (standalone helper)."""
-    if state.players[player_index].hero:
-        return state.players[player_index].hero.definition.name.split(",")[0]
+    """Short hero name for logging (standalone helper). Delegates to get_player_name."""
+    return get_player_name(state, player_index)
+
+
+def _pname_from_player_state(player_state, player_index: int) -> str:
+    """Short hero name from a PlayerState (no full GameState needed)."""
+    if player_state.hero:
+        return player_state.hero.definition.name.split(",")[0]
     return f"Player {player_index}"
 
 
-def _is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
-    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
-    if attack is None:
-        return False
-    if SubType.DAGGER in attack.definition.subtypes:
-        return True
-    if attack.is_proxy and link and link.attack_source:
-        if SubType.DAGGER in link.attack_source.definition.subtypes:
-            return True
-    return False
 
 
 def _destroy_equipment(state: GameState, card: CardInstance) -> None:
@@ -287,7 +286,7 @@ class BloodSplatteredVestTrigger(TriggeredEffect):
 
         # Check if it's a dagger attack
         chain_link = event.data.get("chain_link")
-        if not _is_dagger_attack(event.source, chain_link):
+        if not is_dagger_attack(event.source, chain_link):
             return False
 
         # Equipment must still be in play
@@ -512,13 +511,12 @@ class _BlacktekGoAgainOnHit(TriggeredEffect):
         if state is None:
             return None
 
-        atk_id = self.attack_instance_id
         go_again_effect = make_keyword_grant(
             frozenset({Keyword.GO_AGAIN}),
             self.controller_index,
             source_instance_id=None,
             duration=EffectDuration.END_OF_COMBAT,
-            target_filter=lambda c, _id=atk_id: c.instance_id == _id,
+            target_filter=make_instance_id_filter(self.attack_instance_id),
         )
         self._effect_engine.add_continuous_effect(state, go_again_effect)
         log.info("  Blacktek Whisperers: attack gets Go Again on hit")
@@ -757,9 +755,7 @@ class KunaiDestroyOnChainClose(TriggeredEffect):
         # Find and destroy the weapon
         for weapon in list(player.weapons):
             if weapon.instance_id == self.weapon_instance_id:
-                player.weapons.remove(weapon)
-                weapon.zone = Zone.GRAVEYARD
-                player.graveyard.append(weapon)
+                move_card(weapon, player.weapons, player.graveyard, Zone.GRAVEYARD)
                 log.info(
                     f"  Kunai of Retribution: Destroyed on combat chain close "
                     f"({_pname(state, self.controller_index)})"
@@ -821,7 +817,7 @@ def register_equipment_triggers(
             _event_bus=event_bus,
         )
         event_bus.register_trigger(trigger)
-        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        pn = _pname_from_player_state(player_state, player_index)
         log.info(f"  Registered Mask of Momentum trigger for {pn}")
 
     # Blood Splattered Vest
@@ -833,7 +829,7 @@ def register_equipment_triggers(
             _equipment_instance_id=chest_eq.instance_id,
         )
         event_bus.register_trigger(trigger)
-        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        pn = _pname_from_player_state(player_state, player_index)
         log.info(f"  Registered Blood Splattered Vest trigger for {pn}")
 
     # Fyendal's Spring Tunic
@@ -844,7 +840,7 @@ def register_equipment_triggers(
             _equipment_instance_id=chest_eq.instance_id,
         )
         event_bus.register_trigger(trigger)
-        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        pn = _pname_from_player_state(player_state, player_index)
         log.info(f"  Registered Fyendal's Spring Tunic trigger for {pn}")
 
     # Mask of Deceit
@@ -856,7 +852,7 @@ def register_equipment_triggers(
             _game=game,
         )
         event_bus.register_trigger(trigger)
-        pn = player_state.hero.definition.name.split(",")[0] if player_state.hero else f"Player {player_index}"
+        pn = _pname_from_player_state(player_state, player_index)
         log.info(f"  Registered Mask of Deceit trigger for {pn}")
 
 

@@ -462,6 +462,18 @@ Persistent learnings across sessions. Update this after each review.
 - **Remaining `definition.keywords` Stealth check**: `assassin.py` line 314 (Take Up the Mantle graveyard search) still uses `definition.keywords`. Acceptable — graveyard cards have no active continuous effects, so `definition` is correct there.
 - 959 tests all passing.
 
+### refactor/dry-pass-3 — DRY Refactor Pass 3 (2026-04-04)
+- **Round 1 verdict: APPROVE** — Pure refactor, zero behavior changes. No critical or minor issues.
+- **Scope**: 6 extractions across 8 files (_helpers.py, assassin.py, equipment.py, generic.py, heroes.py, ninja.py, tokens.py, abilities.py).
+- **`get_player_name(state, player_index)`**: Replaces 10+ inline `hero.definition.name.split(",")[0]` patterns. All call sites verified 1:1 with original, including null-state guards in Cindra/Arakni triggers and `TokenEndPhaseTrigger._player_name`. New `_pname_from_player_state` in equipment.py correctly handles `register_equipment_triggers` which receives `PlayerState` (not `GameState`).
+- **`move_card(card, from_list, to_list, new_zone)`**: Replaces 10 sites of 3-line remove/set-zone/append pattern. All call sites verified — no adjacent side effects skipped (each site's surrounding code preserved unchanged).
+- **`is_dagger_attack()`**: Unified from assassin.py and equipment.py. Both originals were logically identical (only difference: type annotation `CardInstance | None` vs bare `attack`). Unified version uses the more explicit annotation. All 5 call sites in assassin.py and 1 in equipment.py correctly updated.
+- **`make_instance_id_filter(target_id)`**: Replaces 12 `lambda c, _id=X: c.instance_id == _id` patterns. Default-arg binding (`_id=target_id`) correctly preserved in the factory, preventing late-binding bugs. All call sites pass `instance_id` eagerly (not a deferred expression).
+- **`choose_card()` generalization**: `choose_dagger()` now delegates to `choose_card()` with `id_prefix="dagger"`. The `id_prefix` is used in `action_id` formatting and response parsing (`replace(f"{id_prefix}_", "")`). Behavior preserved exactly — same auto-pick for single candidate, same Decision/ActionOption construction, same fallback on parse failure.
+- **`grant_power_bonus()` for Tarantula Toxin mode1**: Original 5-line `make_power_modifier` + `add_continuous_effect` replaced with existing `grant_power_bonus` helper (which does exactly those 2 calls). Parameters verified identical (bonus, controller, source, END_OF_COMBAT duration, target filter).
+- **No circular imports**: Verified by import test.
+- **959 tests all passing.**
+
 ## Talishar Discrepancies
 
 *(None found yet)*

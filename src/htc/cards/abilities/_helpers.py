@@ -24,6 +24,53 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Player name helper
+# ---------------------------------------------------------------------------
+
+
+def get_player_name(state: GameState, player_index: int) -> str:
+    """Short hero name for logging (e.g. 'Cindra' from 'Cindra, Dracai of Retribution').
+
+    Falls back to 'Player N' when hero is not set (test scaffolding).
+    """
+    player = state.players[player_index]
+    if player.hero:
+        return player.hero.definition.name.split(",")[0]
+    return f"Player {player_index}"
+
+
+# ---------------------------------------------------------------------------
+# Zone transition helper
+# ---------------------------------------------------------------------------
+
+
+def move_card(card: CardInstance, from_list: list, to_list: list, new_zone: Zone) -> None:
+    """Move a card between zone lists, updating its zone attribute.
+
+    Performs the standard 3-step zone transition:
+      1. Remove from source list
+      2. Set card.zone
+      3. Append to destination list
+    """
+    from_list.remove(card)
+    card.zone = new_zone
+    to_list.append(card)
+
+
+# ---------------------------------------------------------------------------
+# Instance ID filter factory
+# ---------------------------------------------------------------------------
+
+
+def make_instance_id_filter(target_id: int) -> Callable[[CardInstance], bool]:
+    """Create a target_filter that matches a specific card by instance_id.
+
+    Replaces the repeated pattern: ``lambda c, _id=target_id: c.instance_id == _id``
+    """
+    return lambda c, _id=target_id: c.instance_id == _id
+
+
+# ---------------------------------------------------------------------------
 # Once-filter factory
 # ---------------------------------------------------------------------------
 
@@ -82,13 +129,12 @@ def grant_power_bonus(
     duration: EffectDuration = EffectDuration.END_OF_COMBAT,
 ) -> None:
     """Grant +N power to a target card via continuous effect."""
-    target_id = target_card.instance_id
     effect = make_power_modifier(
         bonus,
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=duration,
-        target_filter=lambda c, _id=target_id: c.instance_id == _id,
+        target_filter=make_instance_id_filter(target_card.instance_id),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  {ability_name}: {target_card.name} gets +{bonus} power")
@@ -107,13 +153,12 @@ def grant_keyword(
     duration: EffectDuration = EffectDuration.END_OF_COMBAT,
 ) -> None:
     """Grant a keyword to a target card via continuous effect."""
-    target_id = target_card.instance_id
     effect = make_keyword_grant(
         frozenset({keyword}),
         ctx.controller_index,
         source_instance_id=ctx.source_card.instance_id,
         duration=duration,
-        target_filter=lambda c, _id=target_id: c.instance_id == _id,
+        target_filter=make_instance_id_filter(target_card.instance_id),
     )
     ctx.effect_engine.add_continuous_effect(ctx.state, effect)
     log.info(f"  {ability_name}: {target_card.name} gets {keyword.value}")
@@ -215,8 +260,7 @@ def create_token(
     # Track Fealty creation for end-phase condition
     if name == "Fealty":
         state.players[controller_index].turn_counters.fealty_created_this_turn = True
-    pname = state.players[controller_index].hero.definition.name.split(",")[0] if state.players[controller_index].hero else f"Player {controller_index}"
-    log.info(f"  Created {name} token for {pname}")
+    log.info(f"  Created {name} token for {get_player_name(state, controller_index)}")
 
     # Register token abilities if the event bus is provided
     if event_bus is not None and effect_engine is not None:
@@ -262,32 +306,51 @@ def require_chain_link(fn: Callable[[AbilityContext], None]) -> Callable[[Abilit
 # ---------------------------------------------------------------------------
 
 
-def choose_dagger(
+def is_dagger_attack(attack: CardInstance | None, link=None) -> bool:
+    """Check if an attack is a dagger attack (card subtype or weapon proxy of dagger)."""
+    if attack is None:
+        return False
+    if SubType.DAGGER in attack.definition.subtypes:
+        return True
+    if attack.is_proxy and link and link.attack_source:
+        if SubType.DAGGER in link.attack_source.definition.subtypes:
+            return True
+    return False
+
+
+def choose_card(
     ctx: AbilityContext,
-    daggers: list[CardInstance],
+    candidates: list[CardInstance],
     prompt: str,
     *,
+    id_prefix: str = "card",
     decision_type: str = "CHOOSE_MODE",
+    describe: Callable[[CardInstance], str] | None = None,
 ) -> CardInstance:
-    """Pick a dagger: auto-pick if only one, else ask the player.
+    """Auto-select if one candidate, else ask the player to choose.
 
-    Returns the chosen dagger CardInstance.
+    *id_prefix* is used for action_id formatting (e.g. ``"dagger"`` ->
+    ``"dagger_123"``).  *describe* optionally customizes the description
+    shown for each card; defaults to ``card.name (ID N)``.
+
+    Returns the chosen CardInstance.
     """
     from htc.engine.actions import ActionOption, Decision
     from htc.enums import ActionType, DecisionType
 
-    if len(daggers) == 1:
-        return daggers[0]
+    if len(candidates) == 1:
+        return candidates[0]
 
+    desc_fn = describe or (lambda c: f"{c.name} (ID {c.instance_id})")
     dtype = getattr(DecisionType, decision_type)
     options = [
         ActionOption(
-            action_id=f"dagger_{d.instance_id}",
-            description=f"{d.name} (ID {d.instance_id})",
+            action_id=f"{id_prefix}_{c.instance_id}",
+            description=desc_fn(c),
             action_type=ActionType.ACTIVATE_ABILITY,
-            card_instance_id=d.instance_id,
+            card_instance_id=c.instance_id,
         )
-        for d in daggers
+        for c in candidates
     ]
     decision = Decision(
         player_index=ctx.controller_index,
@@ -297,13 +360,27 @@ def choose_dagger(
     )
     response = ctx.ask(decision)
     chosen_id = (
-        int(response.first.replace("dagger_", ""))
+        int(response.first.replace(f"{id_prefix}_", ""))
         if response.first
-        else daggers[0].instance_id
+        else candidates[0].instance_id
     )
     return next(
-        (d for d in daggers if d.instance_id == chosen_id), daggers[0]
+        (c for c in candidates if c.instance_id == chosen_id), candidates[0]
     )
+
+
+def choose_dagger(
+    ctx: AbilityContext,
+    daggers: list[CardInstance],
+    prompt: str,
+    *,
+    decision_type: str = "CHOOSE_MODE",
+) -> CardInstance:
+    """Pick a dagger: auto-pick if only one, else ask the player.
+
+    Returns the chosen dagger CardInstance. Delegates to choose_card().
+    """
+    return choose_card(ctx, daggers, prompt, id_prefix="dagger", decision_type=decision_type)
 
 
 def deal_dagger_damage(
@@ -398,10 +475,8 @@ def _make_mark_on_hit_trigger_class():
             if state is None:
                 return None
             state.players[self.target_player_index].is_marked = True
-            ps = state.players[self.target_player_index]
-            pname = ps.hero.definition.name.split(",")[0] if ps.hero else f"Player {self.target_player_index}"
             log.info(
-                f"  {self.card_name}: {pname} is now marked"
+                f"  {self.card_name}: {get_player_name(state, self.target_player_index)} is now marked"
             )
             return None
 
