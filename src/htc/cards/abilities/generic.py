@@ -41,8 +41,8 @@ def _ancestral_empowerment(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    # Check: must be a Ninja attack action card
-    is_ninja = SuperType.NINJA in attack.definition.supertypes
+    # Check: must be a Ninja attack action card (use effect engine for supertypes)
+    is_ninja = SuperType.NINJA in ctx.effect_engine.get_modified_supertypes(ctx.state, attack)
     is_attack_action = attack.definition.is_attack_action
     if not (is_ninja and is_attack_action):
         log.info(

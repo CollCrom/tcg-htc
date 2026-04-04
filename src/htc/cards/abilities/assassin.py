@@ -116,10 +116,17 @@ def _is_dagger_attack(attack, link=None) -> bool:
     return False
 
 
-def _is_assassin_attack(attack) -> bool:
-    """Check if an attack is an Assassin attack (supertype)."""
+def _is_assassin_attack(attack, ctx: AbilityContext | None = None) -> bool:
+    """Check if an attack is an Assassin attack (supertype).
+
+    When *ctx* is provided, uses the effect engine for modified supertypes.
+    Otherwise falls back to the card definition (for backward compatibility).
+    """
     if attack is None:
         return False
+    if ctx is not None:
+        supertypes = ctx.effect_engine.get_modified_supertypes(ctx.state, attack)
+        return SuperType.ASSASSIN in supertypes
     return SuperType.ASSASSIN in attack.definition.supertypes
 
 
@@ -217,7 +224,7 @@ def _shred(ctx: AbilityContext) -> None:
     link = ctx.chain_link
 
     attack = link.active_attack
-    if not _is_assassin_attack(attack):
+    if not _is_assassin_attack(attack, ctx):
         log.info(f"  Shred: no effect -- {attack.name} is not an Assassin attack")
         return
 

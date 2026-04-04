@@ -109,6 +109,15 @@ class EffectEngine:
         active = self._active_effects(state)
         return self._resolver.resolve_supertypes(active, card, state, base)
 
+    def get_modified_subtypes(
+        self, state: GameState, card: CardInstance
+    ) -> frozenset:
+        """Get the effective subtypes for a card (base + continuous effects)."""
+        from htc.enums import SubType
+        base = card._effective_definition.subtypes
+        active = self._active_effects(state)
+        return self._resolver.resolve_subtypes(active, card, state, base)
+
     def get_modified_keywords(
         self, state: GameState, card: CardInstance
     ) -> frozenset[Keyword]:

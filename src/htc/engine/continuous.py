@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from typing import TYPE_CHECKING, Callable
 
-from htc.enums import Keyword, SuperType, Zone
+from htc.enums import Keyword, SubType, SuperType, Zone
 
 if TYPE_CHECKING:
     from htc.cards.instance import CardInstance
@@ -114,6 +114,9 @@ class ContinuousEffect:
     # Supertype modification (stage 5)
     supertypes_to_add: frozenset[SuperType] = frozenset()
 
+    # Subtype modification (stage 4)
+    subtypes_to_add: frozenset[SubType] = frozenset()
+
     # Optional condition — effect only active when this returns True
     condition: Callable[[GameState], bool] | None = None
 
@@ -186,6 +189,30 @@ class StagingResolver:
         for effect in matching:
             supertypes |= effect.supertypes_to_add
         return frozenset(supertypes)
+
+    def resolve_subtypes(
+        self,
+        effects: list[ContinuousEffect],
+        card: CardInstance,
+        state: GameState,
+        base_subtypes: frozenset[SubType],
+    ) -> frozenset[SubType]:
+        """Apply subtype grant effects in timestamp order."""
+        matching = [
+            e
+            for e in effects
+            if (
+                e.stage == ModStage.TYPES
+                and e.subtypes_to_add
+                and e.target_filter(card)
+            )
+        ]
+        matching.sort(key=lambda e: e.timestamp)
+
+        subtypes = set(base_subtypes)
+        for effect in matching:
+            subtypes |= effect.subtypes_to_add
+        return frozenset(subtypes)
 
     def resolve_keywords(
         self,

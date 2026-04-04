@@ -252,7 +252,7 @@ def _authority_of_ataya(ctx: AbilityContext) -> None:
             source_instance_id=ctx.source_card.instance_id,
             duration=EffectDuration.END_OF_TURN,
             target_filter=lambda c, _oi=opp_idx: (
-                c.definition.is_defense_reaction and c.owner_index == _oi
+                c._effective_definition.is_defense_reaction and c.owner_index == _oi
             ),
         )
         ctx.effect_engine.add_continuous_effect(ctx.state, effect)
