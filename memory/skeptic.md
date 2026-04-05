@@ -637,6 +637,52 @@ Persistent learnings across sessions. Update this after each review.
 - No wrong-behavior assertions detected
 - No engine code changes to review
 
+### feat/implement-missing-abilities — Fire Tenet + Loyalty Beyond + Take the Tempo (2026-04-04)
+- **Round 1 verdict: REQUEST CHANGES** — 1 critical issue, 3 minor issues.
+
+#### Critical Issues
+
+1. **Take the Tempo: wrong banish playability expiry** (ninja.py line 1279):
+   Card text: "you may play it until the **end of your next turn**."
+   Code uses `EXPIRY_START_OF_NEXT_TURN` which expires at the START of the controller's next turn.
+   This means the banished card is unplayable during the controller's entire next turn — the main window the card is supposed to be playable.
+   No `EXPIRY_END_OF_NEXT_TURN` constant exists yet. Needs new expiry type + corresponding cleanup in `_run_end_phase` that tracks the granting turn.
+   File: `src/htc/cards/abilities/ninja.py` line 1279.
+
+#### Minor Issues (non-blocking)
+
+1. **Loyalty Beyond the Grave: no production wiring** (ninja.py line 1207):
+   `_register_loyalty_beyond_trigger()` is defined but never called from any game engine code (game.py, abilities.py, etc.). It is only called from test code. The trigger will never fire in an actual game. This is a wiring gap, not a logic bug — the trigger implementation itself is correct. Needs to be registered during game setup (e.g., in `_register_equipment_triggers` or a new `_register_graveyard_triggers` method) for any player whose decklist contains Loyalty Beyond the Grave.
+
+2. **Loyalty Beyond the Grave: manual banish bypasses event system** (ninja.py lines 1185-1190):
+   Direct `player.graveyard.remove()` + `player.banished.append()` without emitting BANISH events. The engine has `ctx.banish_card()` (AbilityContext line 85-104) which properly emits BANISH events. Should use that pattern. Same issue in Take the Tempo (lines 1270-1274). No current triggers on BANISH, so no wrong outcomes, but inconsistent with established pattern.
+
+3. **Loyalty Beyond the Grave: fallback draw bypasses event system** (ninja.py lines 1196-1202):
+   When `_draw_fn` is None, the trigger does a manual draw without emitting DRAW_CARD events. This means triggers listening for DRAW_CARD (e.g., `_process_pending_triggers` after DRAW_CARD) won't fire. In practice, `_draw_fn` should always be provided in production wiring, so this is a safety concern only.
+
+#### Correct
+
+- **Fire Tenet: Strike First**: `make_once_filter` correctly limits bonus to ONE Draconic attack. Checks supertypes via `effect_engine.get_modified_supertypes()` — catches Fealty-granted Draconic. `EffectDuration.END_OF_COMBAT` correct. Source excluded via `instance_id != source_id`. Test covers Fealty interaction. Registered correctly in ability registry as `on_attack`. 5 tests.
+
+- **Loyalty Beyond the Grave condition logic**: `count >= 2` correct for requiring 2 copies. `event.target_player != self.controller_index` correctly limits to controller's turn. `one_shot: bool = False` correct (persists all game, fires each turn if copies available). Banished face-up (correct for self-banish). `_state_getter` callable pattern used (consistent with other triggers). Decision presentation (CHOOSE_MODE, yes/no) correct for "you may" text. 5 tests.
+
+- **Take the Tempo hit counting**: `sum(1 for link in chain.chain_links if link.hit and link.active_attack is not None and link.active_attack.owner_index == controller)` correctly counts all chain link hits including dagger hits (link.hit set by Flick Knives). Owner check ensures opponent's hits don't count. `definition.is_attack_action` on a freshly-banished deck card is acceptable — no copy effects or continuous effects apply to deck cards. `redirect_to_banish=False` correct (card goes to graveyard after being played). 5 tests including dagger hit scenario.
+
+- **All 3 registered correctly**: Fire Tenet as `on_attack`, Take the Tempo as `on_hit`. Loyalty Beyond is a TriggeredEffect (event bus trigger), not an ability registry entry — correct pattern for graveyard-based triggers.
+
+- **No new `definition.X` bypasses in handlers**: Fire Tenet uses `effect_engine.get_modified_supertypes()`. Take the Tempo uses `definition.is_attack_action` on a deck card (acceptable — no effects in deck zone). Loyalty Beyond checks card name (string match, no definition bypass needed).
+
+#### Missing Tests
+
+- ~~No test verifying Take the Tempo's banished card is playable during the controller's NEXT turn~~ — FIXED (round 2). 4 new tests cover expiry type, playable-during-next-turn, expires-at-end-of-next-turn, and BANISH event emission.
+- No test for Loyalty Beyond the Grave when exactly 3 copies are in graveyard (should banish 2, leave 1).
+
+- **Round 2 verdict: APPROVE** — All 4 fixes verified correct. 1025 tests passing.
+  - **Critical fix (Take the Tempo expiry)**: New `EXPIRY_END_OF_NEXT_TURN` constant in player_state.py. New `_expire_playable_from_banish_end_of_next_turn()` in game.py, called in `_run_end_phase` for the turn player. Take the Tempo uses the new expiry. 4 new tests verify: correct expiry constant, survives start-of-turn expiry, expires at end-of-next-turn, emits BANISH event.
+  - **Minor fix 1 (Loyalty Beyond production wiring)**: `_register_graveyard_triggers()` in game.py scans all player zones for the card, registers trigger with proper `event_bus`, `state`, `ask`, and `draw_fn` (delegates to `_draw_cards`). Called in `_setup_game()` after equipment triggers.
+  - **Minor fix 2 (BANISH events)**: Take the Tempo now uses `ctx.banish_card()`. Loyalty Beyond emits BANISH event via `_event_bus.emit()` (no AbilityContext available in TriggeredEffect -- acceptable).
+  - **Minor fix 3 (Loyalty Beyond draw_fn)**: Production wiring provides `_draw_cards` via lambda. Fallback path also emits DRAW_CARD event via `_event_bus`. Double safety net.
+
 ## Talishar Discrepancies
 
 *(None found yet)*

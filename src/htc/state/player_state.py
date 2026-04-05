@@ -10,6 +10,7 @@ from htc.state.turn_counters import TurnCounters
 # Expiry constants for banish playability
 EXPIRY_END_OF_TURN = "end_of_turn"
 EXPIRY_START_OF_NEXT_TURN = "start_of_next_turn"
+EXPIRY_END_OF_NEXT_TURN = "end_of_next_turn"
 
 
 class BanishPlayability(NamedTuple):
@@ -19,7 +20,7 @@ class BanishPlayability(NamedTuple):
     """
 
     instance_id: int
-    expiry: str  # EXPIRY_END_OF_TURN or EXPIRY_START_OF_NEXT_TURN
+    expiry: str  # EXPIRY_END_OF_TURN, EXPIRY_START_OF_NEXT_TURN, or EXPIRY_END_OF_NEXT_TURN
     redirect_to_banish: bool
 
 

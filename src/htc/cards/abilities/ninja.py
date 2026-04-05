@@ -21,6 +21,7 @@ from htc.cards.abilities._helpers import (
     grant_keyword,
     grant_power_bonus,
     make_instance_id_filter,
+    make_once_filter,
     move_card,
     require_active_attack,
     require_chain_link,
@@ -45,7 +46,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.player_state import BanishPlayability, EXPIRY_END_OF_TURN
+from htc.state.player_state import BanishPlayability, EXPIRY_END_OF_TURN, EXPIRY_END_OF_NEXT_TURN, EXPIRY_START_OF_NEXT_TURN
 
 log = logging.getLogger(__name__)
 
@@ -1059,6 +1060,251 @@ def _enflame_the_firebrand_on_attack(ctx: AbilityContext) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Fire Tenet: Strike First (Ninja Attack Action)
+# ---------------------------------------------------------------------------
+# "When this attacks, your next Draconic attack this combat chain gets +1{p}."
+#
+# The card itself is Ninja (NOT Draconic). It grants +1 power to the NEXT
+# Draconic attack on the combat chain, using make_once_filter so it only
+# applies once.
+# ---------------------------------------------------------------------------
+
+
+@require_active_attack
+def _fire_tenet_strike_first_on_attack(ctx: AbilityContext) -> None:
+    """Fire Tenet: Strike First (Ninja, Attack Action):
+
+    'When this attacks, your next Draconic attack this combat chain gets +1{p}.'
+
+    Uses make_once_filter to ensure the bonus only applies to one subsequent
+    Draconic attack. Checks supertypes via effect engine to catch Fealty-granted
+    Draconic.
+    """
+    controller = ctx.controller_index
+    source_id = ctx.source_card.instance_id
+    state = ctx.state
+    effect_engine = ctx.effect_engine
+
+    target_filter = make_once_filter(lambda card: (
+        card.zone == Zone.COMBAT_CHAIN
+        and card.owner_index == controller
+        and card.instance_id != source_id  # not the Fire Tenet itself
+        and SuperType.DRACONIC in effect_engine.get_modified_supertypes(state, card)
+    ))
+
+    effect = make_power_modifier(
+        1,
+        controller,
+        source_instance_id=source_id,
+        duration=EffectDuration.END_OF_COMBAT,
+        target_filter=target_filter,
+    )
+    ctx.effect_engine.add_continuous_effect(ctx.state, effect)
+    log.info(
+        "  Fire Tenet: Strike First: next Draconic attack this combat chain gets +1 power"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Loyalty Beyond the Grave (Draconic Defense Reaction)
+# ---------------------------------------------------------------------------
+# "While this is in your graveyard, at the start of your turn, you may
+#  banish 2 cards named Loyalty Beyond the Grave from your graveyard.
+#  If you do, draw a card."
+#
+# This is a graveyard trigger registered once per player who has this card.
+# It fires every START_OF_TURN if 2+ copies are in the graveyard.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _LoyaltyBeyondTheGraveTrigger(TriggeredEffect):
+    """START_OF_TURN trigger: banish 2 Loyalty Beyond the Grave to draw 1."""
+
+    controller_index: int = 0
+    _state_getter: object = None
+    _ask: object = None
+    _draw_fn: object = None
+    _event_bus: object = None
+    one_shot: bool = False  # persists all game
+
+    def condition(self, event: GameEvent) -> bool:
+        if event.event_type != EventType.START_OF_TURN:
+            return False
+        # Only fire on the controller's turn
+        if event.target_player != self.controller_index:
+            return False
+        state = self._get_state()
+        if state is None:
+            return False
+        player = state.players[self.controller_index]
+        # Need 2+ copies in graveyard
+        count = sum(1 for c in player.graveyard if c.name == "Loyalty Beyond the Grave")
+        return count >= 2
+
+    def _get_state(self):
+        if self._state_getter and callable(self._state_getter):
+            return self._state_getter()
+        return None
+
+    def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
+        state = self._get_state()
+        if state is None:
+            return None
+        player = state.players[self.controller_index]
+
+        # Ask player if they want to banish 2 to draw
+        if self._ask:
+            options = [
+                ActionOption(
+                    action_id="yes",
+                    description="Banish 2 Loyalty Beyond the Grave to draw a card",
+                    action_type=ActionType.ACTIVATE_ABILITY,
+                ),
+                ActionOption(
+                    action_id="no",
+                    description="Decline",
+                    action_type=ActionType.PASS,
+                ),
+            ]
+            decision = Decision(
+                player_index=self.controller_index,
+                decision_type=DecisionType.CHOOSE_MODE,
+                prompt="Loyalty Beyond the Grave: Banish 2 copies to draw a card?",
+                options=options,
+            )
+            response = self._ask(decision)
+            if response.first != "yes":
+                log.info("  Loyalty Beyond the Grave: player declined")
+                return None
+
+        # Find and banish 2 copies
+        copies = [c for c in player.graveyard if c.name == "Loyalty Beyond the Grave"]
+        if len(copies) < 2:
+            return None
+
+        for copy in copies[:2]:
+            player.graveyard.remove(copy)
+            copy.zone = Zone.BANISHED
+            copy.face_up = True
+            player.banished.append(copy)
+            if self._event_bus:
+                self._event_bus.emit(GameEvent(
+                    event_type=EventType.BANISH,
+                    source=None,
+                    target_player=self.controller_index,
+                    card=copy,
+                    data={"face_down": False},
+                ))
+            log.info(f"  Loyalty Beyond the Grave: banished {copy.name} (id={copy.instance_id})")
+
+        # Draw a card
+        if self._draw_fn:
+            self._draw_fn(self.controller_index)
+        elif self._event_bus:
+            # Emit DRAW_CARD event so the engine handles the draw properly
+            self._event_bus.emit(GameEvent(
+                event_type=EventType.DRAW_CARD,
+                target_player=self.controller_index,
+            ))
+        else:
+            # Fallback: manual draw (test-only path)
+            if player.deck:
+                card = player.deck.pop(0)
+                card.zone = Zone.HAND
+                player.hand.append(card)
+                player.turn_counters.num_cards_drawn += 1
+                log.info(f"  Loyalty Beyond the Grave: drew {card.name}")
+
+        return None
+
+
+def _register_loyalty_beyond_trigger(
+    event_bus, state, controller_index: int, *, ask=None, draw_fn=None,
+) -> _LoyaltyBeyondTheGraveTrigger:
+    """Register the Loyalty Beyond the Grave graveyard trigger for a player.
+
+    Returns the trigger so tests can inspect it.
+    """
+    trigger = _LoyaltyBeyondTheGraveTrigger(
+        controller_index=controller_index,
+        _state_getter=lambda _s=state: _s,
+        _ask=ask,
+        _draw_fn=draw_fn,
+        _event_bus=event_bus,
+    )
+    event_bus.register_trigger(trigger)
+    log.info(
+        f"  Loyalty Beyond the Grave: registered start-of-turn trigger for P{controller_index}"
+    )
+    return trigger
+
+
+# ---------------------------------------------------------------------------
+# Take the Tempo (Ninja Attack Action)
+# ---------------------------------------------------------------------------
+# "When Take the Tempo hits, if you've hit 3 or more times this combat
+#  chain, banish the top card of your deck. If it's an attack action card,
+#  you may play it until the end of your next turn."
+#
+# Hits include dagger hits (Flick Knives) which set link.hit = True.
+# ---------------------------------------------------------------------------
+
+
+@require_active_attack
+def _take_the_tempo_on_hit(ctx: AbilityContext) -> None:
+    """Take the Tempo (Ninja, Attack Action):
+
+    'When Take the Tempo hits, if you've hit 3 or more times this combat
+     chain, banish the top card of your deck. If it's an attack action card,
+     you may play it until the end of your next turn.'
+
+    Counts link.hit on all chain links (including dagger hits from Flick Knives).
+    """
+    chain = ctx.state.combat_chain
+    controller = ctx.controller_index
+    player = ctx.state.players[controller]
+
+    # Count hits this combat chain (links where hit == True)
+    hit_count = sum(
+        1 for link in chain.chain_links
+        if link.hit and link.active_attack is not None
+        and link.active_attack.owner_index == controller
+    )
+
+    if hit_count < 3:
+        log.info(
+            f"  Take the Tempo: only {hit_count} hit(s) this combat chain, need 3+"
+        )
+        return
+
+    # Banish the top card of the deck face-up
+    if not player.deck:
+        log.info("  Take the Tempo: deck is empty, nothing to banish")
+        return
+
+    top_card = player.deck[0]  # let banish_card handle removal
+    ctx.banish_card(top_card, controller)
+    top_card.face_up = True
+    log.info(f"  Take the Tempo: banished {top_card.name} (face-up)")
+
+    # If it's an attack action card, mark as playable until end of next turn
+    if top_card.definition.is_attack_action:
+        player.playable_from_banish.append(
+            BanishPlayability(top_card.instance_id, EXPIRY_END_OF_NEXT_TURN, False)
+        )
+        log.info(
+            f"  Take the Tempo: {top_card.name} is an attack action, "
+            "playable from banish until end of next turn"
+        )
+    else:
+        log.info(
+            f"  Take the Tempo: {top_card.name} is not an attack action, "
+            "stays banished"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -1114,11 +1360,17 @@ def register_ninja_abilities(registry: AbilityRegistry) -> None:
         "on_attack", "Command and Conquer", _command_and_conquer_on_attack
     )
 
+    # Fire Tenet: Strike First — on_attack
+    registry.register(
+        "on_attack", "Fire Tenet: Strike First", _fire_tenet_strike_first_on_attack
+    )
+
     # Attack actions — on_hit
     registry.register("on_hit", "Breaking Point", _breaking_point_on_hit)
     registry.register("on_hit", "Command and Conquer", _command_and_conquer_on_hit)
     registry.register("on_hit", "Devotion Never Dies", _devotion_never_dies_on_hit)
     registry.register("on_hit", "Rising Resentment", _rising_resentment_on_hit)
+    registry.register("on_hit", "Take the Tempo", _take_the_tempo_on_hit)
 
 
 def _make_blood_runs_deep_cost_modifier(effect_engine):
