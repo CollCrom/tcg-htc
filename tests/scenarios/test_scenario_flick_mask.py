@@ -287,10 +287,11 @@ class TestFlickKnivesMaskOfMomentumInteraction:
             "DRAW_CARD should target the Mask controller (player 0)"
         )
 
-    def test_mask_does_not_trigger_before_3_consecutive_hits(self):
+    def test_mask_does_not_trigger_before_3_consecutive_hits(self, scenario_recorder):
         """Mask of Momentum should NOT trigger on link 2 even if all links hit."""
         game, mask, flick, vest, dagger1, dagger2 = _setup_flick_mask_test()
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         for i in range(5):
             c = make_card(instance_id=200 + i, zone=Zone.DECK, owner_index=0)
@@ -307,6 +308,8 @@ class TestFlickKnivesMaskOfMomentumInteraction:
         atk2 = make_ninja_attack(instance_id=11, name="Strike 2", owner_index=0)
         link2 = game.combat_mgr.add_chain_link(state, atk2, 1)
 
+        recorder.snap("Setup: 2 chain links, link 1 hit")
+
         game.events.get_pending_triggers()  # clear
 
         # Emit HIT for link 2 — only 2 links, should NOT trigger Mask
@@ -320,14 +323,18 @@ class TestFlickKnivesMaskOfMomentumInteraction:
 
         pending = game.events.get_pending_triggers()
         draw_events = [e for e in pending if e.event_type == EventType.DRAW_CARD]
+
+        recorder.snap("After link 2 HIT — Mask should NOT trigger (only 2 links)")
+
         assert len(draw_events) == 0, (
             "Mask of Momentum should not trigger with only 2 chain links"
         )
 
-    def test_mask_does_not_trigger_if_prior_link_missed(self):
+    def test_mask_does_not_trigger_if_prior_link_missed(self, scenario_recorder):
         """Mask of Momentum requires ALL prior links to be hits."""
         game, mask, flick, vest, dagger1, dagger2 = _setup_flick_mask_test()
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         for i in range(5):
             c = make_card(instance_id=200 + i, zone=Zone.DECK, owner_index=0)
@@ -348,6 +355,8 @@ class TestFlickKnivesMaskOfMomentumInteraction:
         atk3 = make_ninja_attack(instance_id=12, name="Strike 3", owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, atk3, 1)
 
+        recorder.snap("Setup: 3 chain links — link 1 missed, link 2 hit")
+
         game.events.get_pending_triggers()  # clear
 
         game.events.emit(GameEvent(
@@ -360,6 +369,9 @@ class TestFlickKnivesMaskOfMomentumInteraction:
 
         pending = game.events.get_pending_triggers()
         draw_events = [e for e in pending if e.event_type == EventType.DRAW_CARD]
+
+        recorder.snap("After link 3 HIT — Mask should NOT trigger (link 1 missed)")
+
         assert len(draw_events) == 0, (
             "Mask of Momentum should not trigger if any prior link missed"
         )
@@ -368,16 +380,19 @@ class TestFlickKnivesMaskOfMomentumInteraction:
 class TestFlickKnivesBloodSplatteredVest:
     """Flick Knives dagger hit triggers Blood Splattered Vest."""
 
-    def test_flick_dagger_hit_adds_stain_counter_and_resource(self):
+    def test_flick_dagger_hit_adds_stain_counter_and_resource(self, scenario_recorder):
         """When Flick Knives deals damage (dagger hit), BSV should gain stain + resource.
 
         We simulate the dagger HIT event directly to verify BSV's trigger fires.
         """
         game, mask, flick, vest, dagger1, dagger2 = _setup_flick_mask_test()
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         initial_resources = state.resource_points.get(0, 0)
         initial_stains = vest.counters.get("stain", 0)
+
+        recorder.snap("Setup: BSV with 0 stains, 0 resources")
 
         # Open chain and add a link so there's a valid combat context
         game.combat_mgr.open_chain(state)
@@ -392,6 +407,8 @@ class TestFlickKnivesBloodSplatteredVest:
             amount=1,
             data={"chain_link": link},
         ))
+
+        recorder.snap("After dagger HIT — BSV should gain stain + resource")
 
         # BSV should have gained 1 stain counter
         assert vest.counters.get("stain", 0) == initial_stains + 1, (
@@ -438,12 +455,15 @@ class TestFlickKnivesBloodSplatteredVest:
             "Blood Splattered Vest should be in graveyard after destruction"
         )
 
-    def test_bsv_does_not_trigger_on_non_dagger_hit(self):
+    def test_bsv_does_not_trigger_on_non_dagger_hit(self, scenario_recorder):
         """Blood Splattered Vest should NOT trigger on non-dagger weapon hits."""
         game, mask, flick, vest, dagger1, dagger2 = _setup_flick_mask_test()
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         initial_stains = vest.counters.get("stain", 0)
+
+        recorder.snap("Setup: BSV with 0 stains")
 
         game.combat_mgr.open_chain(state)
         atk = make_ninja_attack(instance_id=10, owner_index=0)
@@ -457,6 +477,8 @@ class TestFlickKnivesBloodSplatteredVest:
             amount=4,
             data={"chain_link": link},
         ))
+
+        recorder.snap("After non-dagger HIT — BSV should NOT trigger")
 
         assert vest.counters.get("stain", 0) == initial_stains, (
             "Blood Splattered Vest should not trigger on non-dagger hit"

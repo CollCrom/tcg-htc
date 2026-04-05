@@ -198,10 +198,13 @@ def _setup_agent_test(*, attacker_marked: bool = False, num_agents: int = 3):
 class TestAgentOfChaosTransformation:
     """Mask of Deceit triggers Agent of Chaos transformation on defend."""
 
-    def test_unmarked_gives_random_agent(self):
+    def test_unmarked_gives_random_agent(self, scenario_recorder):
         """When attacker is NOT marked, a random Agent of Chaos is chosen."""
         game, mask, demi_heroes, link = _setup_agent_test(attacker_marked=False)
         state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        recorder.snap("Setup: Arakni with Mask of Deceit, attacker unmarked")
 
         # Emit DEFEND_DECLARED from the Mask
         game.events.emit(GameEvent(
@@ -210,6 +213,8 @@ class TestAgentOfChaosTransformation:
             target_player=0,
             data={"chain_link": link},
         ))
+
+        recorder.snap("After DEFEND_DECLARED — random Agent of Chaos chosen")
 
         # Hero should have changed to one of the demi-heroes
         assert state.players[0].hero in demi_heroes, (
@@ -220,13 +225,16 @@ class TestAgentOfChaosTransformation:
             "Original hero should be preserved during transformation"
         )
 
-    def test_marked_gives_player_choice(self):
+    def test_marked_gives_player_choice(self, scenario_recorder):
         """When attacker IS marked, player chooses which Agent of Chaos.
 
         We mock the ask callback to always choose the second demi-hero.
         """
         game, mask, demi_heroes, link = _setup_agent_test(attacker_marked=True)
         state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        recorder.snap("Setup: Arakni with Mask of Deceit, attacker IS marked")
 
         # Mock the game's _ask to choose the second demi-hero
         target_agent = demi_heroes[1]  # "Arakni, Trap-Door"
@@ -248,17 +256,22 @@ class TestAgentOfChaosTransformation:
             data={"chain_link": link},
         ))
 
+        recorder.snap("After DEFEND_DECLARED — player chose Arakni, Trap-Door")
+
         assert state.players[0].hero == target_agent, (
             f"Player should have become {target_agent.name} (chosen), "
             f"but is {state.players[0].hero.name}"
         )
 
-    def test_transformation_preserves_life_total(self):
+    def test_transformation_preserves_life_total(self, scenario_recorder):
         """Life total should not change during Agent of Chaos transformation."""
         game, mask, demi_heroes, link = _setup_agent_test(attacker_marked=False)
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         life_before = state.players[0].life_total
+
+        recorder.snap("Setup: Arakni at 20 life, pre-transformation")
 
         game.events.emit(GameEvent(
             event_type=EventType.DEFEND_DECLARED,
@@ -266,6 +279,8 @@ class TestAgentOfChaosTransformation:
             target_player=0,
             data={"chain_link": link},
         ))
+
+        recorder.snap("After transformation — life total should be unchanged")
 
         assert state.players[0].life_total == life_before, (
             "Life total should be preserved during transformation"
@@ -280,10 +295,11 @@ class TestAgentOfChaosTransformation:
 class TestReturnToBrood:
     """Agent of Chaos return-to-brood timing."""
 
-    def test_agent_persists_through_opponents_end_phase(self):
+    def test_agent_persists_through_opponents_end_phase(self, scenario_recorder):
         """Agent should NOT revert during opponent's end of turn."""
         game, mask, demi_heroes, link = _setup_agent_test(attacker_marked=False)
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         # Transform
         game.events.emit(GameEvent(
@@ -296,11 +312,15 @@ class TestReturnToBrood:
         agent_hero = state.players[0].hero
         assert agent_hero in demi_heroes
 
+        recorder.snap("After transformation — Agent of Chaos active")
+
         # Opponent's end of turn (player 1) — agent should persist
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=1,
         ))
+
+        recorder.snap("After opponent's END_OF_TURN — Agent should persist")
 
         assert state.players[0].hero == agent_hero, (
             "Agent should persist through opponent's end of turn"
@@ -309,10 +329,11 @@ class TestReturnToBrood:
             "Original hero should still be saved"
         )
 
-    def test_return_to_brood_at_controllers_end_phase(self):
+    def test_return_to_brood_at_controllers_end_phase(self, scenario_recorder):
         """Agent should revert to original hero at controller's end of turn."""
         game, mask, demi_heroes, link = _setup_agent_test(attacker_marked=False)
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         original_hero = state.players[0].hero
 
@@ -326,11 +347,15 @@ class TestReturnToBrood:
 
         assert state.players[0].hero != original_hero
 
+        recorder.snap("After transformation — Agent active, original hero saved")
+
         # Controller's end of turn (player 0) — should revert
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
+
+        recorder.snap("After controller's END_OF_TURN — returned to brood")
 
         assert state.players[0].hero == original_hero, (
             "Hero should revert to original at controller's end of turn"
@@ -339,10 +364,11 @@ class TestReturnToBrood:
             "original_hero should be cleared after returning to brood"
         )
 
-    def test_returned_to_brood_flag_set(self):
+    def test_returned_to_brood_flag_set(self, scenario_recorder):
         """returned_to_brood_this_turn flag should be set after reverting."""
         game, mask, demi_heroes, link = _setup_agent_test(attacker_marked=False)
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         assert not state.players[0].turn_counters.returned_to_brood_this_turn
 
@@ -354,17 +380,21 @@ class TestReturnToBrood:
             data={"chain_link": link},
         ))
 
+        recorder.snap("After transformation — returned_to_brood flag is False")
+
         # Controller's end of turn — revert
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
 
+        recorder.snap("After return to brood — flag should be True")
+
         assert state.players[0].turn_counters.returned_to_brood_this_turn, (
             "returned_to_brood_this_turn should be True after reverting"
         )
 
-    def test_no_retransform_after_return_to_brood(self):
+    def test_no_retransform_after_return_to_brood(self, scenario_recorder):
         """After returning to brood, the agent should NOT re-transform in the same end phase.
 
         This tests the lifecycle: transform → opponent turn → controller end phase
@@ -373,6 +403,7 @@ class TestReturnToBrood:
         """
         game, mask, demi_heroes, link = _setup_agent_test(attacker_marked=False)
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         original_hero = state.players[0].hero
 
@@ -384,6 +415,8 @@ class TestReturnToBrood:
             data={"chain_link": link},
         ))
 
+        recorder.snap("After transformation — Agent active")
+
         # Controller's end of turn — revert
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
@@ -392,26 +425,33 @@ class TestReturnToBrood:
 
         assert state.players[0].hero == original_hero
 
+        recorder.snap("After first END_OF_TURN — returned to brood")
+
         # A second END_OF_TURN for the same player — should NOT re-transform
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
 
+        recorder.snap("After second END_OF_TURN — should NOT re-transform")
+
         assert state.players[0].hero == original_hero, (
             "Hero should remain as original after return-to-brood — no re-transform"
         )
 
-    def test_no_demi_heroes_means_no_transformation(self):
+    def test_no_demi_heroes_means_no_transformation(self, scenario_recorder):
         """If no demi-heroes are available, Mask of Deceit should not transform."""
         game, mask, demi_heroes, link = _setup_agent_test(
             attacker_marked=False, num_agents=0,
         )
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         # Clear demi-heroes
         state.players[0].demi_heroes = []
         original_hero = state.players[0].hero
+
+        recorder.snap("Setup: Arakni with Mask of Deceit, no demi-heroes available")
 
         game.events.emit(GameEvent(
             event_type=EventType.DEFEND_DECLARED,
@@ -419,6 +459,8 @@ class TestReturnToBrood:
             target_player=0,
             data={"chain_link": link},
         ))
+
+        recorder.snap("After DEFEND_DECLARED — no transformation (no demi-heroes)")
 
         assert state.players[0].hero == original_hero, (
             "Without demi-heroes, Mask of Deceit should not transform"
