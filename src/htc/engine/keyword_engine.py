@@ -404,6 +404,12 @@ class KeywordEngine:
             if card:
                 player.graveyard.remove(card)
                 card.zone = Zone.HAND
+                # Rule 3.0.9: card entering non-arena zone resets as new object.
+                # Reset activation state so weapon can activate again.
+                # Note: counters should also reset per 3.0.9, but no current
+                # Retrieve targets have counters — add counter reset when needed.
+                card.activated_this_turn = False
+                card.is_tapped = False
                 player.hand.append(card)
                 pn = state.players[player_index].hero.definition.name.split(",")[0] if state.players[player_index].hero else f"Player {player_index}"
                 log.info(f"  Retrieve: {pn} returns {card.name} to hand")

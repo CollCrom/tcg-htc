@@ -589,6 +589,15 @@ Persistent learnings across sessions. Update this after each review.
 - 7 new tests in `test_scenario_flick_interactions.py`. Rewritten `test_scenario_flick_mask.py` (engine-driven).
 - 967 tests all passing.
 
+### fix/dagger-rebuy-activation — Dagger Rebuy State Reset (2026-04-04)
+- **Round 1 verdict: APPROVE** — No critical issues. 1 minor note.
+- **Rule basis**: Rule 3.0.9 states "If an object enters a zone that is not in the arena and not the stack, it resets -- previous existence ceases and it becomes a new object." Hand is not in the arena (per 3.0.5b), so a card retrieved from graveyard to hand is a new game object. Resetting `activated_this_turn` and `is_tapped` is correct.
+- **Correct**: `activated_this_turn = False` and `is_tapped = False` reset after Retrieve moves card to hand. Both are per-turn/per-activation flags that should reset on zone change to a non-arena zone.
+- **Minor (non-blocking)**: `counters` dict is NOT reset. Per 3.0.9, the card should be a completely new object, meaning counters (defense counters from Battleworn/Temper, stain counters on Blood Splattered Vest, energy counters on Fyendal's Spring Tunic) should also reset. In practice, weapons that get Retrieved are daggers which don't accumulate counters, so this is not a current gameplay issue. If equipment with counters ever becomes retrievable, this would need addressing. The comment should note this is a partial reset, not a full 3.0.9 reset.
+- **Minor (non-blocking)**: Comment says "retrieved weapon" but 3.0.9 applies to any card entering a non-arena/non-stack zone, not just weapons. Retrieve currently only targets weapons with Retrieve keyword, so this is accurate in practice.
+- **Tests**: 2 new tests covering retrieve-then-check and full retrieve-reequip-attack flow. Both pass. Good coverage for the fix.
+- 2 tests passing (ran in isolation).
+
 ## Talishar Discrepancies
 
 *(None found yet)*

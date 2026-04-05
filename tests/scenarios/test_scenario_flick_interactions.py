@@ -1,6 +1,6 @@
 """Scenario: Flick Knives interaction tests.
 
-Verifies three specific Flick Knives interactions:
+Verifies specific Flick Knives interactions:
 1. Mask of Momentum streak preserved through Flick dagger hit — the Flick
    dagger hitting on a chain link where the main attack was blocked should
    set link.hit = True, preserving the consecutive hit streak for Mask.
@@ -8,6 +8,9 @@ Verifies three specific Flick Knives interactions:
    on_hit ability should fire because Flick says "the dagger has hit."
 3. Graphene Chelicera Flick does NOT trigger on-hit — the token weapon
    has no registered on_hit ability, so no special effect should fire.
+4. Dagger re-buy resets activation — a dagger that attacked, went to
+   graveyard, and was retrieved should be able to attack again since
+   it's treated as a new game object per FaB rules.
 
 These use manual state setup via make_game_shell() for precise control
 over equipment, combat chain, and event tracking.
@@ -647,4 +650,108 @@ class TestFlickKnivesGrapheneChelicera:
         )
         assert chelicera not in state.players[0].weapons, (
             "Graphene Chelicera should be destroyed after Flick"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 4. Dagger re-buy resets activation (Retrieve from graveyard)
+# ---------------------------------------------------------------------------
+
+
+class TestDaggerRebuyActivation:
+    """Verify that a dagger retrieved from graveyard can attack again.
+
+    In FaB, a weapon that leaves play and re-enters is a new game object.
+    The once-per-turn activation flag should reset when retrieved.
+    """
+
+    def test_retrieved_dagger_can_activate_again(self, scenario_recorder):
+        """Kunai attacks → chain closes → graveyard → Retrieve → can attack again."""
+        game = make_game_shell()
+        state = game.state
+
+        # Set up players
+        p0 = state.players[0]
+        p0.hero = _make_hero(owner_index=0)
+        state.players[1].hero = _make_hero(name="Arakni, Marionette", instance_id=901, owner_index=1)
+
+        # Give P0 a Kunai dagger weapon
+        kunai = make_dagger_weapon(name="Kunai of Retribution", instance_id=200, owner_index=0)
+        p0.weapons.append(kunai)
+
+        scenario_recorder.bind(game)
+
+        # Simulate: Kunai attacks (once-per-turn used)
+        kunai.activated_this_turn = True
+        kunai.zone = Zone.COMBAT_CHAIN
+
+        # Verify it can't activate again
+        from htc.engine.action_builder import ActionBuilder
+        assert not ActionBuilder._can_activate_weapon(state, 0, kunai), (
+            "Kunai should NOT be activatable after attacking this turn"
+        )
+
+        # Chain closes — kunai goes to graveyard
+        kunai.zone = Zone.GRAVEYARD
+        p0.weapons.remove(kunai)
+        p0.graveyard.append(kunai)
+
+        # Wire up player interfaces — ScriptedPlayer picks first option (the dagger)
+        from htc.player.scripted_player import ScriptedPlayer
+        game.interfaces = {0: ScriptedPlayer(["*first"]), 1: ScriptedPlayer([])}
+
+        # Retrieve: get it back from graveyard to hand
+        game.keyword_engine.perform_retrieve(state, 0)
+
+        # After retrieve, the dagger should be in hand with reset flags
+        assert kunai in p0.hand, "Kunai should be in hand after Retrieve"
+        assert kunai.zone == Zone.HAND, "Kunai zone should be HAND"
+        assert not kunai.activated_this_turn, (
+            "activated_this_turn should reset after Retrieve — "
+            "dagger is a new game object"
+        )
+        assert not kunai.is_tapped, (
+            "is_tapped should reset after Retrieve"
+        )
+
+    def test_retrieved_dagger_reequipped_can_attack(self, scenario_recorder):
+        """Full flow: attack → graveyard → Retrieve → re-equip → attack again."""
+        game = make_game_shell()
+        state = game.state
+
+        p0 = state.players[0]
+        p0.hero = _make_hero(owner_index=0)
+        state.players[1].hero = _make_hero(name="Arakni, Marionette", instance_id=901, owner_index=1)
+
+        kunai = make_dagger_weapon(name="Kunai of Retribution", instance_id=200, owner_index=0)
+        p0.weapons.append(kunai)
+
+        scenario_recorder.bind(game)
+
+        # Mark as activated (simulating an attack)
+        kunai.activated_this_turn = True
+
+        # Move to graveyard (chain close)
+        p0.weapons.remove(kunai)
+        kunai.zone = Zone.GRAVEYARD
+        p0.graveyard.append(kunai)
+
+        # Wire up player interfaces — ScriptedPlayer picks first option (the dagger)
+        from htc.player.scripted_player import ScriptedPlayer
+        game.interfaces = {0: ScriptedPlayer(["*first"]), 1: ScriptedPlayer([])}
+
+        # Retrieve from graveyard
+        game.keyword_engine.perform_retrieve(state, 0)
+
+        # Re-equip: move from hand to weapons
+        assert kunai in p0.hand
+        p0.hand.remove(kunai)
+        kunai.zone = Zone.WEAPON_1
+        p0.weapons.append(kunai)
+
+        # Should be able to activate again
+        state.action_points[0] = 1
+        from htc.engine.action_builder import ActionBuilder
+        assert ActionBuilder._can_activate_weapon(state, 0, kunai), (
+            "Re-equipped Kunai should be activatable — it's a new game object"
         )
