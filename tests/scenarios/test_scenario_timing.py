@@ -499,11 +499,13 @@ class TestTakeTheTempoHitCount:
             atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
             link = game.combat_mgr.add_chain_link(state, atk, 1)
             link.hit = True
+            link.hit_count = 1
 
         # CL3: Take the Tempo (also a hit)
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         # Put an attack action card on top of deck
         deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
@@ -540,10 +542,12 @@ class TestTakeTheTempoHitCount:
             atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
             link = game.combat_mgr.add_chain_link(state, atk, 1)
             link.hit = True
+            link.hit_count = 1
 
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         # Non-attack action on top
         deck_card = _make_non_attack_deck_card(instance_id=601, owner_index=0)
@@ -570,10 +574,12 @@ class TestTakeTheTempoHitCount:
         atk = make_ninja_attack(instance_id=10, power=3, owner_index=0)
         link1 = game.combat_mgr.add_chain_link(state, atk, 1)
         link1.hit = True
+        link1.hit_count = 1
 
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link2 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link2.hit = True
+        link2.hit_count = 1
 
         deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
         state.players[0].deck = [deck_card]
@@ -597,17 +603,19 @@ class TestTakeTheTempoHitCount:
 
         game.combat_mgr.open_chain(state)
 
-        # CL1, CL2: dagger hits (Flick Knives sets link.hit = True)
+        # CL1, CL2: dagger hits (Flick Knives sets link.hit = True + hit_count)
         for i in range(2):
             dagger = make_dagger_weapon(instance_id=10 + i, name="Kunai", owner_index=0)
             proxy = make_weapon_proxy(dagger, instance_id=100 + i, owner_index=0)
             link = game.combat_mgr.add_chain_link(state, proxy, 1)
-            link.hit = True  # Flick Knives sets this
+            link.hit = True
+            link.hit_count = 1
 
         # CL3: Take the Tempo hit
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
         state.players[0].deck = [deck_card]
@@ -617,6 +625,47 @@ class TestTakeTheTempoHitCount:
 
         assert deck_card in state.players[0].banished, (
             "Dagger hits should count toward Take the Tempo's 3-hit threshold"
+        )
+
+
+class TestTakeTheTempoFlickCombo:
+    """CL1 hits + Flick dagger hit on CL2 + Take the Tempo hits on CL2 = 3 hits."""
+
+    def test_cl1_hit_plus_flick_and_ttt_on_cl2_triggers(self, scenario_recorder):
+        """CL1 main attack hits, CL2 has Flick dagger hit + Take the Tempo hit.
+
+        Total hits: CL1 hit (1) + CL2 Flick dagger hit (2, link.hit set by Flick)
+        + Take the Tempo on CL2 hits (3, same link already marked hit).
+        Take the Tempo should trigger since 3+ hits.
+        """
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        # CL1: main attack hits (1 hit)
+        attack1 = make_ninja_attack(instance_id=300, owner_index=0, name="Strike")
+        link1 = game.combat_mgr.add_chain_link(state, attack1, 1)
+        link1.hit = True
+        link1.hit_count = 1
+
+        # CL2: Flick dagger hit (1 hit) + Take the Tempo main attack hit (1 hit)
+        # = 2 hits on this link
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link2 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link2.hit = True
+        link2.hit_count = 2  # Flick dagger hit + main attack hit
+
+        # Put an attack action on top of deck for Take the Tempo to banish
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link2)
+        _take_the_tempo_on_hit(ctx)
+
+        assert deck_card in state.players[0].banished, (
+            "CL1 hit + Flick hit on CL2 + TTT hit on CL2 = 3 hits, should trigger"
         )
 
 
@@ -646,10 +695,12 @@ class TestTakeTheTempoExpiry:
             atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
             link = game.combat_mgr.add_chain_link(state, atk, 1)
             link.hit = True
+            link.hit_count = 1
 
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
         state.players[0].deck = [deck_card]
@@ -682,10 +733,12 @@ class TestTakeTheTempoExpiry:
             atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
             link = game.combat_mgr.add_chain_link(state, atk, 1)
             link.hit = True
+            link.hit_count = 1
 
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
         state.players[0].deck = [deck_card]
@@ -715,10 +768,12 @@ class TestTakeTheTempoExpiry:
             atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
             link = game.combat_mgr.add_chain_link(state, atk, 1)
             link.hit = True
+            link.hit_count = 1
 
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
         state.players[0].deck = [deck_card]
@@ -752,10 +807,12 @@ class TestTakeTheTempoExpiry:
             atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
             link = game.combat_mgr.add_chain_link(state, atk, 1)
             link.hit = True
+            link.hit_count = 1
 
         tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
         state.players[0].deck = [deck_card]

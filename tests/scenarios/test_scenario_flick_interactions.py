@@ -336,6 +336,7 @@ class TestFlickKnivesMaskOfMomentumStreak:
         link1 = game.combat_mgr.add_chain_link(state, proxy1, 1)
         link1.attack_source = dagger1
         link1.hit = True
+        link1.hit_count = 1
 
         # CL2: Ninja attack action — blocked, but Flick fires
         atk2 = make_ninja_attack(instance_id=2, name="Leg Tap", power=4, owner_index=0)
@@ -350,6 +351,7 @@ class TestFlickKnivesMaskOfMomentumStreak:
         atk3 = make_ninja_attack(instance_id=3, name="Rising Knee Thrust", power=5, owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, atk3, 1)
         link3.hit = True
+        link3.hit_count = 1
 
         # Track draw events
         draw_events = []

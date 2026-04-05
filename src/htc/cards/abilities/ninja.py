@@ -1265,10 +1265,11 @@ def _take_the_tempo_on_hit(ctx: AbilityContext) -> None:
     controller = ctx.controller_index
     player = ctx.state.players[controller]
 
-    # Count hits this combat chain (links where hit == True)
+    # Count total hits this combat chain — includes Flick dagger hits
+    # which increment hit_count on the same link as the main attack
     hit_count = sum(
-        1 for link in chain.chain_links
-        if link.hit and link.active_attack is not None
+        link.hit_count for link in chain.chain_links
+        if link.active_attack is not None
         and link.active_attack.owner_index == controller
     )
 
