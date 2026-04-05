@@ -380,6 +380,7 @@ class TestBlackWidowKissOfDeathCombo:
         )
         link = game.combat_mgr.add_chain_link(state, atk, 0)
         link.hit = True
+        link.hit_count = 1
 
         ctx = make_ability_context(game, atk, controller_index=1, chain_link=link)
         # Set target_was_marked via extra_data (it's a read-only property)
@@ -429,6 +430,7 @@ class TestBlackWidowKissOfDeathCombo:
         )
         bw_link = game.combat_mgr.add_chain_link(state, bw_atk, 0)
         bw_link.hit = True
+        bw_link.hit_count = 1
 
         bw_ctx = make_ability_context(game, bw_atk, controller_index=1, chain_link=bw_link)
         bw_ctx.extra_data["target_was_marked"] = True
@@ -462,6 +464,7 @@ class TestBlackWidowKissOfDeathCombo:
         )
         link = game.combat_mgr.add_chain_link(state, kiss_atk, 0)
         link.hit = True
+        link.hit_count = 1
 
         initial_life = state.players[0].life_total
 

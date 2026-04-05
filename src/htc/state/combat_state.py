@@ -16,6 +16,7 @@ class ChainLink:
     defending_cards: list[CardInstance] = field(default_factory=list)
     damage_dealt: int = 0
     hit: bool = False
+    hit_count: int = 0  # total hit events on this link (main attack + Flick dagger)
     defense_reactions_blocked: bool = False
 
 

@@ -1693,6 +1693,7 @@ class Game:
             link.damage_dealt = actual_damage
             if actual_damage > 0:
                 link.hit = True
+                link.hit_count += 1
                 target = self.state.players[link.attack_target_index]
                 log.info(f"  Hit! {actual_damage} damage to {self._pname(target.index)} (life: {target.life_total})")
 
