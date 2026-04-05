@@ -404,8 +404,10 @@ class KeywordEngine:
             if card:
                 player.graveyard.remove(card)
                 card.zone = Zone.HAND
-                # Reset once-per-turn state — retrieved weapon is a new game
-                # object per FaB rules and can activate again this turn
+                # Rule 3.0.9: card entering non-arena zone resets as new object.
+                # Reset activation state so weapon can activate again.
+                # Note: counters should also reset per 3.0.9, but no current
+                # Retrieve targets have counters — add counter reset when needed.
                 card.activated_this_turn = False
                 card.is_tapped = False
                 player.hand.append(card)
