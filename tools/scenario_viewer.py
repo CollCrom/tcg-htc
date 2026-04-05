@@ -63,140 +63,19 @@ def _match_snapshots_to_test(test_nodeid: str, all_snapshots: dict[str, list[dic
 
 
 def _render_compact_board(snapshot: dict) -> str:
-    """Render a compact inline board state view for a single snapshot."""
-    parts = []
-    parts.append('<div class="board-snapshot">')
-    parts.append(f'<div class="snap-desc">{html.escape(snapshot.get("description", ""))}</div>')
+    """Render a rich board state view using client-side JS rendering.
 
-    info_parts = []
-    if snapshot.get("turn_number") is not None:
-        info_parts.append(f'Turn {snapshot["turn_number"] // 2}')
-    if snapshot.get("phase"):
-        info_parts.append(snapshot["phase"])
-    if snapshot.get("combat_step"):
-        info_parts.append(snapshot["combat_step"])
-    info_parts.append(f'AP:{snapshot.get("action_points", 0)}')
-    info_parts.append(f'RP:{snapshot.get("resource_points", 0)}')
-    if info_parts:
-        parts.append(f'<div class="snap-info">{" | ".join(info_parts)}</div>')
-
-    # Render both players side by side
-    parts.append('<div class="snap-players">')
-
-    for role, player_key in [("turn", "turn_player"), ("opp", "opponent")]:
-        player = snapshot.get(player_key, {})
-        if not player:
-            continue
-        parts.append(f'<div class="snap-player snap-{role}">')
-        name = html.escape(player.get("name", "?"))
-        life = player.get("life", "?")
-        marked = ' <span class="snap-marked">MARKED</span>' if player.get("is_marked") else ""
-        parts.append(f'<div class="snap-player-header">{name} ({life} HP){marked}</div>')
-
-        # Zones
-        zones = []
-
-        # Hand
-        hand = player.get("hand", [])
-        if hand:
-            cards = ", ".join(_compact_card(c) for c in hand)
-            zones.append(f'<span class="snap-zone">Hand: {cards}</span>')
-
-        # Arsenal
-        arsenal = player.get("arsenal", [])
-        if arsenal:
-            cards = ", ".join(_compact_card(c) for c in arsenal)
-            zones.append(f'<span class="snap-zone">Arsenal: {cards}</span>')
-
-        # Equipment
-        equipment = player.get("equipment", {})
-        if equipment:
-            eqs = ", ".join(
-                f'{html.escape(e["name"])}' + (f' [{e.get("slot", "")}]' if e.get("slot") else "")
-                for e in equipment.values()
-            )
-            zones.append(f'<span class="snap-zone">Equip: {eqs}</span>')
-
-        # Weapons
-        weapons = player.get("weapons", [])
-        if weapons:
-            ws = ", ".join(
-                html.escape(w["name"]) + (f' P:{w["power"]}' if w.get("power") else "")
-                + (" (tapped)" if w.get("is_tapped") else "")
-                for w in weapons
-            )
-            zones.append(f'<span class="snap-zone">Weapons: {ws}</span>')
-
-        # Permanents
-        permanents = player.get("permanents", [])
-        if permanents:
-            ps = ", ".join(html.escape(p["name"]) for p in permanents)
-            zones.append(f'<span class="snap-zone">Permanents: {ps}</span>')
-
-        # Graveyard + Banished counts
-        gy = player.get("graveyard_count", 0)
-        banished = player.get("banished", [])
-        deck = player.get("deck_count", 0)
-        counts = []
-        if deck:
-            counts.append(f'Deck:{deck}')
-        if gy:
-            counts.append(f'Grave:{gy}')
-        if banished:
-            counts.append(f'Banish:{len(banished)}')
-        if counts:
-            zones.append(f'<span class="snap-zone snap-counts">{" | ".join(counts)}</span>')
-
-        for z in zones:
-            parts.append(z)
-
-        parts.append('</div>')  # snap-player
-
-    parts.append('</div>')  # snap-players
-
-    # Combat chain
-    chain = snapshot.get("combat_chain", [])
-    if chain:
-        parts.append('<div class="snap-combat">')
-        for link in chain:
-            atk = link.get("attack", {})
-            atk_name = html.escape(atk.get("name", "?")) if atk else "?"
-            atk_power = atk.get("power", "?") if atk else "?"
-            defenders = link.get("defenders", [])
-            def_str = " + ".join(
-                f'{html.escape(d["name"])} (D:{d.get("defense", "?")})'
-                for d in defenders
-            ) if defenders else "unblocked"
-
-            hit_class = "snap-hit" if link.get("hit") else ""
-            dmg = link.get("damage_dealt", 0)
-            result = f" -> Hit for {dmg}" if link.get("hit") and dmg else ""
-            if not link.get("hit") and defenders:
-                result = " -> Blocked"
-
-            parts.append(
-                f'<span class="snap-chain-link {hit_class}">'
-                f'L{link.get("link_number", "?")}: '
-                f'{atk_name} (P:{atk_power}) vs {def_str}{result}'
-                f'</span>'
-            )
-        parts.append('</div>')
-
-    parts.append('</div>')  # board-snapshot
-    return "\n".join(parts)
-
-
-def _compact_card(card: dict) -> str:
-    """Render a card name with color indicator."""
-    name = html.escape(card.get("name", "?"))
-    color = card.get("color", "")
-    if color == "Red":
-        return f'<span class="c-red">{name}</span>'
-    elif color == "Yellow":
-        return f'<span class="c-yellow">{name}</span>'
-    elif color == "Blue":
-        return f'<span class="c-blue">{name}</span>'
-    return name
+    Emits a div with the snapshot data as a JSON attribute; the board viewer
+    JS functions (injected in _HTML_HEAD) populate it on page load.
+    """
+    snapshot_json = json.dumps(snapshot)
+    desc = html.escape(snapshot.get("description", ""))
+    return (
+        f'<div class="board-snapshot" data-snapshot=\'{snapshot_json}\'>'
+        f'<div class="snap-desc">{desc}</div>'
+        f'<div class="snap-board"></div>'
+        f'</div>'
+    )
 
 
 def render_combined_html(files: list[dict], all_snapshots: dict[str, list[dict]]) -> str:
@@ -263,10 +142,21 @@ def render_combined_html(files: list[dict], all_snapshots: dict[str, list[dict]]
                 if test["docstring"]:
                     parts.append(f'<div class="test-doc">{html.escape(test["docstring"])}</div>')
 
+                # Board viewer (single viewer with step-through nav) for tests with snapshots
+                if test_snaps:
+                    snaps_json = json.dumps(test_snaps)
+                    parts.append(f'<div class="snapshot-viewer" data-snapshots=\'{snaps_json}\'>')
+                    parts.append('<div class="snap-nav">')
+                    parts.append('<button class="snap-prev" title="Previous snapshot">&larr; Prev</button>')
+                    parts.append('<span class="snap-counter">Snapshot 1 / 1</span>')
+                    parts.append('<button class="snap-next" title="Next snapshot">Next &rarr;</button>')
+                    parts.append('</div>')
+                    parts.append('<div class="snap-desc"></div>')
+                    parts.append('<div class="snap-board"></div>')
+                    parts.append('</div>')
+
                 parts.append('<div class="steps">')
 
-                # Interleave steps and snapshots
-                snap_idx = 0
                 for i, step in enumerate(test["steps"]):
                     icon = STEP_ICONS.get(step["type"], "")
                     color = STEP_COLORS.get(step["type"], "#999")
@@ -287,27 +177,6 @@ def render_combined_html(files: list[dict], all_snapshots: dict[str, list[dict]]
                         )
                         parts.append(f'<pre class="step-code">{escaped_code}</pre>')
                     parts.append(f'</div>')
-
-                    # Insert any snapshots that belong after this step
-                    # Heuristic: distribute snapshots evenly across steps,
-                    # or insert after setup/combat/event/assert steps
-                    if test_snaps and snap_idx < len(test_snaps):
-                        should_insert = step["type"] in (
-                            "setup", "combat", "event", "assert", "mark",
-                            "transform", "effect",
-                        )
-                        # Also insert at the last step
-                        if i == len(test["steps"]) - 1:
-                            should_insert = True
-
-                        if should_insert:
-                            parts.append(_render_compact_board(test_snaps[snap_idx]))
-                            snap_idx += 1
-
-                # Any remaining snapshots go at the end
-                while snap_idx < len(test_snaps):
-                    parts.append(_render_compact_board(test_snaps[snap_idx]))
-                    snap_idx += 1
 
                 parts.append('</div>')  # steps
                 parts.append('</details>')
@@ -496,7 +365,51 @@ h2 { font-size: 16px; color: #c0c0e0; margin: 24px 0 12px; padding-bottom: 6px; 
 details[open] > summary::before { content: "\\25BC "; font-size: 10px; }
 details:not([open]) > summary::before { content: "\\25B6 "; font-size: 10px; }
 
-/* --- Board snapshot styles --- */
+/* --- Snapshot viewer with step-through nav --- */
+.snapshot-viewer {
+  margin: 8px 14px 4px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #1a2030, #1a1a30);
+  border: 1px solid #3a4a5a;
+  border-radius: 6px;
+  border-left: 3px solid #4a8a6a;
+}
+
+.snap-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.snap-nav button {
+  background: #4a3a6a;
+  color: #e0e0e0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.snap-nav button:hover { background: #5a4a8a; }
+.snap-nav button:disabled { opacity: 0.3; cursor: default; }
+.snap-counter {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 110px;
+  text-align: center;
+}
+
+.snap-desc {
+  font-weight: bold;
+  font-size: 12px;
+  color: #f0d060;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+/* Legacy inline board-snapshot (no longer used but kept for safety) */
 .board-snapshot {
   margin: 8px 0;
   padding: 10px 12px;
@@ -506,86 +419,272 @@ details:not([open]) > summary::before { content: "\\25B6 "; font-size: 10px; }
   border-left: 3px solid #4a8a6a;
 }
 
-.snap-desc {
-  font-weight: bold;
-  font-size: 12px;
-  color: #f0d060;
-  margin-bottom: 4px;
+.snap-board .game-info {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--muted);
 }
 
-.snap-info {
-  font-size: 10px;
-  color: var(--muted);
+/* --- Board viewer styles (namespaced under .board-snapshot) --- */
+.board-snapshot .board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-snapshot .player-zone {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.board-snapshot .player-zone.marked {
+  border-color: #ff2222;
+  box-shadow: 0 0 8px rgba(255, 34, 34, 0.3);
+}
+
+.board-snapshot .player-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 6px;
 }
-
-.snap-players {
-  display: flex;
-  gap: 12px;
-}
-
-.snap-player {
-  flex: 1;
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.snap-turn { background: rgba(64, 112, 192, 0.1); border: 1px solid rgba(64, 112, 192, 0.3); }
-.snap-opp { background: rgba(192, 64, 64, 0.1); border: 1px solid rgba(192, 64, 64, 0.3); }
-
-.snap-player-header {
+.board-snapshot .player-name {
   font-weight: bold;
-  font-size: 12px;
-  margin-bottom: 4px;
+  font-size: 13px;
 }
-.snap-turn .snap-player-header { color: var(--blue); }
-.snap-opp .snap-player-header { color: var(--red); }
+.board-snapshot .player-name.opp { color: var(--red); }
+.board-snapshot .player-name.turn { color: var(--blue); }
 
-.snap-marked {
-  background: #c04040;
+.board-snapshot .life-bar {
+  position: relative;
+  width: 120px;
+  height: 18px;
+  background: #0a0a1e;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.board-snapshot .life-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  border-radius: 4px;
+}
+.board-snapshot .life-fill.opp { background: rgba(192, 64, 64, 0.6); }
+.board-snapshot .life-fill.turn { background: rgba(64, 112, 192, 0.6); }
+.board-snapshot .life-text {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.board-snapshot .marked-badge {
+  background: #ff2222;
   color: #fff;
   font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.snap-zone {
-  display: block;
-  color: #b0b0c0;
-  font-size: 10px;
-  margin: 1px 0;
-}
-
-.snap-counts {
-  color: var(--muted);
-  font-size: 9px;
-  margin-top: 2px;
-}
-
-.c-red { color: #e88; }
-.c-yellow { color: #dd9; }
-.c-blue { color: #8af; }
-
-/* Combat chain in snapshot */
-.snap-combat {
-  margin-top: 6px;
-  padding: 4px 8px;
-  background: rgba(192, 64, 64, 0.08);
-  border: 1px solid rgba(192, 64, 64, 0.2);
+  padding: 1px 5px;
   border-radius: 4px;
-}
-
-.snap-chain-link {
-  display: block;
-  font-size: 10px;
-  color: #c0a0a0;
-  margin: 1px 0;
-}
-.snap-chain-link.snap-hit {
-  color: #e06060;
   font-weight: bold;
 }
+
+.board-snapshot .diplo-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: bold;
+  color: #fff;
+}
+.board-snapshot .diplo-war { background: #c04040; }
+.board-snapshot .diplo-peace { background: #4080c0; }
+
+.board-snapshot .deck-count {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* Zone rows */
+.board-snapshot .zone-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.board-snapshot .zone-label {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  min-width: 60px;
+  padding-top: 3px;
+}
+
+/* Card rendering */
+.board-snapshot .card {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  max-width: 80px;
+  padding: 4px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  font-size: 9px;
+  text-align: center;
+  line-height: 1.2;
+  background: var(--bg);
+}
+.board-snapshot .card .card-name {
+  font-weight: bold;
+  margin-bottom: 1px;
+  word-break: break-word;
+}
+.board-snapshot .card .card-stats {
+  color: var(--muted);
+  font-size: 8px;
+}
+.board-snapshot .card.card-red { border-color: var(--red); color: #e88; }
+.board-snapshot .card.card-yellow { border-color: var(--yellow); color: #dd9; }
+.board-snapshot .card.card-blue { border-color: var(--blue); color: #8af; }
+.board-snapshot .card.card-none { border-color: #606060; color: #aaa; }
+.board-snapshot .card.card-back {
+  background: #1a1030;
+  border-color: #4a3a6a;
+  color: var(--muted);
+  min-width: 45px;
+}
+.board-snapshot .card.face-down {
+  opacity: 0.75;
+  border-style: dashed;
+}
+.board-snapshot .fd-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-size: 7px;
+  background: #555;
+  color: #ccc;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.board-snapshot .card.tapped {
+  opacity: 0.5;
+  transform: rotate(8deg);
+}
+
+/* Equipment */
+.board-snapshot .equip-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 70px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid #3a5a3a;
+  background: #0a1a0a;
+  font-size: 9px;
+  text-align: center;
+}
+.board-snapshot .equip-card .equip-name { font-weight: bold; color: #8c8; }
+.board-snapshot .equip-card .equip-slot { color: var(--muted); font-size: 8px; }
+.board-snapshot .equip-card .equip-def { color: #6a6; font-size: 8px; }
+.board-snapshot .equip-card .equip-counters { color: #cc8; font-size: 8px; }
+.board-snapshot .equip-card.tapped { opacity: 0.5; }
+.board-snapshot .equip-card.activated {
+  border-color: #e0a030;
+  box-shadow: 0 0 6px rgba(224, 160, 48, 0.5);
+}
+
+/* Weapons */
+.board-snapshot .weapon-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 70px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid #5a3a3a;
+  background: #1a0a0a;
+  font-size: 9px;
+  text-align: center;
+}
+.board-snapshot .weapon-card .weapon-name { font-weight: bold; color: #c88; }
+.board-snapshot .weapon-card .weapon-power { color: #a66; font-size: 8px; }
+.board-snapshot .weapon-card.tapped { opacity: 0.5; transform: rotate(8deg); }
+
+/* Permanents */
+.board-snapshot .perm-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid #5a5a2a;
+  background: #1a1a0a;
+  font-size: 9px;
+  text-align: center;
+}
+.board-snapshot .perm-card .perm-name { font-weight: bold; color: #cc8; }
+.board-snapshot .perm-card .perm-counters { color: #aa6; font-size: 8px; }
+
+/* Combat chain */
+.board-snapshot .combat-zone {
+  background: linear-gradient(135deg, #2a1020, #201030);
+  border: 1px solid #4a2a4a;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.board-snapshot .combat-title {
+  color: #e06060;
+  font-weight: bold;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.board-snapshot .chain-links {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+.board-snapshot .chain-link {
+  flex-shrink: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.board-snapshot .chain-link.hit-link { border-color: #ff4444; }
+.board-snapshot .chain-link.stack-link { border-style: dashed; opacity: 0.8; }
+.board-snapshot .chain-link-num { color: var(--muted); font-size: 9px; }
+.board-snapshot .chain-vs { color: var(--muted); font-size: 9px; font-weight: bold; }
+.board-snapshot .chain-defenders-row {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.board-snapshot .chain-attack { font-weight: bold; font-size: 11px; }
+.board-snapshot .chain-defenders { font-size: 10px; color: #8af; }
+.board-snapshot .chain-result { font-size: 9px; margin-top: 2px; font-weight: bold; }
+.board-snapshot .chain-result.hit { color: #ff4444; }
+.board-snapshot .chain-result.blocked { color: #30a030; }
+
+.board-snapshot .empty { color: var(--muted); font-style: italic; font-size: 10px; }
 
 /* Keyboard navigation hint */
 .nav-hint {
@@ -610,13 +709,26 @@ kbd {
 <body>
 <h1>FaB Scenario Tests + Board State</h1>
 <div class="nav-hint">
-  <kbd>J</kbd> next test &nbsp; <kbd>K</kbd> prev test &nbsp; <kbd>Enter</kbd> toggle
+  <kbd>J</kbd> next test &nbsp; <kbd>K</kbd> prev test &nbsp; <kbd>Enter</kbd> toggle &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> snapshots
 </div>
 <script>
 // Keyboard navigation
 document.addEventListener('keydown', (e) => {
   const tests = [...document.querySelectorAll('.test-case')];
   const current = tests.findIndex(t => t.hasAttribute('open'));
+
+  // Left/Right arrows navigate snapshots within the open test
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (current >= 0) {
+      const viewer = tests[current].querySelector('.snapshot-viewer');
+      if (viewer && viewer._snapData) {
+        e.preventDefault();
+        if (e.key === 'ArrowLeft') navigateSnapshot(viewer, -1);
+        else navigateSnapshot(viewer, 1);
+        return;
+      }
+    }
+  }
 
   if (e.key === 'j' || e.key === 'ArrowDown') {
     e.preventDefault();
@@ -643,6 +755,286 @@ document.addEventListener('keydown', (e) => {
         tests[current].setAttribute('open', '');
     }
   }
+});
+
+// --- Board viewer rendering functions ---
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function colorClass(color) {
+  if (color === 'Red') return 'card-red';
+  if (color === 'Yellow') return 'card-yellow';
+  if (color === 'Blue') return 'card-blue';
+  return 'card-none';
+}
+
+function renderCard(card) {
+  if (!card.face_up && card.name === '???') {
+    return '<div class="card card-back"><div class="card-name">?</div></div>';
+  }
+  const cls = colorClass(card.color);
+  const faceDown = !card.face_up ? ' face-down' : '';
+  let stats = [];
+  if (card.power != null) stats.push('P:' + card.power);
+  if (card.defense != null) stats.push('D:' + card.defense);
+  if (card.cost != null) stats.push('C:' + card.cost);
+  const statsStr = stats.length ? '<div class="card-stats">' + stats.join(' ') + '</div>' : '';
+  const fdBadge = !card.face_up ? '<div class="fd-badge">FD</div>' : '';
+  return '<div class="card ' + cls + faceDown + '"><div class="card-name">' + escHtml(card.name) + '</div>' + statsStr + fdBadge + '</div>';
+}
+
+function renderEquipment(eq) {
+  let cls = 'equip-card';
+  if (eq.is_tapped) cls += ' tapped';
+  if (eq.activated_this_turn) cls += ' activated';
+  let counters = '';
+  if (eq.counters && Object.keys(eq.counters).length > 0) {
+    const parts = Object.entries(eq.counters).map(function(e) { return e[0] + ':' + e[1]; });
+    counters = '<div class="equip-counters">' + parts.join(' ') + '</div>';
+  }
+  return '<div class="' + cls + '">' +
+    '<div class="equip-name">' + escHtml(eq.name) + '</div>' +
+    '<div class="equip-slot">' + eq.slot + '</div>' +
+    (eq.defense != null ? '<div class="equip-def">Def: ' + eq.defense + '</div>' : '') +
+    counters +
+    '</div>';
+}
+
+function renderWeapon(w) {
+  let cls = w.is_tapped ? 'weapon-card tapped' : 'weapon-card';
+  let counters = '';
+  if (w.counters && Object.keys(w.counters).length > 0) {
+    const parts = Object.entries(w.counters).map(function(e) { return e[0] + ':' + e[1]; });
+    counters = '<div style="color:#aa6;font-size:8px">' + parts.join(' ') + '</div>';
+  }
+  return '<div class="' + cls + '">' +
+    '<div class="weapon-name">' + escHtml(w.name) + '</div>' +
+    (w.power != null ? '<div class="weapon-power">Power: ' + w.power + '</div>' : '') +
+    counters +
+    '</div>';
+}
+
+function renderPermanent(p) {
+  let counters = '';
+  if (p.counters && Object.keys(p.counters).length > 0) {
+    const parts = Object.entries(p.counters).map(function(e) { return e[0] + ':' + e[1]; });
+    counters = '<div class="perm-counters">' + parts.join(' ') + '</div>';
+  }
+  return '<div class="perm-card"><div class="perm-name">' + escHtml(p.name) + '</div>' + counters + '</div>';
+}
+
+function renderZoneRow(label, contentHtml) {
+  if (!contentHtml) return '';
+  return '<div class="zone-row"><span class="zone-label">' + label + '</span>' + contentHtml + '</div>';
+}
+
+function renderPlayer(player, role) {
+  const markedCls = player.is_marked ? ' marked' : '';
+  let h = '<div class="player-zone' + markedCls + '">';
+
+  h += '<div class="player-header">';
+  h += '<span class="player-name ' + role + '">' + escHtml(player.name) + '</span>';
+
+  const lifePct = Math.max(0, Math.min(100, Math.round(player.life * 100 / 40)));
+  h += '<div class="life-bar"><div class="life-fill ' + role + '" style="width:' + lifePct + '%"></div>';
+  h += '<div class="life-text">' + player.life + ' HP</div></div>';
+
+  if (player.is_marked) {
+    h += '<span class="marked-badge">MARKED</span>';
+  }
+  if (player.diplomacy_restriction) {
+    const dipCls = player.diplomacy_restriction === 'war' ? 'diplo-war' : 'diplo-peace';
+    const dipLabel = player.diplomacy_restriction === 'war' ? 'WAR' : 'PEACE';
+    h += '<span class="diplo-badge ' + dipCls + '">' + dipLabel + '</span>';
+  }
+  h += '<span class="deck-count">Deck: ' + player.deck_count + '</span>';
+  h += '</div>';
+
+  if (player.hand && player.hand.length > 0) {
+    h += renderZoneRow('Hand (' + player.hand_count + ')', player.hand.map(renderCard).join(''));
+  } else {
+    h += renderZoneRow('Hand', '<span class="empty">empty</span>');
+  }
+
+  if (player.arsenal && player.arsenal.length > 0) {
+    h += renderZoneRow('Arsenal', player.arsenal.map(renderCard).join(''));
+  }
+
+  var eqSlots = player.equipment ? Object.values(player.equipment) : [];
+  if (eqSlots.length > 0) {
+    h += renderZoneRow('Equip', eqSlots.map(renderEquipment).join(''));
+  }
+
+  if (player.weapons && player.weapons.length > 0) {
+    h += renderZoneRow('Weapons', player.weapons.map(renderWeapon).join(''));
+  }
+
+  if (player.permanents && player.permanents.length > 0) {
+    h += renderZoneRow('Tokens', player.permanents.map(renderPermanent).join(''));
+  }
+
+  if (player.graveyard_count > 0) {
+    h += renderZoneRow('Grave', '<span class="empty">' + player.graveyard_count + ' cards</span>');
+  }
+
+  if (player.banished && player.banished.length > 0) {
+    var bHtml = player.banished.map(function(b) {
+      var cls = colorClass(b.color);
+      var fdCls = b.face_up ? '' : ' face-down';
+      var fdBadge = b.face_up ? '' : '<div class="fd-badge">FD</div>';
+      return '<div class="card ' + cls + fdCls + '"><div class="card-name">' + escHtml(b.name) + '</div>' + fdBadge + '</div>';
+    }).join('');
+    h += renderZoneRow('Banish', bHtml);
+  }
+
+  h += '</div>';
+  return h;
+}
+
+function renderCombatChain(chain) {
+  if (!chain || chain.length === 0) return '';
+
+  let h = '<div class="combat-zone">';
+  h += '<div class="combat-title">Combat Chain</div>';
+  h += '<div class="chain-links">';
+
+  for (const link of chain) {
+    const hitCls = link.hit ? ' hit-link' : '';
+    const stackCls = link.on_stack ? ' stack-link' : '';
+    h += '<div class="chain-link' + hitCls + stackCls + '">';
+    const label = link.on_stack ? 'On Stack' : 'Link #' + link.link_number;
+    h += '<div class="chain-link-num">' + label + '</div>';
+
+    if (link.defenders && link.defenders.length > 0) {
+      h += '<div class="chain-defenders-row">';
+      for (const d of link.defenders) {
+        const dCls = colorClass(d.color);
+        h += '<div class="card ' + dCls + '">';
+        h += '<div class="card-name">' + escHtml(d.name) + '</div>';
+        if (d.defense != null) h += '<div class="card-stats">D:' + d.defense + '</div>';
+        h += '</div>';
+      }
+      h += '</div>';
+      h += '<div class="chain-vs">vs</div>';
+    }
+
+    if (link.attack) {
+      const aCls = colorClass(link.attack.color);
+      h += '<div class="card ' + aCls + '">';
+      h += '<div class="card-name">' + escHtml(link.attack.name) + '</div>';
+      if (link.attack.power != null) h += '<div class="card-stats">P:' + link.attack.power + '</div>';
+      h += '</div>';
+    }
+
+    if (link.damage_dealt > 0) {
+      h += '<div class="chain-result hit">Hit for ' + link.damage_dealt + '</div>';
+    } else if (link.defenders && link.defenders.length > 0 && link.damage_dealt === 0) {
+      h += '<div class="chain-result blocked">Blocked!</div>';
+    }
+
+    h += '</div>';
+  }
+
+  h += '</div>';
+  h += '</div>';
+  return h;
+}
+
+function renderBoardSnapshot(container, snap) {
+  var infoDiv = '<div class="game-info">';
+  var fabTurn = Math.floor((snap.turn_number || 0) / 2);
+  var info = 'Turn ' + fabTurn;
+  if (snap.phase) info += ' | Phase: ' + snap.phase;
+  if (snap.combat_step) info += ' | Combat: ' + snap.combat_step;
+  info += ' | AP: ' + (snap.action_points || 0) + ' | RP: ' + (snap.resource_points || 0);
+  if (snap.game_over) info += ' | GAME OVER';
+  infoDiv += info + '</div>';
+
+  var board = '<div class="board">';
+  if (snap.opponent) board += renderPlayer(snap.opponent, 'opp');
+  board += renderCombatChain(snap.combat_chain);
+  if (snap.turn_player) board += renderPlayer(snap.turn_player, 'turn');
+  board += '</div>';
+
+  container.innerHTML = infoDiv + board;
+}
+
+// --- Snapshot step-through viewer ---
+function navigateSnapshot(viewer, delta) {
+  if (!viewer._snapData) return;
+  var idx = viewer._snapIndex + delta;
+  if (idx < 0 || idx >= viewer._snapData.length) return;
+  viewer._snapIndex = idx;
+  showSnapshot(viewer);
+}
+
+function showSnapshot(viewer) {
+  var snaps = viewer._snapData;
+  var idx = viewer._snapIndex;
+  var snap = snaps[idx];
+
+  // Update counter
+  var counter = viewer.querySelector('.snap-counter');
+  if (counter) counter.textContent = 'Snapshot ' + (idx + 1) + ' / ' + snaps.length;
+
+  // Update description
+  var descEl = viewer.querySelector('.snap-desc');
+  if (descEl) descEl.textContent = snap.description || '';
+
+  // Update board
+  var boardEl = viewer.querySelector('.snap-board');
+  if (boardEl) renderBoardSnapshot(boardEl, snap);
+
+  // Update button states
+  var prevBtn = viewer.querySelector('.snap-prev');
+  var nextBtn = viewer.querySelector('.snap-next');
+  if (prevBtn) prevBtn.disabled = (idx === 0);
+  if (nextBtn) nextBtn.disabled = (idx >= snaps.length - 1);
+}
+
+function initSnapshotViewers(root) {
+  var viewers = (root || document).querySelectorAll('.snapshot-viewer[data-snapshots]');
+  for (var i = 0; i < viewers.length; i++) {
+    var viewer = viewers[i];
+    if (viewer._snapData) continue; // already initialized
+    try {
+      var snaps = JSON.parse(viewer.getAttribute('data-snapshots'));
+      if (!snaps || snaps.length === 0) continue;
+      viewer._snapData = snaps;
+      viewer._snapIndex = 0;
+
+      // Wire up buttons
+      var prevBtn = viewer.querySelector('.snap-prev');
+      var nextBtn = viewer.querySelector('.snap-next');
+      if (prevBtn) prevBtn.addEventListener('click', (function(v) {
+        return function() { navigateSnapshot(v, -1); };
+      })(viewer));
+      if (nextBtn) nextBtn.addEventListener('click', (function(v) {
+        return function() { navigateSnapshot(v, 1); };
+      })(viewer));
+
+      // Render first snapshot
+      showSnapshot(viewer);
+    } catch(e) {
+      var boardEl = viewer.querySelector('.snap-board');
+      if (boardEl) boardEl.textContent = 'Error loading snapshots';
+    }
+  }
+}
+
+// Initialize viewers when details elements are opened (lazy rendering)
+document.addEventListener('toggle', function(e) {
+  if (e.target.tagName === 'DETAILS' && e.target.open) {
+    initSnapshotViewers(e.target);
+  }
+}, true);
+
+// Also initialize any that are already visible
+document.addEventListener('DOMContentLoaded', function() {
+  initSnapshotViewers();
 });
 </script>
 """
