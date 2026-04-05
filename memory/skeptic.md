@@ -559,6 +559,36 @@ Persistent learnings across sessions. Update this after each review.
 - Viewer handles missing snapshots gracefully (empty dict/list fallbacks).
 - 961 tests all passing.
 
+### feat/instrument-all-scenarios — Flick Knives Engine Fixes + Scenario Tooling (2026-04-04)
+- **Round 1 verdict: APPROVE** — No critical issues. 1 minor issue (non-blocking).
+
+#### Engine Changes Reviewed
+
+1. **`link.hit = True` when Flick dagger deals damage** (equipment.py line 244):
+   - Card text says "the dagger has hit" — this is a hit event. Strategy articles confirm: "dagger hit counts as chain-link hitting, preserves hit streak."
+   - `link.hit` only read by `MaskOfMomentumTrigger.condition()` (line 155). No other consumers. No unintended side effects.
+   - Both write sites (game.py:1657 main damage, equipment.py:244 Flick) are additive. No conflict.
+   - **Correct.**
+
+2. **Dispatching dagger's `on_hit` handler** (equipment.py lines 259-276):
+   - Strategy article confirms: "Can be flicked by Flick Knives for bonus 2 damage (1 from flick + 1 from on-hit re-trigger)."
+   - Lookup by `dagger.name`, new AbilityContext with `source_card=dagger`. Guards: `ability_registry is not None`, `on_hit_handler is not None`.
+   - **Correct.**
+
+3. **Graphene Chelicera no on_hit**: No registered handler. `lookup` returns `None`. Only Flick damage fires. **Correct.**
+
+4. **`ability_registry` on `AbilityContext`** (abilities.py line 61): Optional field, default `None`. Single factory in game.py passes it. Test helper backward-compatible. No circular deps. **Correct.**
+
+5. **HIT event side effects from Flick**: Mark removal (rules 9.3.3) and Mark keyword application both fire correctly on Flick's HIT event. **Correct — no unintended side effects.**
+
+#### Minor Issues (non-blocking)
+
+1. **Redundant inline import** (equipment.py line 262): `from htc.engine.abilities import AbilityContext as _AC` inside `_flick_knives`, but `AbilityContext` is already imported at module level. Style nit.
+
+#### Test Coverage
+- 7 new tests in `test_scenario_flick_interactions.py`. Rewritten `test_scenario_flick_mask.py` (engine-driven).
+- 967 tests all passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
