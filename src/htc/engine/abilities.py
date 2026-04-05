@@ -58,6 +58,7 @@ class AbilityContext:
     keyword_engine: KeywordEngine
     combat_mgr: CombatManager
     extra_data: dict = field(default_factory=dict)
+    ability_registry: "AbilityRegistry | None" = None
 
     def player_name(self, player_index: int) -> str:
         """Short hero name for logging."""

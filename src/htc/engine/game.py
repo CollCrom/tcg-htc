@@ -164,6 +164,7 @@ class Game:
             ask=lambda d: self._ask(d),
             keyword_engine=self.keyword_engine,
             combat_mgr=self.combat_mgr,
+            ability_registry=self.ability_registry,
             **extra_kwargs,
         )
 

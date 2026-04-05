@@ -238,6 +238,11 @@ def _flick_knives(ctx: AbilityContext) -> None:
 
     actual_damage = damage_event.amount if not damage_event.cancelled else 0
     if actual_damage > 0:
+        # Card text: "the dagger has hit" — mark the chain link as a hit.
+        # This preserves Mask of Momentum's consecutive hit streak even when
+        # the main attack on this chain link was blocked.
+        link.hit = True
+
         # Emit HIT event — card text says "the dagger has hit"
         ctx.events.emit(GameEvent(
             event_type=EventType.HIT,
@@ -247,6 +252,28 @@ def _flick_knives(ctx: AbilityContext) -> None:
             data={"chain_link": link},
         ))
         log.info(f"  Flick Knives: Dagger deals {actual_damage} damage to {ctx.player_name(target_index)}")
+
+        # Dispatch the dagger's on_hit ability (if any). Card text says
+        # "the dagger has hit", so on-hit effects like Kiss of Death's
+        # "they lose 1{h}" should trigger from the flicked dagger.
+        if ctx.ability_registry is not None:
+            on_hit_handler = ctx.ability_registry.lookup("on_hit", dagger.name)
+            if on_hit_handler is not None:
+                from htc.engine.abilities import AbilityContext as _AC
+                on_hit_ctx = _AC(
+                    state=ctx.state,
+                    source_card=dagger,
+                    controller_index=ctx.controller_index,
+                    chain_link=link,
+                    effect_engine=ctx.effect_engine,
+                    events=ctx.events,
+                    ask=ctx.ask,
+                    keyword_engine=ctx.keyword_engine,
+                    combat_mgr=ctx.combat_mgr,
+                    ability_registry=ctx.ability_registry,
+                )
+                on_hit_handler(on_hit_ctx)
+                log.info(f"  Flick Knives: Triggered {dagger.name} on_hit ability")
     else:
         log.info(f"  Flick Knives: Damage was prevented")
 
