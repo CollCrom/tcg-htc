@@ -34,11 +34,9 @@ from tests.abilities.conftest import (
     make_draconic_ninja_attack,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _make_hero(
     name: str = "Cindra, Drachai of Two Talons",
@@ -69,7 +67,6 @@ def _make_hero(
         owner_index=owner_index,
         zone=Zone.HERO,
     )
-
 
 def _make_fealty_token(instance_id: int = 500, owner_index: int = 0) -> CardInstance:
     """Create a Fealty token on the battlefield."""
@@ -102,7 +99,6 @@ def _make_fealty_token(instance_id: int = 500, owner_index: int = 0) -> CardInst
         zone=Zone.PERMANENT,
     )
 
-
 def _setup_fealty_test():
     """Set up game with Fealty token on the battlefield.
 
@@ -133,11 +129,9 @@ def _setup_fealty_test():
 
     return game, fealty
 
-
 # ---------------------------------------------------------------------------
 # Tests: Fealty activation grants Draconic
 # ---------------------------------------------------------------------------
-
 
 class TestFealtyActivation:
     """Activating Fealty destroys the token and grants Draconic to next card."""
@@ -150,12 +144,8 @@ class TestFealtyActivation:
 
         assert fealty in state.players[0].permanents
 
-        recorder.snap("Setup: Fealty token on battlefield")
-
         ctx = make_ability_context(game, fealty, controller_index=0)
         _fealty_instant(ctx)
-
-        recorder.snap("After Fealty activation — token should be destroyed")
 
         assert fealty not in state.players[0].permanents, (
             "Fealty should be removed from permanents after activation"
@@ -174,12 +164,8 @@ class TestFealtyActivation:
         state = game.state
         recorder = scenario_recorder.bind(game)
 
-        recorder.snap("Setup: Fealty token on battlefield, no Draconic grant active")
-
         ctx = make_ability_context(game, fealty, controller_index=0)
         _fealty_instant(ctx)
-
-        recorder.snap("After Fealty activation — Draconic grant should be active")
 
         # Create a plain Ninja attack (not Draconic by definition)
         atk = make_ninja_attack(instance_id=10, name="Plain Strike", owner_index=0)
@@ -187,8 +173,6 @@ class TestFealtyActivation:
 
         # The effect engine should now see Draconic on this card
         modified_supertypes = game.effect_engine.get_modified_supertypes(state, atk)
-
-        recorder.snap("Plain Ninja attack on chain — should have Draconic supertype")
 
         assert SuperType.DRACONIC in modified_supertypes, (
             "Fealty activation should grant Draconic supertype to next card on chain"
@@ -213,25 +197,19 @@ class TestFealtyActivation:
         supertypes1 = game.effect_engine.get_modified_supertypes(state, atk1)
         assert SuperType.DRACONIC in supertypes1
 
-        recorder.snap("First card on chain gets Draconic (once-only grant consumed)")
-
         # Second card — should NOT get Draconic (once filter consumed)
         atk2 = make_ninja_attack(instance_id=11, name="Second Strike", owner_index=0)
         atk2.zone = Zone.COMBAT_CHAIN
 
         supertypes2 = game.effect_engine.get_modified_supertypes(state, atk2)
 
-        recorder.snap("Second card on chain — should NOT have Draconic")
-
         assert SuperType.DRACONIC not in supertypes2, (
             "Fealty's Draconic grant should only apply once"
         )
 
-
 # ---------------------------------------------------------------------------
 # Tests: Fealty end-phase survival
 # ---------------------------------------------------------------------------
-
 
 class TestFealtyEndPhaseSurvival:
     """Fealty token end-phase conditional self-destruct."""
@@ -245,15 +223,11 @@ class TestFealtyEndPhaseSurvival:
         # Mark that a Fealty was created this turn
         state.players[0].turn_counters.fealty_created_this_turn = True
 
-        recorder.snap("Setup: Fealty on battlefield, fealty_created_this_turn=True")
-
         # Emit END_OF_TURN for player 0
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
-
-        recorder.snap("After END_OF_TURN — Fealty should survive")
 
         assert fealty in state.players[0].permanents, (
             "Fealty should survive end-phase when fealty_created_this_turn is True"
@@ -270,14 +244,10 @@ class TestFealtyEndPhaseSurvival:
 
         state.players[0].turn_counters.draconic_card_played_this_turn = True
 
-        recorder.snap("Setup: Fealty on battlefield, draconic_card_played_this_turn=True")
-
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
-
-        recorder.snap("After END_OF_TURN — Fealty should survive")
 
         assert fealty in state.players[0].permanents, (
             "Fealty should survive end-phase when draconic_card_played_this_turn is True"
@@ -293,14 +263,10 @@ class TestFealtyEndPhaseSurvival:
         assert not state.players[0].turn_counters.fealty_created_this_turn
         assert not state.players[0].turn_counters.draconic_card_played_this_turn
 
-        recorder.snap("Setup: Fealty on battlefield, neither survival condition met")
-
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
-
-        recorder.snap("After END_OF_TURN — Fealty should be destroyed")
 
         assert fealty not in state.players[0].permanents, (
             "Fealty should be destroyed at end-phase when neither condition is met"
@@ -315,15 +281,11 @@ class TestFealtyEndPhaseSurvival:
         state = game.state
         recorder = scenario_recorder.bind(game)
 
-        recorder.snap("Setup: Fealty on battlefield, neither condition met")
-
         # Neither condition met, but it's the OPPONENT's end of turn
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=1,  # opponent
         ))
-
-        recorder.snap("After opponent's END_OF_TURN — Fealty should survive")
 
         assert fealty in state.players[0].permanents, (
             "Fealty should not self-destruct on opponent's end of turn"
@@ -348,14 +310,10 @@ class TestFealtyEndPhaseSurvival:
 
         state.players[0].turn_counters.fealty_created_this_turn = True
 
-        recorder.snap("Setup: 2 Fealty tokens, fealty_created_this_turn=True")
-
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
-
-        recorder.snap("After END_OF_TURN — both Fealty tokens should survive")
 
         assert fealty1 in state.players[0].permanents
         assert fealty2 in state.players[0].permanents
@@ -376,14 +334,10 @@ class TestFealtyEndPhaseSurvival:
             token=fealty2,
         )
 
-        recorder.snap("Setup: 2 Fealty tokens, neither survival condition met")
-
         game.events.emit(GameEvent(
             event_type=EventType.END_OF_TURN,
             target_player=0,
         ))
-
-        recorder.snap("After END_OF_TURN — both Fealty tokens should be destroyed")
 
         assert fealty1 not in state.players[0].permanents
         assert fealty2 not in state.players[0].permanents

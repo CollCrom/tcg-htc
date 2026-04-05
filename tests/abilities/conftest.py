@@ -424,6 +424,7 @@ def make_ability_context(
         ask=ask or (lambda d: PlayerResponse(selected_option_ids=["pass"])),
         keyword_engine=game.keyword_engine,
         combat_mgr=game.combat_mgr,
+        ability_registry=getattr(game, "ability_registry", None),
     )
 
 

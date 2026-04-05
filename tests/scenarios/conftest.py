@@ -20,11 +20,10 @@ def scenario_recorder(request):
         def test_something(self, scenario_recorder):
             game = make_game_shell()
             recorder = scenario_recorder.bind(game)
-            recorder.snap("After setup")
-            # ... test logic ...
-            recorder.snap("After resolution")
+            # ... test logic — snapshots are captured automatically ...
 
-    Snapshots are written to scenario_snapshots/ after the test completes.
+    Snapshots are auto-captured on every interesting event and written
+    to scenario_snapshots/ after the test completes.
     """
     test_name = request.node.nodeid
     recorder = ScenarioRecorder(test_name)

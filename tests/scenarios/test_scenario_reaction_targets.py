@@ -34,11 +34,9 @@ from tests.abilities.conftest import (
     make_weapon_proxy,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _make_hero(
     name: str = "Cindra, Drachai of Two Talons",
@@ -70,7 +68,6 @@ def _make_hero(
         zone=Zone.HERO,
     )
 
-
 def _make_named_reaction(name: str, instance_id: int = 10, owner_index: int = 0) -> CardInstance:
     """Create an attack reaction with a specific card name for target filtering."""
     defn = CardDefinition(
@@ -97,7 +94,6 @@ def _make_named_reaction(name: str, instance_id: int = 10, owner_index: int = 0)
         owner_index=owner_index,
         zone=Zone.HAND,
     )
-
 
 def _make_tide_flippers(instance_id: int = 60, owner_index: int = 0) -> CardInstance:
     defn = CardDefinition(
@@ -128,7 +124,6 @@ def _make_tide_flippers(instance_id: int = 60, owner_index: int = 0) -> CardInst
         zone=Zone.LEGS,
     )
 
-
 def _make_non_dagger_weapon(instance_id: int = 110, owner_index: int = 0):
     """Create a non-dagger weapon (e.g. staff) for testing."""
     return make_weapon(
@@ -138,7 +133,6 @@ def _make_non_dagger_weapon(instance_id: int = 110, owner_index: int = 0):
         subtypes=frozenset({SubType.STAFF, SubType.TWO_HAND}),
         owner_index=owner_index,
     )
-
 
 def _setup_reaction_test():
     """Set up game for attack reaction target testing.
@@ -158,11 +152,9 @@ def _setup_reaction_test():
 
     return game
 
-
 # ---------------------------------------------------------------------------
 # Tests: Dagger-targeting reactions (To the Point, Incision, Scar Tissue)
 # ---------------------------------------------------------------------------
-
 
 class TestDaggerReactionTargets:
     """To the Point, Incision, and Scar Tissue only work on dagger attacks."""
@@ -177,14 +169,10 @@ class TestDaggerReactionTargets:
         atk = make_dagger_attack(instance_id=10, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: dagger attack card on chain")
-
         for name in ("To the Point", "Incision", "Scar Tissue"):
             card = _make_named_reaction(name, instance_id=20)
             result = game.action_builder._can_play_attack_reaction(state, 0, card)
             assert result, f"{name} should be playable on dagger attack card"
-
-        recorder.snap("All dagger reactions allowed on dagger attack card")
 
     def test_dagger_reaction_allowed_on_dagger_weapon_proxy(self, scenario_recorder):
         """Dagger reactions should be allowed on weapon proxy of a dagger weapon."""
@@ -200,14 +188,10 @@ class TestDaggerReactionTargets:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = dagger
 
-        recorder.snap("Setup: dagger weapon proxy on chain")
-
         for name in ("To the Point", "Incision", "Scar Tissue"):
             card = _make_named_reaction(name, instance_id=20)
             result = game.action_builder._can_play_attack_reaction(state, 0, card)
             assert result, f"{name} should be playable on dagger weapon proxy"
-
-        recorder.snap("All dagger reactions allowed on dagger weapon proxy")
 
     def test_dagger_reaction_rejected_on_non_dagger_attack(self, scenario_recorder):
         """Dagger reactions should be rejected on non-dagger attack action cards."""
@@ -219,14 +203,10 @@ class TestDaggerReactionTargets:
         atk = make_ninja_attack(instance_id=10, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: non-dagger Ninja attack on chain")
-
         for name in ("To the Point", "Incision", "Scar Tissue"):
             card = _make_named_reaction(name, instance_id=20)
             result = game.action_builder._can_play_attack_reaction(state, 0, card)
             assert not result, f"{name} should NOT be playable on non-dagger attack"
-
-        recorder.snap("All dagger reactions correctly rejected on non-dagger attack")
 
     def test_dagger_reaction_rejected_on_non_dagger_weapon_proxy(self, scenario_recorder):
         """Dagger reactions should be rejected on non-dagger weapon proxies (e.g. staff)."""
@@ -242,20 +222,14 @@ class TestDaggerReactionTargets:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = staff
 
-        recorder.snap("Setup: non-dagger weapon proxy (staff) on chain")
-
         for name in ("To the Point", "Incision", "Scar Tissue"):
             card = _make_named_reaction(name, instance_id=20)
             result = game.action_builder._can_play_attack_reaction(state, 0, card)
             assert not result, f"{name} should NOT be playable on non-dagger weapon proxy"
 
-        recorder.snap("All dagger reactions correctly rejected on staff proxy")
-
-
 # ---------------------------------------------------------------------------
 # Tests: Stains of the Redback — stealth only
 # ---------------------------------------------------------------------------
-
 
 class TestStainsOfTheRedbackTarget:
     """Stains of the Redback only offered on stealth attacks."""
@@ -270,12 +244,8 @@ class TestStainsOfTheRedbackTarget:
         atk = make_stealth_attack(instance_id=10, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: stealth attack on chain")
-
         card = _make_named_reaction("Stains of the Redback", instance_id=20)
         result = game.action_builder._can_play_attack_reaction(state, 0, card)
-
-        recorder.snap("Stains of the Redback allowed on stealth attack")
 
         assert result, "Stains of the Redback should be playable on stealth attack"
 
@@ -289,20 +259,14 @@ class TestStainsOfTheRedbackTarget:
         atk = make_ninja_attack(instance_id=10, owner_index=0)  # no stealth
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: non-stealth Ninja attack on chain")
-
         card = _make_named_reaction("Stains of the Redback", instance_id=20)
         result = game.action_builder._can_play_attack_reaction(state, 0, card)
 
-        recorder.snap("Stains of the Redback correctly rejected on non-stealth")
-
         assert not result, "Stains of the Redback should NOT be playable on non-stealth attack"
-
 
 # ---------------------------------------------------------------------------
 # Tests: Ancestral Empowerment — Ninja attack action only
 # ---------------------------------------------------------------------------
-
 
 class TestAncestralEmpowermentTarget:
     """Ancestral Empowerment only offered on Ninja attack action cards."""
@@ -317,12 +281,8 @@ class TestAncestralEmpowermentTarget:
         atk = make_ninja_attack(instance_id=10, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: Ninja attack action card on chain")
-
         card = _make_named_reaction("Ancestral Empowerment", instance_id=20)
         result = game.action_builder._can_play_attack_reaction(state, 0, card)
-
-        recorder.snap("Ancestral Empowerment allowed on Ninja attack action")
 
         assert result, "Ancestral Empowerment should be playable on Ninja attack action"
 
@@ -340,12 +300,8 @@ class TestAncestralEmpowermentTarget:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = dagger
 
-        recorder.snap("Setup: dagger weapon proxy on chain")
-
         card = _make_named_reaction("Ancestral Empowerment", instance_id=20)
         result = game.action_builder._can_play_attack_reaction(state, 0, card)
-
-        recorder.snap("Ancestral Empowerment rejected on weapon proxy")
 
         assert not result, "Ancestral Empowerment should NOT be playable on weapon proxy"
 
@@ -362,20 +318,14 @@ class TestAncestralEmpowermentTarget:
         )
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: Assassin (non-Ninja) dagger attack on chain")
-
         card = _make_named_reaction("Ancestral Empowerment", instance_id=20)
         result = game.action_builder._can_play_attack_reaction(state, 0, card)
 
-        recorder.snap("Ancestral Empowerment rejected on non-Ninja attack")
-
         assert not result, "Ancestral Empowerment should NOT be playable on non-Ninja attack"
-
 
 # ---------------------------------------------------------------------------
 # Tests: Tide Flippers — attack action with base power <= 2
 # ---------------------------------------------------------------------------
-
 
 class TestTideFlippersTarget:
     """Tide Flippers only offered on attack action cards with base power <= 2."""
@@ -393,11 +343,7 @@ class TestTideFlippersTarget:
         atk = make_ninja_attack(instance_id=10, power=2, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: power-2 Ninja attack on chain, Tide Flippers equipped")
-
         result = game.action_builder._can_use_equipment_reaction(state, 0, tide)
-
-        recorder.snap("Tide Flippers allowed on power-2 attack")
 
         assert result, "Tide Flippers should be usable on attack with power 2"
 
@@ -414,11 +360,7 @@ class TestTideFlippersTarget:
         atk = make_ninja_attack(instance_id=10, power=4, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: power-4 Ninja attack on chain, Tide Flippers equipped")
-
         result = game.action_builder._can_use_equipment_reaction(state, 0, tide)
-
-        recorder.snap("Tide Flippers rejected on power-4 attack")
 
         assert not result, "Tide Flippers should NOT be usable on attack with power 4"
 
@@ -439,11 +381,7 @@ class TestTideFlippersTarget:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = dagger
 
-        recorder.snap("Setup: dagger weapon proxy on chain, Tide Flippers equipped")
-
         result = game.action_builder._can_use_equipment_reaction(state, 0, tide)
-
-        recorder.snap("Tide Flippers rejected on weapon proxy")
 
         assert not result, "Tide Flippers should NOT be usable on weapon proxy"
 
@@ -460,10 +398,6 @@ class TestTideFlippersTarget:
         atk = make_ninja_attack(instance_id=10, power=0, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: power-0 Ninja attack on chain, Tide Flippers equipped")
-
         result = game.action_builder._can_use_equipment_reaction(state, 0, tide)
-
-        recorder.snap("Tide Flippers allowed on power-0 attack")
 
         assert result, "Tide Flippers should be usable on attack with power 0"

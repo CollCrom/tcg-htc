@@ -33,11 +33,9 @@ from tests.abilities.conftest import (
     make_weapon_proxy,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _make_hero(
     name: str = "Cindra, Drachai of Two Talons",
@@ -69,7 +67,6 @@ def _make_hero(
         zone=Zone.HERO,
     )
 
-
 def _make_flick_knives(instance_id: int = 51, owner_index: int = 0) -> CardInstance:
     defn = CardDefinition(
         unique_id=f"flick-{instance_id}",
@@ -95,7 +92,6 @@ def _make_flick_knives(instance_id: int = 51, owner_index: int = 0) -> CardInsta
         owner_index=owner_index,
         zone=Zone.ARMS,
     )
-
 
 def _setup_dagger_test(*, num_daggers: int = 2):
     """Set up game with daggers and Flick Knives.
@@ -129,11 +125,9 @@ def _setup_dagger_test(*, num_daggers: int = 2):
 
     return game, flick, daggers
 
-
 # ---------------------------------------------------------------------------
 # Tests: Flick Knives destroys dagger
 # ---------------------------------------------------------------------------
-
 
 class TestFlickKnivesDestroysDagger:
     """Flick Knives activation destroys an off-chain dagger."""
@@ -146,20 +140,14 @@ class TestFlickKnivesDestroysDagger:
 
         dagger1, dagger2 = daggers
 
-        recorder.snap("Setup: 2 daggers + Flick Knives equipped")
-
         # Open chain, attack with dagger1 (dagger2 is off-chain)
         game.combat_mgr.open_chain(state)
         proxy = make_weapon_proxy(dagger1, instance_id=200, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = dagger1
 
-        recorder.snap("Dagger1 attacking on chain — dagger2 is off-chain")
-
         ctx = make_ability_context(game, flick, controller_index=0, chain_link=link)
         _flick_knives(ctx)
-
-        recorder.snap("After Flick Knives activation — dagger2 should be destroyed")
 
         # dagger2 should be destroyed
         assert dagger2 not in state.players[0].weapons, (
@@ -182,8 +170,6 @@ class TestFlickKnivesDestroysDagger:
 
         assert not flick.activated_this_turn
 
-        recorder.snap("Setup: Flick Knives not yet activated")
-
         game.combat_mgr.open_chain(state)
         proxy = make_weapon_proxy(daggers[0], instance_id=200, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
@@ -191,8 +177,6 @@ class TestFlickKnivesDestroysDagger:
 
         ctx = make_ability_context(game, flick, controller_index=0, chain_link=link)
         _flick_knives(ctx)
-
-        recorder.snap("After Flick Knives activation — flag should be set")
 
         assert flick.activated_this_turn, (
             "Flick Knives should set activated_this_turn flag after use"
@@ -215,12 +199,8 @@ class TestFlickKnivesDestroysDagger:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = daggers[0]
 
-        recorder.snap("Setup: dagger1 attacking, dagger2 off-chain")
-
         ctx = make_ability_context(game, flick, controller_index=0, chain_link=link)
         _flick_knives(ctx)
-
-        recorder.snap("After Flick Knives — 1 damage dealt to opponent")
 
         assert len(damage_events) >= 1, (
             "Flick Knives should emit a DEAL_DAMAGE event"
@@ -246,22 +226,16 @@ class TestFlickKnivesDestroysDagger:
 
         initial_graveyard = len(state.players[0].graveyard)
 
-        recorder.snap("Setup: only dagger is on-chain, no off-chain target")
-
         ctx = make_ability_context(game, flick, controller_index=0, chain_link=link)
         _flick_knives(ctx)
-
-        recorder.snap("After Flick Knives — nothing should be destroyed")
 
         assert len(state.players[0].graveyard) == initial_graveyard, (
             "No dagger should be destroyed when no off-chain dagger exists"
         )
 
-
 # ---------------------------------------------------------------------------
 # Tests: ActionBuilder Flick Knives availability
 # ---------------------------------------------------------------------------
-
 
 class TestFlickKnivesAvailability:
     """ActionBuilder correctly offers/withholds Flick Knives."""
@@ -277,11 +251,7 @@ class TestFlickKnivesAvailability:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = daggers[0]
 
-        recorder.snap("Setup: dagger1 on-chain, dagger2 off-chain")
-
         can_use = game.action_builder._can_use_equipment_reaction(state, 0, flick)
-
-        recorder.snap("Flick Knives availability check — should be offered")
 
         assert can_use, (
             "Flick Knives should be usable when off-chain dagger is available"
@@ -297,11 +267,7 @@ class TestFlickKnivesAvailability:
         atk = make_ninja_attack(instance_id=10, owner_index=0)
         link = game.combat_mgr.add_chain_link(state, atk, 1)
 
-        recorder.snap("Setup: no daggers equipped")
-
         can_use = game.action_builder._can_use_equipment_reaction(state, 0, flick)
-
-        recorder.snap("Flick Knives availability check — should NOT be offered")
 
         assert not can_use, (
             "Flick Knives should not be usable when no daggers exist"
@@ -318,11 +284,7 @@ class TestFlickKnivesAvailability:
         link = game.combat_mgr.add_chain_link(state, proxy, 1)
         link.attack_source = daggers[0]
 
-        recorder.snap("Setup: only dagger is on-chain")
-
         can_use = game.action_builder._can_use_equipment_reaction(state, 0, flick)
-
-        recorder.snap("Flick Knives availability check — should NOT be offered")
 
         assert not can_use, (
             "Flick Knives should not be usable when the only dagger is on-chain"

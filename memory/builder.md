@@ -236,3 +236,13 @@ All 11 keywords for Cindra vs Arakni matchup implemented:
 - **BaseTriggeredEffect extraction skipped** — the deferred import pattern needed to avoid circular deps made it too complex for the 3-line savings per class.
 - **`grant_power_bonus()` usage** — only Tarantula Toxin mode1 was a clean match. Most `make_power_modifier` calls have unique params (source_instance_id=None, custom filters, non-standard durations).
 - **Net change: +157/-126 lines** — most additions are the new helpers; the removals come from deduplication across 8 files. 959 tests passing throughout.
+
+## Engine-Driven Scenario Tests (2026-04-04)
+
+- **ScriptedPlayer** (`src/htc/player/scripted_player.py`) — New player implementation that follows a predetermined script of action_ids. Supports `"*first"` (first non-pass), `"*pass"`, `"*first_attack"` (first play/activate), literal action_ids, and `list[str]` for multi-select (defend). Auto-passes when exhausted. Tracks `decisions_seen` for test inspection.
+- **`make_scripted_game()`** (`tests/scenarios/engine_helpers.py`) — Helper that creates a full Game with real Cindra vs Arakni decklists, ScriptedPlayer instances, and runs `_setup_game()`. Returns `(game, p1, p2)`. Caches card DB and decklists at module level for speed.
+- **Proof of concept: `test_scenario_flick_mask.py`** — Rewrote from 7 manual-state tests to 5 engine-driven tests. Tests now run through real `_run_turn()` with ScriptedPlayer, producing 15+ auto-snapshots per combat turn via the scenario_recorder. Events fire naturally through the engine.
+- **Key insight: equipment decisions during setup** — `_setup_game()` presents CHOOSE_EQUIPMENT decisions for slots with multiple options. These consume ScriptedPlayer script entries before `_run_turn()` even starts. Scripts must account for these.
+- **Key insight: `*first_attack` directive** — Most useful for "play something aggressive." Picks the first `play_*` or `activate_*` option, avoiding pass. Falls back to `*first` if no attack options.
+- **Snapshot coverage** — Engine-driven tests capture 15 snapshots per active combat turn (vs 1-3 for manual tests), including START_OF_TURN, PLAY_CARD, ATTACK_DECLARED, DEAL_DAMAGE, HIT, DRAW_CARD, COMBAT_CHAIN_CLOSES, END_OF_TURN.
+- **960 tests passing** — net -1 from original 961 (7 manual tests replaced by 5 engine-driven tests).
