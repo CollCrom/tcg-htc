@@ -549,6 +549,16 @@ Persistent learnings across sessions. Update this after each review.
 - BANISH event has no `_process_pending_triggers()` call (no current triggers on BANISH).
 - START_OF_ACTION_PHASE event has no `_process_pending_triggers()` call (no current triggers).
 
+### feat/scenario-test-viewer — Board State Snapshot Capture (2026-04-04)
+- **Round 1 verdict: APPROVE** — No engine code changes. Pure tooling + test instrumentation.
+- 5 files changed: `conftest.py` fixture, `scenario_recorder.py`, `scenario_viewer.py`, 2 instrumented test files, `.gitignore`.
+- Zero changes to `htc/` engine code.
+- ScenarioRecorder correctly wraps `capture_snapshot()` from `tools/snapshot.py`, passes `effect_engine`.
+- Fixture is opt-in (parameter injection). 40 non-instrumented tests unaffected.
+- `write()` runs in teardown after test body — no test pollution possible.
+- Viewer handles missing snapshots gracefully (empty dict/list fallbacks).
+- 961 tests all passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
