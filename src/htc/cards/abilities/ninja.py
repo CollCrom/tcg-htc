@@ -46,7 +46,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.player_state import BanishPlayability, EXPIRY_END_OF_TURN, EXPIRY_START_OF_NEXT_TURN
+from htc.state.player_state import BanishPlayability, EXPIRY_END_OF_TURN, EXPIRY_END_OF_NEXT_TURN, EXPIRY_START_OF_NEXT_TURN
 
 log = logging.getLogger(__name__)
 
@@ -1125,6 +1125,7 @@ class _LoyaltyBeyondTheGraveTrigger(TriggeredEffect):
     _state_getter: object = None
     _ask: object = None
     _draw_fn: object = None
+    _event_bus: object = None
     one_shot: bool = False  # persists all game
 
     def condition(self, event: GameEvent) -> bool:
@@ -1187,13 +1188,27 @@ class _LoyaltyBeyondTheGraveTrigger(TriggeredEffect):
             copy.zone = Zone.BANISHED
             copy.face_up = True
             player.banished.append(copy)
+            if self._event_bus:
+                self._event_bus.emit(GameEvent(
+                    event_type=EventType.BANISH,
+                    source=None,
+                    target_player=self.controller_index,
+                    card=copy,
+                    data={"face_down": False},
+                ))
             log.info(f"  Loyalty Beyond the Grave: banished {copy.name} (id={copy.instance_id})")
 
         # Draw a card
         if self._draw_fn:
             self._draw_fn(self.controller_index)
+        elif self._event_bus:
+            # Emit DRAW_CARD event so the engine handles the draw properly
+            self._event_bus.emit(GameEvent(
+                event_type=EventType.DRAW_CARD,
+                target_player=self.controller_index,
+            ))
         else:
-            # Fallback: manual draw
+            # Fallback: manual draw (test-only path)
             if player.deck:
                 card = player.deck.pop(0)
                 card.zone = Zone.HAND
@@ -1216,6 +1231,7 @@ def _register_loyalty_beyond_trigger(
         _state_getter=lambda _s=state: _s,
         _ask=ask,
         _draw_fn=draw_fn,
+        _event_bus=event_bus,
     )
     event_bus.register_trigger(trigger)
     log.info(
@@ -1267,16 +1283,15 @@ def _take_the_tempo_on_hit(ctx: AbilityContext) -> None:
         log.info("  Take the Tempo: deck is empty, nothing to banish")
         return
 
-    top_card = player.deck.pop(0)
-    top_card.zone = Zone.BANISHED
+    top_card = player.deck[0]  # let banish_card handle removal
+    ctx.banish_card(top_card, controller)
     top_card.face_up = True
-    player.banished.append(top_card)
     log.info(f"  Take the Tempo: banished {top_card.name} (face-up)")
 
     # If it's an attack action card, mark as playable until end of next turn
     if top_card.definition.is_attack_action:
         player.playable_from_banish.append(
-            BanishPlayability(top_card.instance_id, EXPIRY_START_OF_NEXT_TURN, False)
+            BanishPlayability(top_card.instance_id, EXPIRY_END_OF_NEXT_TURN, False)
         )
         log.info(
             f"  Take the Tempo: {top_card.name} is an attack action, "

@@ -34,6 +34,7 @@ from htc.cards.abilities.ninja import (
 from htc.cards.abilities.tokens import _fealty_instant
 from htc.engine.continuous import EffectDuration, make_cost_modifier
 from htc.engine.events import EventType, GameEvent
+from htc.state.player_state import EXPIRY_END_OF_NEXT_TURN, EXPIRY_END_OF_TURN
 from htc.enums import (
     CardType,
     Color,
@@ -617,6 +618,155 @@ class TestTakeTheTempoHitCount:
         assert deck_card in state.players[0].banished, (
             "Dagger hits should count toward Take the Tempo's 3-hit threshold"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 2b: Take the Tempo — banished card playable during next turn, expires at end
+# ---------------------------------------------------------------------------
+
+
+class TestTakeTheTempoExpiry:
+    """Take the Tempo banishes an attack action playable until END of next turn.
+
+    Card text: 'you may play it until the end of your next turn.'
+    The card should be playable during the controller's next turn, and
+    expire at the END of that turn (not the start).
+    """
+
+    def test_take_the_tempo_uses_end_of_next_turn_expiry(self, scenario_recorder):
+        """Banished attack action should use EXPIRY_END_OF_NEXT_TURN, not start."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        # 3 hits
+        for i in range(2):
+            atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
+            link = game.combat_mgr.add_chain_link(state, atk, 1)
+            link.hit = True
+
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link3.hit = True
+
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link3)
+        _take_the_tempo_on_hit(ctx)
+
+        # Should be marked with EXPIRY_END_OF_NEXT_TURN
+        entry = next(
+            (bp for bp in state.players[0].playable_from_banish
+             if bp.instance_id == deck_card.instance_id),
+            None,
+        )
+        assert entry is not None, "Card should be in playable_from_banish"
+        assert entry.expiry == EXPIRY_END_OF_NEXT_TURN, (
+            f"Take the Tempo should use EXPIRY_END_OF_NEXT_TURN, got {entry.expiry}"
+        )
+
+    def test_take_the_tempo_card_playable_during_next_turn(self, scenario_recorder):
+        """The banished card should still be playable at the start of the
+        controller's next turn (not expired prematurely).
+        """
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        for i in range(2):
+            atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
+            link = game.combat_mgr.add_chain_link(state, atk, 1)
+            link.hit = True
+
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link3.hit = True
+
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link3)
+        _take_the_tempo_on_hit(ctx)
+
+        # Simulate start of next turn for player 0: expire START_OF_NEXT_TURN entries
+        # (which should NOT affect our END_OF_NEXT_TURN entry)
+        game._expire_playable_from_banish_start_of_turn(0)
+
+        # Card should still be playable
+        assert game._is_playable_from_banish(deck_card, 0), (
+            "Take the Tempo banished card should still be playable after "
+            "start-of-turn expiry (uses end_of_next_turn, not start_of_next_turn)"
+        )
+
+    def test_take_the_tempo_card_expires_at_end_of_next_turn(self, scenario_recorder):
+        """The banished card should expire at the END of the controller's next turn."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        for i in range(2):
+            atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
+            link = game.combat_mgr.add_chain_link(state, atk, 1)
+            link.hit = True
+
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link3.hit = True
+
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link3)
+        _take_the_tempo_on_hit(ctx)
+
+        # Simulate end of next turn for player 0
+        game._expire_playable_from_banish_end_of_next_turn(0)
+
+        # Card should no longer be playable
+        assert not game._is_playable_from_banish(deck_card, 0), (
+            "Take the Tempo banished card should expire at end of next turn"
+        )
+
+    def test_take_the_tempo_emits_banish_event(self, scenario_recorder):
+        """Take the Tempo should emit a BANISH event when banishing."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        banish_events = []
+        game.events.register_handler(
+            EventType.BANISH,
+            lambda e: banish_events.append(e),
+        )
+
+        game.combat_mgr.open_chain(state)
+
+        for i in range(2):
+            atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
+            link = game.combat_mgr.add_chain_link(state, atk, 1)
+            link.hit = True
+
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link3.hit = True
+
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link3)
+        _take_the_tempo_on_hit(ctx)
+
+        assert len(banish_events) == 1, (
+            f"Take the Tempo should emit exactly 1 BANISH event, got {len(banish_events)}"
+        )
+        assert banish_events[0].card is deck_card
 
 
 # ---------------------------------------------------------------------------

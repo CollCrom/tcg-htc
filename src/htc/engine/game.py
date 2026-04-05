@@ -40,6 +40,7 @@ from htc.state.game_state import GameState
 from htc.state.player_state import (
     BanishPlayability,
     EXPIRY_END_OF_TURN,
+    EXPIRY_END_OF_NEXT_TURN,
     EXPIRY_START_OF_NEXT_TURN,
     PlayerState,
 )
@@ -145,6 +146,34 @@ class Game:
                 player_state=player,
                 game=self,
             )
+
+    def _register_graveyard_triggers(self) -> None:
+        """Register graveyard-based triggered effects.
+
+        Called after player states are built during game setup. Checks each
+        player's decklist for cards with graveyard triggers (e.g., Loyalty
+        Beyond the Grave) and registers them on the event bus.
+        """
+        from htc.cards.abilities.ninja import _register_loyalty_beyond_trigger
+        for i, player in enumerate(self.state.players):
+            # Check if decklist contains Loyalty Beyond the Grave
+            all_cards = (
+                player.deck + player.hand + player.graveyard
+                + player.banished + player.arsenal
+            )
+            has_loyalty = any(
+                c.name == "Loyalty Beyond the Grave" for c in all_cards
+            )
+            if has_loyalty:
+                _register_loyalty_beyond_trigger(
+                    event_bus=self.events,
+                    state=self.state,
+                    controller_index=i,
+                    ask=lambda d, _self=self: _self._ask(d),
+                    draw_fn=lambda pi, _self=self: _self._draw_cards(
+                        _self.state.players[pi], 1
+                    ),
+                )
 
     def _build_ability_context(
         self, card: CardInstance, player_index: int, **extra_kwargs,
@@ -325,6 +354,9 @@ class Game:
 
         # Register equipment triggered effects
         self._register_equipment_triggers()
+
+        # Register graveyard-based triggers (e.g., Loyalty Beyond the Grave)
+        self._register_graveyard_triggers()
 
         # Shuffle decks
         for ps in self.state.players:
@@ -575,7 +607,7 @@ class Game:
     ) -> None:
         """Mark a banished card as playable until the given expiry.
 
-        expiry is EXPIRY_END_OF_TURN or EXPIRY_START_OF_NEXT_TURN.
+        expiry is EXPIRY_END_OF_TURN, EXPIRY_START_OF_NEXT_TURN, or EXPIRY_END_OF_NEXT_TURN.
         redirect_to_banish: if True, the card goes to banish instead of
         graveyard after being played. If False, it goes to graveyard normally.
         """
@@ -604,6 +636,12 @@ class Game:
         """Remove start_of_next_turn entries for the given player."""
         self._expire_playable(
             self.state.players[player_index], EXPIRY_START_OF_NEXT_TURN
+        )
+
+    def _expire_playable_from_banish_end_of_next_turn(self, player_index: int) -> None:
+        """Remove end_of_next_turn entries for the given player at end of their turn."""
+        self._expire_playable(
+            self.state.players[player_index], EXPIRY_END_OF_NEXT_TURN
         )
 
     def _is_playable_from_banish(self, card: CardInstance, player_index: int) -> bool:
@@ -1913,6 +1951,9 @@ class Game:
 
         # Expire "end_of_turn" banish playability
         self._expire_playable_from_banish_end_of_turn()
+
+        # Expire "end_of_next_turn" banish playability for the turn player
+        self._expire_playable_from_banish_end_of_next_turn(tp.index)
 
         # Clean up continuous effects that expire at end of turn
         self.effect_engine.cleanup_expired_effects(self.state, EffectDuration.END_OF_TURN)
