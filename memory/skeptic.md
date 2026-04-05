@@ -683,6 +683,40 @@ Persistent learnings across sessions. Update this after each review.
   - **Minor fix 2 (BANISH events)**: Take the Tempo now uses `ctx.banish_card()`. Loyalty Beyond emits BANISH event via `_event_bus.emit()` (no AbilityContext available in TriggeredEffect -- acceptable).
   - **Minor fix 3 (Loyalty Beyond draw_fn)**: Production wiring provides `_draw_cards` via lambda. Fallback path also emits DRAW_CARD event via `_event_bus`. Double safety net.
 
+### feat/implement-missing-abilities — hit_count on ChainLink (2026-04-04)
+- **Round 3 verdict: APPROVE** — No critical issues. 1 minor note (non-blocking).
+- **Scope**: New `hit_count: int` field on ChainLink to track individual hit events per chain link. Fixes Take the Tempo which counts "times you've hit" — a Flick dagger hit + main attack hit on the same chain link should count as 2 hits, not 1.
+
+#### Verification Checklist
+
+1. **`hit_count` incremented in both `link.hit = True` sites**: YES.
+   - `game.py` line 1696: `link.hit_count += 1` after `link.hit = True` in damage step. Correct.
+   - `equipment.py` line 245: `link.hit_count += 1` after `link.hit = True` in Flick Knives handler. Correct.
+
+2. **Take the Tempo now sums `hit_count`**: YES.
+   - `ninja.py` line 1270-1273: `sum(link.hit_count for link in chain.chain_links if link.active_attack is not None and link.active_attack.owner_index == controller)`. Correct — counts total hit events across all chain links, not just boolean hit presence.
+
+3. **Mask of Momentum still correct with `link.hit` (bool)**: YES.
+   - `equipment.py` line 155: `if not link.hit:` — checks consecutive hit streak (did this link hit at all?). Mask cares about "third consecutive chain link that hits" — whether a link hit once or twice is irrelevant for the streak. `link.hit` (bool) is the correct field for Mask. No update needed.
+
+4. **Other code that might need `hit_count`**: NO other consumers.
+   - Only two production consumers of `link.hit`: Mask of Momentum (bool streak, correct) and Take the Tempo (now uses `hit_count`, correct).
+   - `tools/snapshot.py` line 70 serializes `"hit": link.hit` for visualization but not `hit_count`. Non-blocking — minor debug info gap.
+
+5. **Test `hit_count = 2` for Flick + TTT combo**: YES.
+   - `TestTakeTheTempoFlickCombo.test_cl1_hit_plus_flick_and_ttt_on_cl2_triggers` (test_scenario_timing.py line 628): CL1 has `hit_count=1`, CL2 has `hit_count=2` (Flick dagger + main attack). Total = 3 hits. Asserts banish triggers. Correct.
+
+6. **All existing tests updated with `hit_count = 1`**: YES. Every test that manually sets `link.hit = True` also sets `link.hit_count = 1`. Consistent.
+
+#### Minor Notes (non-blocking)
+
+1. **Snapshot serializer missing `hit_count`** (tools/snapshot.py line 70): `hit_count` not included in snapshot data. Would be useful for debugging Flick + TTT combos in the board viewer. Pure tooling gap, no game correctness impact.
+
+#### Test Coverage
+- 1 new test class (`TestTakeTheTempoFlickCombo`) with 1 test covering the Flick + TTT dual-hit scenario.
+- All existing tests updated to set `hit_count` consistently.
+- 1026 tests all passing.
+
 ## Talishar Discrepancies
 
 *(None found yet)*
