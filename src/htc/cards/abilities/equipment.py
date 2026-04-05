@@ -242,6 +242,7 @@ def _flick_knives(ctx: AbilityContext) -> None:
         # This preserves Mask of Momentum's consecutive hit streak even when
         # the main attack on this chain link was blocked.
         link.hit = True
+        link.hit_count += 1
 
         # Emit HIT event — card text says "the dagger has hit"
         ctx.events.emit(GameEvent(
