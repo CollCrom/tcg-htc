@@ -221,7 +221,7 @@ def _setup_flick_mask_test():
 class TestFlickKnivesMaskOfMomentumInteraction:
     """Flick Knives dagger hit contributes to Mask of Momentum consecutive streak."""
 
-    def test_flick_hit_on_link2_enables_mask_draw_on_link3(self):
+    def test_flick_hit_on_link2_enables_mask_draw_on_link3(self, scenario_recorder):
         """Chain links 1 and 2 hit (link 2 via Flick), link 3 should trigger Mask draw.
 
         Setup:
@@ -231,6 +231,7 @@ class TestFlickKnivesMaskOfMomentumInteraction:
         """
         game, mask, flick, vest, dagger1, dagger2 = _setup_flick_mask_test()
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         # Give player 0 some cards to draw
         for i in range(5):
@@ -238,6 +239,8 @@ class TestFlickKnivesMaskOfMomentumInteraction:
             state.players[0].deck.append(c)
 
         initial_hand_size = len(state.players[0].hand)
+
+        recorder.snap("Setup: Mask of Momentum + Flick Knives + BSV equipped, 2 daggers, 5 cards in deck")
 
         # Build a combat chain with 3 links, all hits
         game.combat_mgr.open_chain(state)
@@ -250,8 +253,12 @@ class TestFlickKnivesMaskOfMomentumInteraction:
         link2 = game.combat_mgr.add_chain_link(state, atk2, 1)
         link2.hit = True
 
+        recorder.snap("Chain links 1 and 2 added and marked as hits")
+
         atk3 = make_ninja_attack(instance_id=12, name="Strike 3", owner_index=0)
         link3 = game.combat_mgr.add_chain_link(state, atk3, 1)
+
+        recorder.snap("Chain link 3 added (not yet resolved)")
 
         # Clear any pending triggers from prior events
         game.events.get_pending_triggers()
@@ -270,6 +277,9 @@ class TestFlickKnivesMaskOfMomentumInteraction:
         # Here we verify the trigger fired by checking pending triggers.
         pending = game.events.get_pending_triggers()
         draw_events = [e for e in pending if e.event_type == EventType.DRAW_CARD]
+
+        recorder.snap("After link 3 HIT event — Mask of Momentum should have triggered DRAW_CARD")
+
         assert len(draw_events) == 1, (
             "Mask of Momentum should produce a DRAW_CARD pending trigger on 3rd consecutive hit"
         )
@@ -393,13 +403,16 @@ class TestFlickKnivesBloodSplatteredVest:
             "Blood Splattered Vest should grant 1 resource on dagger hit"
         )
 
-    def test_bsv_destroys_at_3_stain_counters(self):
+    def test_bsv_destroys_at_3_stain_counters(self, scenario_recorder):
         """Blood Splattered Vest should self-destruct at 3 stain counters."""
         game, mask, flick, vest, dagger1, dagger2 = _setup_flick_mask_test()
         state = game.state
+        recorder = scenario_recorder.bind(game)
 
         # Pre-seed 2 stain counters
         vest.counters["stain"] = 2
+
+        recorder.snap("Setup: BSV with 2 stain counters (pre-seeded)")
 
         game.combat_mgr.open_chain(state)
         atk = make_ninja_attack(instance_id=10, owner_index=0)
@@ -413,6 +426,8 @@ class TestFlickKnivesBloodSplatteredVest:
             amount=1,
             data={"chain_link": link},
         ))
+
+        recorder.snap("After 3rd dagger hit — BSV should be destroyed")
 
         # Vest should be destroyed (moved to graveyard)
         chest_eq = state.players[0].equipment.get(EquipmentSlot.CHEST)
