@@ -25,6 +25,7 @@ from htc.cards.abilities.tokens import (
     register_token_triggers,
 )
 from htc.cards.abilities.assassin import _tarantula_toxin
+from htc.cards.abilities.ninja import _register_loyalty_beyond_trigger
 from htc.engine.actions import PlayerResponse
 from htc.engine.events import EventType, GameEvent
 from htc.enums import (
@@ -250,31 +251,264 @@ class TestFealtyMultiTurnSurvival:
 
 
 # ---------------------------------------------------------------------------
-# Test 12: Loyalty Beyond the Grave — SKIPPED
+# Test 12: Loyalty Beyond the Grave
 # ---------------------------------------------------------------------------
+
+
+def _make_loyalty_beyond(instance_id: int, owner_index: int = 0) -> "CardInstance":
+    """Create a Loyalty Beyond the Grave card."""
+    from htc.cards.card import CardDefinition
+    from htc.cards.instance import CardInstance
+    defn = CardDefinition(
+        unique_id=f"loyalty-{instance_id}",
+        name="Loyalty Beyond the Grave",
+        color=Color.BLUE,
+        pitch=3,
+        cost=1,
+        power=None,
+        defense=4,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.DEFENSE_REACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset({SuperType.DRACONIC}),
+        keywords=frozenset(),
+        functional_text="While this is in your graveyard, at the start of your turn, you may banish 2 cards named Loyalty Beyond the Grave from your graveyard. If you do, draw a card.",
+        type_text="Draconic Defense Reaction",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.GRAVEYARD,
+    )
 
 
 class TestLoyaltyBeyondTheGrave:
     """Loyalty Beyond the Grave: 'While this is in your graveyard, at the
     start of your turn, you may banish 2 cards named Loyalty Beyond the
     Grave from your graveyard. If you do, draw a card.'
-
-    SKIPPED: This card is not implemented in the ability registry.
     """
 
-    def test_loyalty_beyond_not_implemented(self, scenario_recorder):
-        """Verify Loyalty Beyond the Grave has no ability handler yet."""
+    def test_loyalty_beyond_banish_2_draw_1(self, scenario_recorder):
+        """With 2 copies in graveyard and player accepts, both should be
+        banished and player draws 1 card.
+        """
         game = _setup_base_game()
+        state = game.state
         recorder = scenario_recorder.bind(game)
 
-        # Check all ability types
-        for ability_type in ["on_play", "on_attack", "on_hit", "graveyard_trigger"]:
-            handler = game.ability_registry.lookup(ability_type, "Loyalty Beyond the Grave")
-            assert handler is None, (
-                f"Loyalty Beyond the Grave is expected to not be implemented yet "
-                f"(found handler in '{ability_type}'). If this fails, real tests "
-                f"should replace this stub."
+        # Put 2 copies in graveyard
+        loy1 = _make_loyalty_beyond(instance_id=700, owner_index=0)
+        loy2 = _make_loyalty_beyond(instance_id=701, owner_index=0)
+        state.players[0].graveyard.extend([loy1, loy2])
+
+        # Put a card in deck to draw
+        from htc.cards.card import CardDefinition
+        from htc.cards.instance import CardInstance
+        draw_target = CardInstance(
+            instance_id=800,
+            definition=CardDefinition(
+                unique_id="draw-800",
+                name="Drawn Card",
+                color=Color.RED,
+                pitch=1,
+                cost=0,
+                power=3,
+                defense=3,
+                health=None,
+                intellect=None,
+                arcane=None,
+                types=frozenset({CardType.ACTION}),
+                subtypes=frozenset({SubType.ATTACK}),
+                supertypes=frozenset({SuperType.NINJA}),
+                keywords=frozenset(),
+                functional_text="",
+                type_text="Ninja Action - Attack",
+            ),
+            owner_index=0,
+            zone=Zone.DECK,
+        )
+        state.players[0].deck = [draw_target]
+
+        # Register trigger with "yes" response
+        def ask_yes(decision):
+            return PlayerResponse(selected_option_ids=["yes"])
+
+        _register_loyalty_beyond_trigger(
+            game.events, state, controller_index=0, ask=ask_yes,
+        )
+
+        # Emit START_OF_TURN for P0
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        # Both copies should be banished
+        assert loy1 not in state.players[0].graveyard
+        assert loy2 not in state.players[0].graveyard
+        assert loy1 in state.players[0].banished
+        assert loy2 in state.players[0].banished
+
+        # Player should have drawn
+        assert draw_target in state.players[0].hand, (
+            "Player should draw a card after banishing 2 Loyalty Beyond the Grave"
+        )
+
+    def test_loyalty_beyond_only_1_copy_no_trigger(self, scenario_recorder):
+        """With only 1 copy in graveyard, the trigger should not fire."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        loy1 = _make_loyalty_beyond(instance_id=700, owner_index=0)
+        state.players[0].graveyard.append(loy1)
+
+        state.players[0].deck = []
+
+        def ask_yes(decision):
+            return PlayerResponse(selected_option_ids=["yes"])
+
+        _register_loyalty_beyond_trigger(
+            game.events, state, controller_index=0, ask=ask_yes,
+        )
+
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        # Copy should still be in graveyard
+        assert loy1 in state.players[0].graveyard, (
+            "With only 1 copy, Loyalty Beyond should not trigger"
+        )
+
+    def test_loyalty_beyond_player_declines(self, scenario_recorder):
+        """If player chooses 'no', nothing happens."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        loy1 = _make_loyalty_beyond(instance_id=700, owner_index=0)
+        loy2 = _make_loyalty_beyond(instance_id=701, owner_index=0)
+        state.players[0].graveyard.extend([loy1, loy2])
+
+        def ask_no(decision):
+            return PlayerResponse(selected_option_ids=["no"])
+
+        _register_loyalty_beyond_trigger(
+            game.events, state, controller_index=0, ask=ask_no,
+        )
+
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        assert loy1 in state.players[0].graveyard
+        assert loy2 in state.players[0].graveyard
+
+    def test_loyalty_beyond_only_fires_on_controllers_turn(self, scenario_recorder):
+        """The trigger should only fire on the controller's start of turn, not the opponent's."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        loy1 = _make_loyalty_beyond(instance_id=700, owner_index=0)
+        loy2 = _make_loyalty_beyond(instance_id=701, owner_index=0)
+        state.players[0].graveyard.extend([loy1, loy2])
+
+        def ask_yes(decision):
+            return PlayerResponse(selected_option_ids=["yes"])
+
+        _register_loyalty_beyond_trigger(
+            game.events, state, controller_index=0, ask=ask_yes,
+        )
+
+        # Emit START_OF_TURN for opponent (P1)
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=1,
+        ))
+        game._process_pending_triggers()
+
+        # Should NOT fire on opponent's turn
+        assert loy1 in state.players[0].graveyard
+        assert loy2 in state.players[0].graveyard
+
+    def test_loyalty_beyond_persists_across_turns(self, scenario_recorder):
+        """The trigger persists (not one-shot) and fires again on subsequent turns."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        # 4 copies in graveyard
+        copies = []
+        for i in range(4):
+            c = _make_loyalty_beyond(instance_id=700 + i, owner_index=0)
+            copies.append(c)
+        state.players[0].graveyard.extend(copies)
+
+        # Cards to draw
+        from htc.cards.card import CardDefinition
+        from htc.cards.instance import CardInstance
+        for i in range(2):
+            d = CardInstance(
+                instance_id=800 + i,
+                definition=CardDefinition(
+                    unique_id=f"draw-{800 + i}",
+                    name=f"Drawn Card {i}",
+                    color=Color.RED,
+                    pitch=1,
+                    cost=0,
+                    power=3,
+                    defense=3,
+                    health=None,
+                    intellect=None,
+                    arcane=None,
+                    types=frozenset({CardType.ACTION}),
+                    subtypes=frozenset({SubType.ATTACK}),
+                    supertypes=frozenset({SuperType.NINJA}),
+                    keywords=frozenset(),
+                    functional_text="",
+                    type_text="",
+                ),
+                owner_index=0,
+                zone=Zone.DECK,
             )
+            state.players[0].deck.append(d)
+
+        def ask_yes(decision):
+            return PlayerResponse(selected_option_ids=["yes"])
+
+        _register_loyalty_beyond_trigger(
+            game.events, state, controller_index=0, ask=ask_yes,
+        )
+
+        # Turn 1: should banish 2 and draw
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        assert len(state.players[0].banished) == 2
+        assert len(state.players[0].hand) == 1
+
+        # Turn 2: still 2 copies in graveyard, should banish 2 more and draw again
+        game.events.emit(GameEvent(
+            event_type=EventType.START_OF_TURN,
+            target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        assert len(state.players[0].banished) == 4
+        assert len(state.players[0].hand) == 2
 
 
 # ---------------------------------------------------------------------------

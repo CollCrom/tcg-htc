@@ -24,7 +24,9 @@ from htc.cards.card import CardDefinition
 from htc.cards.instance import CardInstance
 from htc.cards.abilities.equipment import _dragonscaler_flight_path, _flick_knives
 from htc.cards.abilities.ninja import (
+    _fire_tenet_strike_first_on_attack,
     _ignite_on_attack,
+    _take_the_tempo_on_hit,
     count_draconic_chain_links,
     _enflame_the_firebrand_on_attack,
     _spreading_flames_on_attack,
@@ -373,28 +375,247 @@ class TestDragonscalerFlightPathTiming:
 
 
 # ---------------------------------------------------------------------------
-# Test 2: Take the Tempo — SKIPPED (not implemented)
+# Test 2: Take the Tempo — hit counting and banish-to-play
 # ---------------------------------------------------------------------------
+
+
+def _make_take_the_tempo(instance_id: int = 400, owner_index: int = 0) -> CardInstance:
+    """Take the Tempo — Ninja Attack Action."""
+    defn = CardDefinition(
+        unique_id=f"take-tempo-{instance_id}",
+        name="Take the Tempo",
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=3,
+        defense=2,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ATTACK}),
+        supertypes=frozenset({SuperType.NINJA}),
+        keywords=frozenset({Keyword.GO_AGAIN}),
+        functional_text="When Take the Tempo hits, if you've hit 3 or more times this combat chain, banish the top card of your deck. If it's an attack action card, you may play it until the end of your next turn.",
+        type_text="Ninja Action - Attack",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.COMBAT_CHAIN,
+    )
+
+
+def _make_attack_action_deck_card(instance_id: int = 600, name: str = "Leg Tap", owner_index: int = 0) -> CardInstance:
+    """A generic attack action card for the deck."""
+    defn = CardDefinition(
+        unique_id=f"deck-atk-{instance_id}",
+        name=name,
+        color=Color.RED,
+        pitch=1,
+        cost=0,
+        power=4,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset({SubType.ATTACK}),
+        supertypes=frozenset({SuperType.NINJA}),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="Ninja Action - Attack",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.DECK,
+    )
+
+
+def _make_non_attack_deck_card(instance_id: int = 601, name: str = "Warmonger's Diplomacy", owner_index: int = 0) -> CardInstance:
+    """A non-attack action card for the deck."""
+    defn = CardDefinition(
+        unique_id=f"deck-non-{instance_id}",
+        name=name,
+        color=Color.BLUE,
+        pitch=3,
+        cost=0,
+        power=None,
+        defense=3,
+        health=None,
+        intellect=None,
+        arcane=None,
+        types=frozenset({CardType.ACTION}),
+        subtypes=frozenset(),
+        supertypes=frozenset({SuperType.GENERIC}),
+        keywords=frozenset(),
+        functional_text="",
+        type_text="Generic Action",
+    )
+    return CardInstance(
+        instance_id=instance_id,
+        definition=defn,
+        owner_index=owner_index,
+        zone=Zone.DECK,
+    )
+
 
 class TestTakeTheTempoHitCount:
     """Take the Tempo counts HITS not chain links.
 
-    SKIPPED: Take the Tempo is not implemented in the ability registry.
-    The card is in cards.tsv but has no on_hit handler registered.
+    'When Take the Tempo hits, if you've hit 3 or more times this combat
+     chain, banish the top card of your deck. If it's an attack action card,
+     you may play it until the end of your next turn.'
 
-    When implemented, it should count Flick Knives dagger hits toward
-    the hit total (similar to how Mask of Momentum works with Flick).
+    Hit count includes dagger hits (Flick Knives).
     """
 
-    def test_take_the_tempo_not_implemented(self, scenario_recorder):
-        """Verify Take the Tempo is not yet in the ability registry."""
+    def test_take_the_tempo_registered(self, scenario_recorder):
+        """Take the Tempo should be in the ability registry as on_hit."""
         game = _setup_base_game()
         recorder = scenario_recorder.bind(game)
 
         handler = game.ability_registry.lookup("on_hit", "Take the Tempo")
-        assert handler is None, (
-            "Take the Tempo is expected to not be implemented yet. "
-            "If this fails, the card was implemented and real tests should replace this stub."
+        assert handler is not None, (
+            "Take the Tempo should be registered as an on_hit handler"
+        )
+
+    def test_take_the_tempo_3_hits_banishes_attack_action(self, scenario_recorder):
+        """With 3+ hits, Take the Tempo should banish the top deck card.
+        If it's an attack action, it should be playable from banish.
+        """
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        # CL1, CL2: two prior hits
+        for i in range(2):
+            atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
+            link = game.combat_mgr.add_chain_link(state, atk, 1)
+            link.hit = True
+
+        # CL3: Take the Tempo (also a hit)
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link3.hit = True
+
+        # Put an attack action card on top of deck
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link3)
+        _take_the_tempo_on_hit(ctx)
+
+        # Card should be banished
+        assert deck_card in state.players[0].banished, (
+            "Top card should be banished after 3+ hits"
+        )
+        assert deck_card.zone == Zone.BANISHED
+        assert deck_card.face_up is True
+
+        # Should be playable from banish (attack action)
+        playable_ids = [p.instance_id for p in state.players[0].playable_from_banish]
+        assert deck_card.instance_id in playable_ids, (
+            "Attack action banished by Take the Tempo should be playable from banish"
+        )
+
+    def test_take_the_tempo_non_attack_not_playable(self, scenario_recorder):
+        """If the banished card is NOT an attack action, it stays banished
+        but is NOT playable.
+        """
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        # 3 hits
+        for i in range(2):
+            atk = make_ninja_attack(instance_id=10 + i, power=3, owner_index=0)
+            link = game.combat_mgr.add_chain_link(state, atk, 1)
+            link.hit = True
+
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link3.hit = True
+
+        # Non-attack action on top
+        deck_card = _make_non_attack_deck_card(instance_id=601, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link3)
+        _take_the_tempo_on_hit(ctx)
+
+        assert deck_card in state.players[0].banished
+        playable_ids = [p.instance_id for p in state.players[0].playable_from_banish]
+        assert deck_card.instance_id not in playable_ids, (
+            "Non-attack action should NOT be playable from banish"
+        )
+
+    def test_take_the_tempo_fewer_than_3_hits_no_effect(self, scenario_recorder):
+        """With fewer than 3 hits, Take the Tempo should not banish anything."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        # Only 2 hits (1 prior + Take the Tempo itself)
+        atk = make_ninja_attack(instance_id=10, power=3, owner_index=0)
+        link1 = game.combat_mgr.add_chain_link(state, atk, 1)
+        link1.hit = True
+
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link2 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link2.hit = True
+
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link2)
+        _take_the_tempo_on_hit(ctx)
+
+        assert deck_card not in state.players[0].banished, (
+            "With only 2 hits, Take the Tempo should not banish anything"
+        )
+        assert deck_card in state.players[0].deck
+
+    def test_take_the_tempo_counts_dagger_hits(self, scenario_recorder):
+        """Dagger hits (from Flick Knives) should count toward the 3-hit threshold.
+
+        Scenario: CL1 dagger hit, CL2 dagger hit, CL3 Take the Tempo hit = 3 hits.
+        """
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        # CL1, CL2: dagger hits (Flick Knives sets link.hit = True)
+        for i in range(2):
+            dagger = make_dagger_weapon(instance_id=10 + i, name="Kunai", owner_index=0)
+            proxy = make_weapon_proxy(dagger, instance_id=100 + i, owner_index=0)
+            link = game.combat_mgr.add_chain_link(state, proxy, 1)
+            link.hit = True  # Flick Knives sets this
+
+        # CL3: Take the Tempo hit
+        tempo = _make_take_the_tempo(instance_id=400, owner_index=0)
+        link3 = game.combat_mgr.add_chain_link(state, tempo, 1)
+        link3.hit = True
+
+        deck_card = _make_attack_action_deck_card(instance_id=600, owner_index=0)
+        state.players[0].deck = [deck_card]
+
+        ctx = make_ability_context(game, tempo, controller_index=0, chain_link=link3)
+        _take_the_tempo_on_hit(ctx)
+
+        assert deck_card in state.players[0].banished, (
+            "Dagger hits should count toward Take the Tempo's 3-hit threshold"
         )
 
 
@@ -671,4 +892,150 @@ class TestFireTenetNotDraconic:
         assert draconic_count == 2, (
             f"Draconic count should be 2 (CL1 + CL3). Fire Tenet on CL2 is Ninja only. "
             f"Got {draconic_count}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 6: Fire Tenet: Strike First on_attack ability
+# ---------------------------------------------------------------------------
+
+
+class TestFireTenetStrikeFirstOnAttack:
+    """Fire Tenet: Strike First (Ninja, Attack Action):
+    'When this attacks, your next Draconic attack this combat chain gets +1{p}.'
+
+    Tests the on_attack handler grants +1 power to the next Draconic attack
+    on the combat chain (using make_once_filter for single application).
+    """
+
+    def test_fire_tenet_registered_as_on_attack(self, scenario_recorder):
+        """Fire Tenet should be registered in the ability registry."""
+        game = _setup_base_game()
+        recorder = scenario_recorder.bind(game)
+
+        handler = game.ability_registry.lookup("on_attack", "Fire Tenet: Strike First")
+        assert handler is not None, (
+            "Fire Tenet: Strike First should be registered as an on_attack handler"
+        )
+
+    def test_fire_tenet_grants_plus_1_to_next_draconic(self, scenario_recorder):
+        """After Fire Tenet attacks, the next Draconic attack on the chain
+        should get +1 power.
+        """
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        # CL1: Fire Tenet attacks
+        fire_tenet = _make_fire_tenet(instance_id=300, owner_index=0)
+        link1 = game.combat_mgr.add_chain_link(state, fire_tenet, 1)
+
+        ctx = make_ability_context(game, fire_tenet, controller_index=0, chain_link=link1)
+        _fire_tenet_strike_first_on_attack(ctx)
+
+        # CL2: Draconic attack (should get +1 power)
+        draconic_atk = make_draconic_ninja_attack(
+            instance_id=2, name="Dragon Power", power=4, owner_index=0,
+        )
+        link2 = game.combat_mgr.add_chain_link(state, draconic_atk, 1)
+
+        modified_power = game.effect_engine.get_modified_power(state, draconic_atk)
+        assert modified_power == 5, (
+            f"Next Draconic attack should get +1 power from Fire Tenet. "
+            f"Base 4 + 1 = 5. Got {modified_power}"
+        )
+
+    def test_fire_tenet_only_applies_once(self, scenario_recorder):
+        """The +1 power should only apply to ONE Draconic attack (make_once_filter)."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        fire_tenet = _make_fire_tenet(instance_id=300, owner_index=0)
+        link1 = game.combat_mgr.add_chain_link(state, fire_tenet, 1)
+
+        ctx = make_ability_context(game, fire_tenet, controller_index=0, chain_link=link1)
+        _fire_tenet_strike_first_on_attack(ctx)
+
+        # CL2: First Draconic attack gets +1
+        draconic1 = make_draconic_ninja_attack(
+            instance_id=2, name="Dragon Power", power=4, owner_index=0,
+        )
+        game.combat_mgr.add_chain_link(state, draconic1, 1)
+
+        # CL3: Second Draconic attack should NOT get +1
+        draconic2 = make_draconic_ninja_attack(
+            instance_id=3, name="Ignite", power=2, owner_index=0,
+        )
+        game.combat_mgr.add_chain_link(state, draconic2, 1)
+
+        power1 = game.effect_engine.get_modified_power(state, draconic1)
+        power2 = game.effect_engine.get_modified_power(state, draconic2)
+
+        assert power1 == 5, f"First Draconic should get +1 (4+1=5). Got {power1}"
+        assert power2 == 2, f"Second Draconic should NOT get +1 (base 2). Got {power2}"
+
+    def test_fire_tenet_does_not_boost_non_draconic(self, scenario_recorder):
+        """The +1 power should not apply to non-Draconic attacks."""
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        fire_tenet = _make_fire_tenet(instance_id=300, owner_index=0)
+        link1 = game.combat_mgr.add_chain_link(state, fire_tenet, 1)
+
+        ctx = make_ability_context(game, fire_tenet, controller_index=0, chain_link=link1)
+        _fire_tenet_strike_first_on_attack(ctx)
+
+        # CL2: Non-Draconic Ninja attack (should NOT get +1)
+        ninja_atk = make_ninja_attack(instance_id=2, name="Leg Tap", power=4, owner_index=0)
+        game.combat_mgr.add_chain_link(state, ninja_atk, 1)
+
+        modified_power = game.effect_engine.get_modified_power(state, ninja_atk)
+        assert modified_power == 4, (
+            f"Non-Draconic attack should not get Fire Tenet bonus. Got {modified_power}"
+        )
+
+    def test_fire_tenet_works_with_fealty_granted_draconic(self, scenario_recorder):
+        """Fire Tenet's bonus should apply to a card that has Draconic granted
+        by Fealty (via effect engine supertype check, not definition).
+        """
+        game = _setup_base_game()
+        state = game.state
+        recorder = scenario_recorder.bind(game)
+
+        game.combat_mgr.open_chain(state)
+
+        fire_tenet = _make_fire_tenet(instance_id=300, owner_index=0)
+        link1 = game.combat_mgr.add_chain_link(state, fire_tenet, 1)
+
+        ctx = make_ability_context(game, fire_tenet, controller_index=0, chain_link=link1)
+        _fire_tenet_strike_first_on_attack(ctx)
+
+        # Break Fealty to grant Draconic to next card
+        fealty = _make_fealty_token(instance_id=500, owner_index=0)
+        state.players[0].permanents.append(fealty)
+        fealty_ctx = make_ability_context(game, fealty, controller_index=0)
+        _fealty_instant(fealty_ctx)
+
+        # CL2: Ninja attack (now Draconic via Fealty) should get +1
+        ninja_atk = make_ninja_attack(instance_id=2, name="Leg Tap", power=4, owner_index=0)
+        ninja_atk.zone = Zone.COMBAT_CHAIN
+        game.combat_mgr.add_chain_link(state, ninja_atk, 1)
+
+        # Verify Fealty made it Draconic
+        supertypes = game.effect_engine.get_modified_supertypes(state, ninja_atk)
+        assert SuperType.DRACONIC in supertypes, "Fealty should grant Draconic"
+
+        # Verify Fire Tenet bonus applies
+        modified_power = game.effect_engine.get_modified_power(state, ninja_atk)
+        assert modified_power == 5, (
+            f"Fealty-granted Draconic attack should get Fire Tenet +1 bonus. "
+            f"Base 4 + 1 = 5. Got {modified_power}"
         )
