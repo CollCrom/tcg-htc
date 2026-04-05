@@ -598,6 +598,45 @@ Persistent learnings across sessions. Update this after each review.
 - **Tests**: 2 new tests covering retrieve-then-check and full retrieve-reequip-attack flow. Both pass. Good coverage for the fix.
 - 2 tests passing (ran in isolation).
 
+### test/strategy-article-scenarios — Strategy Article Scenario Tests (2026-04-04)
+- **Round 1 verdict: APPROVE** — No critical issues. No minor issues. Test-only change (39 new tests, no engine code).
+- **Scope**: 5 new test files in `tests/scenarios/`, 39 tests total. All verify competitive FaB interactions from strategy articles.
+- **All 39 tests passing.**
+
+#### Rules Correctness Verified
+
+1. **Dragonscaler Flight Path timing** (4 tests): Grants Go Again to Draconic attack (correct per card text). No effect on non-Draconic (correct). Untaps weapon on proxy attack (correct — "attack with it an additional time"). Registered as equipment_instant_effect (correct timing).
+
+2. **Take the Tempo stub** (1 test): Correctly verifies card is not implemented. Stub comment correctly notes it counts HITS not chain links, matching card text ("if you've hit 3 or more times this combat chain").
+
+3. **Kiss of Death + Flick Knives damage math** (2 tests): Total damage = 2 (1 from Flick + 1 from Kiss on-hit life loss). Correct per Flick card text ("the dagger has hit") which triggers Kiss of Death's on-hit ("they lose 1 life"). Strategy article confirms this interaction.
+
+4. **Fealty + Ignite sequencing** (2 tests): Fealty grants Draconic to next card, Ignite cost reduction applies to Fealty-granted Draconic. Correct — Ignite's target filter checks resolved supertypes (including effect-granted Draconic).
+
+5. **Fire Tenet: Strike First NOT Draconic** (3 tests): Confirmed Ninja supertype only in card data. Does not count toward Draconic chain links. Test correctly catches common competitive mistake.
+
+6. **Ignite + Fealty cost reduction stacking** (4 tests): Multiple cost reductions stack. Ignite `uses_remaining=1` consumed after first Draconic card. Fealty-granted Draconic makes card eligible for Ignite reduction. All correct.
+
+7. **Inertia token end-phase** (4 tests): Moves hand and arsenal to deck bottom (matches card text exactly: "put all cards from your hand and arsenal on the bottom of your deck"). Only triggers for controller. Token destroyed. Correct.
+
+8. **Trap-Door Agent lifecycle** (4 tests): on_become searches deck, banishes card, marks Traps as playable from banish, shuffles deck. Return-to-brood at controller's end phase. All correct per card text and engine behavior.
+
+9. **Black Widow + Kiss of Death + Leave No Witnesses combo** (3 tests): Black Widow on-hit banishes from hand (correct when target is marked). Leave No Witnesses Contract fires on red card banish, creates Silver token (correct per Contract mechanic). Kiss of Death on-hit life loss (correct).
+
+10. **Fealty multi-turn survival** (3 tests): Survives when Draconic played or Fealty created this turn. Destroyed when neither condition met. Matches card text ("if you haven't created a Fealty token or played a Draconic card this turn, destroy this").
+
+11. **Blue Cindra resource curve** (4 tests): Smoke tests for cost/pitch math at 0/1/2/3 values. Cost floor = 0. Correct.
+
+12. **Tarantula Toxin modes** (4 tests): Mode 1 (+3 power to dagger attack), Mode 2 (-3 defense to defending card on stealth attack), Both modes when applicable, No effect when neither mode valid. All match card text. Red variant confirmed in card data.
+
+13. **Loyalty Beyond the Grave stub** (1 test): Correctly verifies not implemented. Card text matches stub description.
+
+#### No Issues Found
+- All assertions match official card text verified against cards.tsv data
+- Stub tests correctly documented with "replace this stub when implemented" guidance
+- No wrong-behavior assertions detected
+- No engine code changes to review
+
 ## Talishar Discrepancies
 
 *(None found yet)*
