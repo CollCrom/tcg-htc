@@ -404,6 +404,10 @@ class KeywordEngine:
             if card:
                 player.graveyard.remove(card)
                 card.zone = Zone.HAND
+                # Reset once-per-turn state — retrieved weapon is a new game
+                # object per FaB rules and can activate again this turn
+                card.activated_this_turn = False
+                card.is_tapped = False
                 player.hand.append(card)
                 pn = state.players[player_index].hero.definition.name.split(",")[0] if state.players[player_index].hero else f"Player {player_index}"
                 log.info(f"  Retrieve: {pn} returns {card.name} to hand")
