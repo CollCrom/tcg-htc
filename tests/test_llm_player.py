@@ -6,7 +6,6 @@ and response parsing.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -251,13 +250,24 @@ class TestStrategyContext:
         assert "sequencing" in prompt.lower() or "Sequencing" in prompt
 
 
-class TestLLMPlayerParsing:
-    """Test LLM response parsing without actual API calls."""
+class TestLLMPlayerToolUse:
+    """Test LLM player with mocked tool_use API responses."""
 
-    def test_parse_valid_json(self) -> None:
+    def _make_tool_response(self, tool_input: dict):
+        """Create a mock API response with a tool_use block."""
+        block = MagicMock()
+        block.type = "tool_use"
+        block.name = "make_decision"
+        block.input = tool_input
+        response = MagicMock()
+        response.content = [block]
+        return response
+
+    def test_single_select(self) -> None:
         from htc.player.llm_player import LLMPlayer
 
         player = LLMPlayer()
+        gs = _make_game_state()
         decision = Decision(
             player_index=0,
             decision_type=DecisionType.PLAY_OR_PASS,
@@ -268,52 +278,22 @@ class TestLLMPlayerParsing:
             ],
         )
 
-        response = '{"option_id": "play_1", "reasoning": "Best attack option"}'
-        result = player._parse_response(response, decision)
+        mock_resp = self._make_tool_response(
+            {"option_id": "play_1", "reasoning": "Best attack option"}
+        )
+        with patch("htc.player.llm_player._get_client") as mock_client:
+            mock_client.return_value.messages.create.return_value = mock_resp
+            result = player.decide(gs, decision)
+
         assert result.selected_option_ids == ["play_1"]
         assert player._last_reasoning == "Best attack option"
+        assert len(player.transcript) == 1
 
-    def test_parse_json_in_code_block(self) -> None:
+    def test_multi_select(self) -> None:
         from htc.player.llm_player import LLMPlayer
 
         player = LLMPlayer()
-        decision = Decision(
-            player_index=0,
-            decision_type=DecisionType.PLAY_OR_PASS,
-            prompt="Choose",
-            options=[
-                ActionOption("play_1", "Play card", ActionType.PLAY_CARD),
-                ActionOption("pass", "Pass", ActionType.PASS),
-            ],
-        )
-
-        response = '```json\n{"option_id": "pass", "reasoning": "No good attacks"}\n```'
-        result = player._parse_response(response, decision)
-        assert result.selected_option_ids == ["pass"]
-
-    def test_parse_invalid_option_falls_back(self) -> None:
-        from htc.player.llm_player import LLMPlayer
-
-        player = LLMPlayer()
-        decision = Decision(
-            player_index=0,
-            decision_type=DecisionType.PLAY_OR_PASS,
-            prompt="Choose",
-            options=[
-                ActionOption("play_1", "Play card", ActionType.PLAY_CARD),
-                ActionOption("pass", "Pass", ActionType.PASS),
-            ],
-        )
-
-        response = '{"option_id": "play_999", "reasoning": "?"}'
-        result = player._parse_response(response, decision)
-        # Falls back to first option
-        assert result.selected_option_ids == ["play_1"]
-
-    def test_parse_multi_select(self) -> None:
-        from htc.player.llm_player import LLMPlayer
-
-        player = LLMPlayer()
+        gs = _make_game_state()
         decision = Decision(
             player_index=0,
             decision_type=DecisionType.CHOOSE_DEFENDERS,
@@ -327,24 +307,38 @@ class TestLLMPlayerParsing:
             ],
         )
 
-        response = '{"option_ids": ["defend_1", "defend_2"], "reasoning": "Block both"}'
-        result = player._parse_response(response, decision)
+        mock_resp = self._make_tool_response(
+            {"option_ids": ["defend_1", "defend_2"], "reasoning": "Block both"}
+        )
+        with patch("htc.player.llm_player._get_client") as mock_client:
+            mock_client.return_value.messages.create.return_value = mock_resp
+            result = player.decide(gs, decision)
+
         assert result.selected_option_ids == ["defend_1", "defend_2"]
 
-    def test_parse_garbage_falls_back(self) -> None:
+    def test_invalid_option_falls_back(self) -> None:
         from htc.player.llm_player import LLMPlayer
 
         player = LLMPlayer()
+        gs = _make_game_state()
         decision = Decision(
             player_index=0,
             decision_type=DecisionType.PLAY_OR_PASS,
             prompt="Choose",
             options=[
                 ActionOption("play_1", "Play card", ActionType.PLAY_CARD),
+                ActionOption("pass", "Pass", ActionType.PASS),
             ],
         )
 
-        result = player._parse_response("I think you should play the card", decision)
+        mock_resp = self._make_tool_response(
+            {"option_id": "play_999", "reasoning": "?"}
+        )
+        with patch("htc.player.llm_player._get_client") as mock_client:
+            mock_client.return_value.messages.create.return_value = mock_resp
+            result = player.decide(gs, decision)
+
+        # Falls back to first option
         assert result.selected_option_ids == ["play_1"]
 
     def test_fallback_on_api_error(self) -> None:
@@ -362,9 +356,59 @@ class TestLLMPlayerParsing:
             ],
         )
 
-        # Mock _call_llm to raise an error
-        with patch.object(player, "_call_llm", side_effect=RuntimeError("API down")):
+        with patch("htc.player.llm_player._get_client", side_effect=RuntimeError("API down")):
             result = player.decide(gs, decision)
 
         assert result.selected_option_ids == ["play_1"]
         assert len(player.transcript) == 1
+
+    def test_no_tool_block_falls_back(self) -> None:
+        from htc.player.llm_player import LLMPlayer
+
+        player = LLMPlayer()
+        gs = _make_game_state()
+        decision = Decision(
+            player_index=0,
+            decision_type=DecisionType.PLAY_OR_PASS,
+            prompt="Choose",
+            options=[
+                ActionOption("play_1", "Play card", ActionType.PLAY_CARD),
+            ],
+        )
+
+        # Response with text block instead of tool_use
+        text_block = MagicMock()
+        text_block.type = "text"
+        response = MagicMock()
+        response.content = [text_block]
+
+        with patch("htc.player.llm_player._get_client") as mock_client:
+            mock_client.return_value.messages.create.return_value = response
+            result = player.decide(gs, decision)
+
+        assert result.selected_option_ids == ["play_1"]
+
+    def test_transcript_records_reasoning(self) -> None:
+        from htc.player.llm_player import LLMPlayer
+
+        player = LLMPlayer()
+        gs = _make_game_state()
+        decision = Decision(
+            player_index=0,
+            decision_type=DecisionType.PLAY_OR_PASS,
+            prompt="Choose an action",
+            options=[
+                ActionOption("pass", "Pass", ActionType.PASS),
+            ],
+        )
+
+        mock_resp = self._make_tool_response(
+            {"option_id": "pass", "reasoning": "Nothing to play"}
+        )
+        with patch("htc.player.llm_player._get_client") as mock_client:
+            mock_client.return_value.messages.create.return_value = mock_resp
+            player.decide(gs, decision)
+
+        assert len(player.transcript) == 1
+        assert player.transcript[0].reasoning == "Nothing to play"
+        assert player.transcript[0].chosen_option == "pass"

@@ -26,6 +26,11 @@ _NOTABLE_KEYWORDS = frozenset({
 def narrate(game_state: GameState, decision: Decision) -> str:
     """Build a concise textual description of the game state and decision."""
     me_idx = decision.player_index
+
+    # During setup (equipment selection), players aren't populated yet
+    if me_idx >= len(game_state.players):
+        return _narrate_setup(decision)
+
     opp_idx = 1 - me_idx
     me = game_state.players[me_idx]
     opp = game_state.players[opp_idx]
@@ -237,3 +242,16 @@ def _option_card_details(opt: ActionOption, gs: GameState) -> str:
     if extras:
         return f" — {', '.join(extras)}"
     return ""
+
+
+def _narrate_setup(decision: Decision) -> str:
+    """Narrate a pre-game decision (e.g., equipment selection)."""
+    parts: list[str] = [
+        "Pre-game setup",
+        "",
+        f"DECISION ({decision.decision_type.value}): {decision.prompt}",
+        "Options:",
+    ]
+    for opt in decision.options:
+        parts.append(f"  [{opt.action_id}] {opt.description}")
+    return "\n".join(parts)

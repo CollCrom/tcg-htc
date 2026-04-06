@@ -75,8 +75,12 @@ def build_system_prompt(
             if hero_text:
                 sections.append(f"## Hero Strategy ({hero_name})\n{hero_text}")
 
-    # Response format
-    sections.append(_RESPONSE_FORMAT)
+    # Response instructions
+    sections.append(
+        "## Instructions\n"
+        "Use the make_decision tool to submit your choice. "
+        "Pick the best option_id (or option_ids for multi-select) and give brief reasoning."
+    )
 
     prompt = "\n\n".join(sections)
 
@@ -135,16 +139,6 @@ Key principles:
 - Arsenal: save high-impact cards for future turns. Don't arsenal mediocre cards.
 - Equipment: use equipment blocks strategically — they're free defense but one-time use.
 """
-
-_RESPONSE_FORMAT = """## Response Format
-Return ONLY valid JSON with your decision:
-{"option_id": "<the action_id of your chosen option>", "reasoning": "<brief explanation>"}
-
-For multi-select decisions (like choosing defenders), return:
-{"option_ids": ["<id1>", "<id2>"], "reasoning": "<brief explanation>"}
-
-Be concise in reasoning — 1-2 sentences max."""
-
 
 _DECISION_GUIDANCE: dict[DecisionType, str] = {
     DecisionType.PLAY_OR_PASS: (

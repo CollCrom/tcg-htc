@@ -1,13 +1,13 @@
 """LLM-powered player that uses Claude to make gameplay decisions.
 
 Implements PlayerInterface by calling the Anthropic API for each decision.
+Uses tool_use for structured output to guarantee valid JSON responses.
 Strategy context is loaded from ref/strategy-*.md articles and the game
 state is narrated into readable text by state_narrator.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -40,6 +40,48 @@ def _get_client():  # type: ignore[no-untyped-def]
     return _anthropic_client
 
 
+# Tool definition for single-select decisions
+_SINGLE_SELECT_TOOL = {
+    "name": "make_decision",
+    "description": "Submit your gameplay decision with reasoning.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "option_id": {
+                "type": "string",
+                "description": "The action_id of your chosen option",
+            },
+            "reasoning": {
+                "type": "string",
+                "description": "Brief explanation (1-2 sentences)",
+            },
+        },
+        "required": ["option_id", "reasoning"],
+    },
+}
+
+# Tool definition for multi-select decisions (defend, pitch, etc.)
+_MULTI_SELECT_TOOL = {
+    "name": "make_decision",
+    "description": "Submit your gameplay decision with reasoning.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "option_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "The action_ids of your chosen options",
+            },
+            "reasoning": {
+                "type": "string",
+                "description": "Brief explanation (1-2 sentences)",
+            },
+        },
+        "required": ["option_ids", "reasoning"],
+    },
+}
+
+
 @dataclass
 class DecisionRecord:
     """Record of a single decision for the game transcript."""
@@ -68,6 +110,7 @@ class LLMPlayer:
     temperature: float = 0.3
     hero_name: str | None = None
     transcript: list[DecisionRecord] = field(default_factory=list)
+    _last_reasoning: str = field(default="", init=False, repr=False)
 
     def decide(self, game_state: GameState, decision: Decision) -> PlayerResponse:
         """Make a gameplay decision using Claude.
@@ -82,7 +125,7 @@ class LLMPlayer:
 
         # Resolve hero name from game state if not set
         hero = self.hero_name
-        if hero is None:
+        if hero is None and decision.player_index < len(game_state.players):
             me = game_state.players[decision.player_index]
             if me.hero:
                 hero = me.hero.name
@@ -94,10 +137,10 @@ class LLMPlayer:
         )
 
         try:
-            response = self._call_llm(system_prompt, user_message)
-            result = self._parse_response(response, decision)
+            result = self._call_llm(system_prompt, user_message, decision)
         except Exception:
             log.exception("LLM call failed, falling back to first option")
+            self._last_reasoning = "(API error — fallback)"
             result = self._fallback(decision)
 
         # Log the decision
@@ -106,7 +149,7 @@ class LLMPlayer:
             decision_type=decision.decision_type.value,
             prompt=decision.prompt,
             chosen_option=", ".join(result.selected_option_ids),
-            reasoning=getattr(self, "_last_reasoning", ""),
+            reasoning=self._last_reasoning,
             options_count=len(decision.options),
         )
         self.transcript.append(record)
@@ -119,71 +162,55 @@ class LLMPlayer:
 
         return result
 
-    def _call_llm(self, system_prompt: str, user_message: str) -> str:
-        """Call the Claude API and return the text response."""
+    def _call_llm(
+        self, system_prompt: str, user_message: str, decision: Decision,
+    ) -> PlayerResponse:
+        """Call Claude with tool_use for structured output."""
         client = _get_client()
+
+        is_multi = decision.max_selections > 1
+        tool = _MULTI_SELECT_TOOL if is_multi else _SINGLE_SELECT_TOOL
+
         response = client.messages.create(
             model=self.model,
-            max_tokens=256,
+            max_tokens=512,
             temperature=self.temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
+            tools=[tool],
+            tool_choice={"type": "tool", "name": "make_decision"},
         )
-        return response.content[0].text
 
-    def _parse_response(self, response_text: str, decision: Decision) -> PlayerResponse:
-        """Parse the LLM's JSON response into a PlayerResponse.
+        # Extract tool use result
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "make_decision":
+                data = block.input
+                self._last_reasoning = data.get("reasoning", "")
 
-        Handles both single-select (option_id) and multi-select (option_ids).
-        Falls back to first option if parsing fails.
-        """
-        self._last_reasoning = ""
+                valid_ids = {o.action_id for o in decision.options}
 
-        # Try to extract JSON from the response
-        text = response_text.strip()
-        # Handle markdown code blocks
-        if text.startswith("```"):
-            lines = text.split("\n")
-            # Remove first and last lines (``` markers)
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            text = "\n".join(lines).strip()
+                if is_multi:
+                    ids = data.get("option_ids", [])
+                    selected = [i for i in ids if i in valid_ids]
+                    if selected:
+                        return PlayerResponse(selected_option_ids=selected)
+                    # If multi-select returned nothing valid, try single
+                    single = data.get("option_id", "")
+                    if single in valid_ids:
+                        return PlayerResponse(selected_option_ids=[single])
+                else:
+                    option_id = data.get("option_id", "")
+                    if option_id in valid_ids:
+                        return PlayerResponse(selected_option_ids=[option_id])
 
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            # Try to find JSON in the response
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start >= 0 and end > start:
-                try:
-                    data = json.loads(text[start:end])
-                except json.JSONDecodeError:
-                    log.warning("Failed to parse LLM response as JSON: %s", text[:200])
-                    return self._fallback(decision)
-            else:
-                log.warning("No JSON found in LLM response: %s", text[:200])
+                log.warning(
+                    "LLM returned invalid option(s): %s (valid: %s)",
+                    data, valid_ids,
+                )
                 return self._fallback(decision)
 
-        self._last_reasoning = data.get("reasoning", "")
-
-        # Multi-select response
-        if "option_ids" in data:
-            ids = data["option_ids"]
-            if isinstance(ids, list):
-                valid = {o.action_id for o in decision.options}
-                selected = [i for i in ids if i in valid]
-                if selected:
-                    return PlayerResponse(selected_option_ids=selected)
-                log.warning("LLM returned invalid option_ids: %s (valid: %s)", ids, valid)
-                return self._fallback(decision)
-
-        # Single-select response
-        option_id = data.get("option_id", "")
-        valid_ids = {o.action_id for o in decision.options}
-        if option_id in valid_ids:
-            return PlayerResponse(selected_option_ids=[option_id])
-
-        log.warning("LLM returned invalid option_id: %r (valid: %s)", option_id, valid_ids)
+        # No tool_use block found — shouldn't happen with tool_choice forced
+        log.warning("No tool_use block in LLM response")
         return self._fallback(decision)
 
     def _fallback(self, decision: Decision) -> PlayerResponse:
