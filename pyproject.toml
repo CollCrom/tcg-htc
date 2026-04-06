@@ -3,7 +3,7 @@ name = "htc"
 version = "0.1.0"
 description = "TCG Hyperbolic Time Chamber — Flesh and Blood game simulator"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["anthropic>=0.40.0"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "ruff", "mypy"]
