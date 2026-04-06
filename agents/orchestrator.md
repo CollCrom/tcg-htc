@@ -22,6 +22,7 @@ To spawn an agent, use the Agent tool with the agent's role file as context (e.g
 | Reviewing engine code for rules correctness | Spawn **Skeptic** |
 | PR ready for review | Spawn **Skeptic** on the diff |
 | Generating targeted scenario/interaction tests | Spawn **Test Generator** |
+| Building/refining the LLM player, running games with it | Spawn **Playtester** |
 | Planning, discussing, answering questions | Handle directly — no spawn needed |
 
 ## CRITICAL: Skeptic Gate is MANDATORY
@@ -41,6 +42,7 @@ To spawn an agent, use the Agent tool with the agent's role file as context (e.g
 - `agents/builder.md` — Implements engine features, owns architecture and testing
 - `agents/skeptic.md` — Reviews for rules correctness against comprehensive rules + Talishar
 - `agents/test-generator.md` — Generates targeted scenario tests for card interactions and edge cases
+- `agents/playtester.md` — Builds and refines the LLM-powered strategic player
 
 ## Files You Maintain
 
