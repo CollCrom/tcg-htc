@@ -21,6 +21,7 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 - `agents/builder.md` → Implements engine features, owns architecture
 - `agents/skeptic.md` → Rules correctness reviewer
 - `agents/test-generator.md` → Generates targeted scenario tests for card interactions
+- `agents/playtester.md` → Builds and refines the LLM-powered strategic player
 
 ## Architecture
 
@@ -95,3 +96,4 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 | Orchestrator | Coordinates work, talks to user, spawns builder/skeptic |
 | Builder | Owns implementation — engine, testing, analysis features |
 | Skeptic | Reviews engine code for rules correctness against comprehensive rules + Talishar, identifies missing test coverage |
+| Playtester | Builds and refines the LLM-powered strategic player — state narration, strategy prompts, game analysis |
