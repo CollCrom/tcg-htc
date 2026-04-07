@@ -108,10 +108,21 @@ Persistent learnings across sessions. Update this as you go.
 - Contract trigger accumulation is correct per FaB rules — each card with Contract generates an independent continuous effect.
 - 959 tests passing. Skeptic: CLEAN after 2 rounds.
 
+### 2026-04-06: LLM Player (PR #103) + Strategy Refs
+
+- **LLM Player shipped** (PR #103, branch `feat/llm-player`): `LLMPlayer` class in `src/htc/player/` implements `PlayerInterface` via Claude API. Four modules: `state_narrator.py`, `strategy_context.py`, `llm_player.py`, `analyst.py`. Uses **tool_use** for structured output (switched from free-text JSON after Sonnet returned prose 100% of the time). Skeptic: APPROVE after 1 round.
+- **First LLM game completed**: Cindra (LLM) beat Arakni (Random) in 69 turns, 24-0 life. 483 decisions, zero parse failures with tool_use. Post-game analysis failed due to API credit exhaustion.
+- **Rate limiting was heavy**: ~46 retries over the game. User's API tier is the bottleneck.
+- **Strategy reference docs added**: 7 articles in `ref/strategy-*.md` — fundamentals, defeating defense, deckbuilding, metagames (from Yuki Lee Bender masterclass series + Ultimate Guard guide).
+- **Playtester agent defined**: `agents/playtester.md` — owns the LLM player, strategy prompts, and game analysis. Writes to `memory/playtester.md` for user review.
+- **`anthropic` is optional dep**: `pip install -e .[llm]` to enable.
+- **Run tool**: `tools/run_llm_game.py` — Cindra vs Arakni, configurable seed/model/hero.
+
 ## Open TODOs
 
-- **NEXT SESSION: Wire board viewer into scenario tests.** The 43 scenario tests need to run through the board viewer so the user can visually step through each interaction and verify correctness.
-- After that: build smarter AI player using strategy articles (ref/strategy-*.md).
+- **Board viewer + scenario tests**: Wire the 43 scenario tests through the board viewer for visual verification.
+- **LLM player next steps**: Transcript dump feature (reasoning per decision without -v mode). LLM vs LLM games. Review decision quality from logs. User needs to top up API credits.
+- **User's API key was exposed in chat** — needs rotation.
 
 ## Process Notes
 

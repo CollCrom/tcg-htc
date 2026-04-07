@@ -275,7 +275,7 @@ def test_cindra_deck_equipment_selection():
         return  # Skip if ref decklist not available
 
     # Import the markdown parser from integration tests
-    from tests.integration.test_full_game import parse_markdown_decklist
+    from htc.decks.deck_list import parse_markdown_decklist
     deck = parse_markdown_decklist(decklist_path.read_text())
 
     # Cindra has 2 chest (Blood Splattered Vest, Fyendal's Spring Tunic)

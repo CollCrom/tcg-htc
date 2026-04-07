@@ -9,77 +9,58 @@ state is narrated into readable text by state_narrator.
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
 
 from htc.engine.actions import Decision, PlayerResponse
 from htc.state.game_state import GameState
 
+from htc.player.api_client import DEFAULT_MODEL, get_client
 from htc.player.state_narrator import narrate
 from htc.player.strategy_context import build_system_prompt
 
 log = logging.getLogger(__name__)
 
-# Lazy import — anthropic is an optional dependency
-_anthropic_client = None
 
-
-def _get_client():  # type: ignore[no-untyped-def]
-    """Lazily initialize the Anthropic client."""
-    global _anthropic_client
-    if _anthropic_client is None:
-        import anthropic
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY environment variable not set. "
-                "Set it to use the LLM player."
-            )
-        _anthropic_client = anthropic.Anthropic(api_key=api_key)
-    return _anthropic_client
-
-
-# Tool definition for single-select decisions
-_SINGLE_SELECT_TOOL = {
-    "name": "make_decision",
-    "description": "Submit your gameplay decision with reasoning.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "option_id": {
-                "type": "string",
-                "description": "The action_id of your chosen option",
-            },
-            "reasoning": {
-                "type": "string",
-                "description": "Brief explanation (1-2 sentences)",
-            },
-        },
-        "required": ["option_id", "reasoning"],
-    },
-}
-
-# Tool definition for multi-select decisions (defend, pitch, etc.)
-_MULTI_SELECT_TOOL = {
-    "name": "make_decision",
-    "description": "Submit your gameplay decision with reasoning.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
+def _build_tool(multi: bool, reasoning: bool) -> dict:
+    """Build the tool schema, optionally including the reasoning field."""
+    if multi:
+        props: dict = {
             "option_ids": {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "The action_ids of your chosen options",
             },
-            "reasoning": {
+        }
+        required = ["option_ids"]
+    else:
+        props = {
+            "option_id": {
                 "type": "string",
-                "description": "Brief explanation (1-2 sentences)",
+                "description": "The action_id of your chosen option",
             },
+        }
+        required = ["option_id"]
+
+    if reasoning:
+        props["reasoning"] = {
+            "type": "string",
+            "description": "Brief explanation (1-2 sentences)",
+        }
+        required.append("reasoning")
+
+    desc = "Submit your gameplay decision."
+    if reasoning:
+        desc = "Submit your gameplay decision with reasoning."
+
+    return {
+        "name": "make_decision",
+        "description": desc,
+        "input_schema": {
+            "type": "object",
+            "properties": props,
+            "required": required,
         },
-        "required": ["option_ids", "reasoning"],
-    },
-}
+    }
 
 
 @dataclass
@@ -104,11 +85,14 @@ class LLMPlayer:
         model: Claude model to use. Defaults to claude-sonnet-4-6 for speed.
         temperature: Sampling temperature. Lower = more deterministic.
         hero_name: Hero name for loading hero-specific strategy articles.
+        reasoning: Include reasoning in tool schema. Disable for batch runs
+            to save ~30-40% output tokens.
     """
 
-    model: str = "claude-sonnet-4-6"
+    model: str = DEFAULT_MODEL
     temperature: float = 0.3
     hero_name: str | None = None
+    reasoning: bool = True
     transcript: list[DecisionRecord] = field(default_factory=list)
     _last_reasoning: str = field(default="", init=False, repr=False)
 
@@ -116,9 +100,25 @@ class LLMPlayer:
         """Make a gameplay decision using Claude.
 
         Falls back to the first legal option on API errors.
+        Skips the LLM entirely for trivial single-option decisions.
         """
         if not decision.options:
             return PlayerResponse()
+
+        # Skip LLM for trivial decisions (only one option)
+        if len(decision.options) == 1:
+            only = decision.options[0]
+            self._last_reasoning = "(auto — single option)"
+            result = PlayerResponse(selected_option_ids=[only.action_id])
+            self.transcript.append(DecisionRecord(
+                turn=game_state.turn_number,
+                decision_type=decision.decision_type.value,
+                prompt=decision.prompt,
+                chosen_option=only.action_id,
+                reasoning=self._last_reasoning,
+                options_count=1,
+            ))
+            return result
 
         # Build the narrated game state
         user_message = narrate(game_state, decision)
@@ -130,7 +130,7 @@ class LLMPlayer:
             if me.hero:
                 hero = me.hero.name
 
-        # Build strategy-aware system prompt
+        # Build strategy-aware system prompt (returns cache-aware blocks)
         system_prompt = build_system_prompt(
             hero_name=hero,
             decision_type=decision.decision_type,
@@ -163,17 +163,17 @@ class LLMPlayer:
         return result
 
     def _call_llm(
-        self, system_prompt: str, user_message: str, decision: Decision,
+        self, system_prompt: list[dict], user_message: str, decision: Decision,
     ) -> PlayerResponse:
         """Call Claude with tool_use for structured output."""
-        client = _get_client()
+        client = get_client()
 
         is_multi = decision.max_selections > 1
-        tool = _MULTI_SELECT_TOOL if is_multi else _SINGLE_SELECT_TOOL
+        tool = _build_tool(multi=is_multi, reasoning=self.reasoning)
 
         response = client.messages.create(
             model=self.model,
-            max_tokens=512,
+            max_tokens=512 if self.reasoning else 128,
             temperature=self.temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
@@ -185,7 +185,10 @@ class LLMPlayer:
         for block in response.content:
             if block.type == "tool_use" and block.name == "make_decision":
                 data = block.input
-                self._last_reasoning = data.get("reasoning", "")
+                if self.reasoning:
+                    self._last_reasoning = data.get("reasoning", "")
+                else:
+                    self._last_reasoning = "(reasoning disabled)"
 
                 valid_ids = {o.action_id for o in decision.options}
 

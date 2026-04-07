@@ -11,17 +11,14 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from pathlib import Path
 
 from htc.cards.card_db import CardDatabase
+from htc.decks.deck_list import parse_markdown_decklist
 from htc.engine.game import Game
+from htc.player.api_client import DEFAULT_MODEL
 from htc.player.llm_player import LLMPlayer
 from htc.player.random_player import RandomPlayer
-
-# Reuse the test helper for parsing markdown decklists
-sys.path.insert(0, str(Path(__file__).parent.parent / "tests"))
-from integration.test_full_game import parse_markdown_decklist
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 REF_DIR = Path(__file__).parent.parent / "ref"
@@ -38,9 +35,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="claude-sonnet-4-6",
+        default=DEFAULT_MODEL,
         help="Claude model for the LLM player",
     )
+    parser.add_argument("--no-reasoning", action="store_true",
+                        help="Disable reasoning in LLM output (saves ~30-40%% output tokens)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show LLM reasoning")
     args = parser.parse_args()
 
@@ -64,12 +63,14 @@ def main() -> None:
 
     # Set up players
     if args.llm_hero == "cindra":
-        llm_player = LLMPlayer(model=args.model, hero_name="Cindra, Dracai of Retribution")
+        llm_player = LLMPlayer(model=args.model, hero_name="Cindra, Dracai of Retribution",
+                               reasoning=not args.no_reasoning)
         random_player = RandomPlayer(seed=args.seed + 1)
         deck1, deck2 = cindra_deck, arakni_deck
         hero1, hero2 = "Cindra (LLM)", "Arakni (Random)"
     else:
-        llm_player = LLMPlayer(model=args.model, hero_name="Arakni, Marionette")
+        llm_player = LLMPlayer(model=args.model, hero_name="Arakni, Marionette",
+                               reasoning=not args.no_reasoning)
         random_player = RandomPlayer(seed=args.seed + 1)
         deck1, deck2 = arakni_deck, cindra_deck
         hero1, hero2 = "Arakni (LLM)", "Cindra (Random)"
