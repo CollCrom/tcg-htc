@@ -9,141 +9,19 @@ Tests:
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
 
 from htc.cards.card_db import CardDatabase
-from htc.decks.deck_list import DeckEntry, DeckList
+from htc.decks.deck_list import parse_markdown_decklist
 from htc.engine.abilities import AbilityRegistry
 from htc.engine.game import Game, GameResult
-from htc.enums import Color, EquipmentSlot
+from htc.enums import EquipmentSlot
 from htc.player.random_player import RandomPlayer
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 REF_DIR = Path(__file__).parent.parent.parent / "ref"
-
-_COLOR_MAP = {
-    "red": Color.RED,
-    "yellow": Color.YELLOW,
-    "blue": Color.BLUE,
-}
-
-
-# ---------------------------------------------------------------------------
-# Markdown decklist parser
-# ---------------------------------------------------------------------------
-
-
-def parse_markdown_decklist(text: str) -> DeckList:
-    """Parse a markdown decklist (ref/ format) into a DeckList.
-
-    Handles the markdown structure with ## Hero, ## Weapons, ## Equipment,
-    and ## Deck sections. Card lines like '- 3x Card Name (Red)' or
-    '- Card Name (Head)'.
-    """
-    hero_name = ""
-    weapons: list[str] = []
-    equipment: list[str] = []
-    cards: list[DeckEntry] = []
-    section = ""
-
-    for line in text.strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-
-        # Detect sections
-        if line.startswith("## Hero"):
-            section = "hero"
-            continue
-        elif line.startswith("## Weapon"):
-            section = "weapons"
-            continue
-        elif line.startswith("## Equipment"):
-            section = "equipment"
-            continue
-        elif line.startswith("## Deck"):
-            section = "deck"
-            continue
-        elif line.startswith("### "):
-            # Sub-sections within Deck — skip the header
-            continue
-        elif line.startswith("## ") or line.startswith("# "):
-            section = ""
-            continue
-        elif line.startswith("**"):
-            continue
-
-        if section == "hero" and not line.startswith("-"):
-            hero_name = line
-        elif section == "weapons" and line.startswith("-"):
-            wname, count = _parse_equipment_line_with_count(line)
-            if wname:
-                weapons.extend([wname] * count)
-        elif section == "equipment" and line.startswith("-"):
-            ename, count = _parse_equipment_line_with_count(line)
-            if ename:
-                equipment.extend([ename] * count)
-        elif section == "deck" and line.startswith("-"):
-            entry = _parse_deck_card_line(line)
-            if entry:
-                cards.append(entry)
-
-    # Auto-include Agent of Chaos Demi-Heroes for Arakni, Marionette
-    from htc.decks.loader import AGENT_OF_CHAOS_DEMI_HEROES
-    demi_heroes: list[str] = []
-    if "arakni" in hero_name.lower() and "marionette" in hero_name.lower():
-        demi_heroes = list(AGENT_OF_CHAOS_DEMI_HEROES)
-
-    return DeckList(hero_name=hero_name, weapons=weapons, equipment=equipment, cards=cards, demi_heroes=demi_heroes)
-
-
-def _parse_equipment_line(line: str) -> str | None:
-    """Parse '- 2x Kunai of Retribution (1H Dagger)' or '- Mask of Momentum (Head)'.
-
-    Returns just the card name, stripping count and parenthetical annotation.
-    """
-    name, _ = _parse_equipment_line_with_count(line)
-    return name
-
-
-def _parse_equipment_line_with_count(line: str) -> tuple[str | None, int]:
-    """Parse equipment line, returning (name, count)."""
-    line = line.lstrip("- ").strip()
-    count = 1
-    m = re.match(r"(\d+)x\s+", line)
-    if m:
-        count = int(m.group(1))
-        line = line[m.end():]
-    # Strip parenthetical suffix like '(Head)' or '(1H Dagger)'
-    line = re.sub(r"\s*\([^)]*\)\s*$", "", line)
-    name = line.strip() if line.strip() else None
-    return name, count
-
-
-def _parse_deck_card_line(line: str) -> DeckEntry | None:
-    """Parse '- 3x Card Name (Red)' into a DeckEntry."""
-    line = line.lstrip("- ").strip()
-    count = 1
-    m = re.match(r"(\d+)x\s+", line)
-    if m:
-        count = int(m.group(1))
-        line = line[m.end():]
-
-    color: Color | None = None
-    for color_name, color_enum in _COLOR_MAP.items():
-        suffix = f"({color_name})"
-        if line.lower().endswith(suffix):
-            color = color_enum
-            line = line[: -len(suffix)].strip()
-            break
-
-    if not line:
-        return None
-
-    return DeckEntry(name=line, color=color, count=count)
 
 
 # ---------------------------------------------------------------------------

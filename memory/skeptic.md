@@ -717,6 +717,52 @@ Persistent learnings across sessions. Update this after each review.
 - All existing tests updated to set `hit_count` consistently.
 - 1026 tests all passing.
 
+### feat/llm-player — LLM Player Implementation (2026-04-07)
+- **Round 1 verdict: APPROVE** — No critical issues. 3 minor issues, 2 missing tests.
+- **Scope**: 6 new Python files. Zero engine code changes. All 1049 tests passing.
+  - `src/htc/player/llm_player.py` — Claude-powered player implementing PlayerInterface
+  - `src/htc/player/state_narrator.py` — GameState-to-text conversion for LLM context
+  - `src/htc/player/strategy_context.py` — Strategy article loading + system prompt builder
+  - `src/htc/player/analyst.py` — Post-game analysis via Claude + memory writing
+  - `tests/test_llm_player.py` — 23 tests covering narration, prompts, tool_use parsing
+  - `tools/run_llm_game.py` — CLI tool for running LLM vs RandomPlayer games
+
+#### Critical Issues
+
+None.
+
+#### Minor Issues (non-blocking)
+
+1. **Duplicate `_get_client()` + `_anthropic_client` global**: Both `llm_player.py` and `analyst.py` define identical `_get_client()` functions with separate module-level `_anthropic_client` globals. Two independent client instances are created at runtime (one for gameplay, one for analysis). Not a bug, but wastes a connection and creates inconsistency if API key changes mid-run. Could be extracted to a shared `_client.py` module.
+
+2. **`_describe_card` and `_option_card_details` show `definition.power`/`definition.defense` (base values) not effect-engine-modified values**: The narrator shows card stats from `card.definition` rather than querying the effect engine for modified power/defense/keywords. This means the LLM sees base-stat values, not in-play modified values. For hand cards awaiting play this is correct (no effects active). For combat chain display (`_describe_combat`), `atk.base_power` shows definition power, not the attack's actual modified power. However, `link.damage_dealt` IS shown, which reflects actual damage after modifications. The LLM has enough information to reason about game state. Not a game correctness issue since this is display-only.
+
+3. **`tools/run_llm_game.py` imports test helper via `sys.path` hack**: `sys.path.insert(0, ...)` to import `parse_markdown_decklist` from `tests/integration/test_full_game.py`. Fragile coupling to test internals. Should be extracted to a shared utility if this tool becomes permanent. Non-blocking for this PR.
+
+#### Missing Tests
+
+1. **No test for `analyst.py`**: The entire `analyst.py` module has zero test coverage. The `analyze_game()` function calls Claude and writes to disk (`memory/playtester.md`). A test with mocked API + temp directory would verify the analysis flow, transcript formatting, and memory file creation/append.
+
+2. **No test for multi-select with some valid and some invalid IDs**: The LLM returns `option_ids: ["defend_1", "invalid_99", "defend_2"]`. Current code filters to valid IDs `["defend_1", "defend_2"]` (line 216). This is correct behavior but untested — could silently regress to rejecting the entire response if the filter logic changes.
+
+#### Verified Correct
+
+- **PlayerInterface compliance**: `LLMPlayer.decide(game_state, decision) -> PlayerResponse` matches the Protocol signature exactly. Single-select returns `[option_id]`, multi-select returns `[option_id, ...]`. Empty options return `PlayerResponse()`.
+- **Trivial decision optimization**: Single-option decisions skip the LLM call entirely (line 128). Saves API calls + latency for forced decisions. Transcript still records them with "(auto -- single option)" reasoning.
+- **Fallback chain**: Invalid option -> first legal option. API error -> first legal option. No tool_use block -> first legal option. Game never crashes from LLM misbehavior.
+- **Multi-select fallback to single**: If multi-select returns nothing valid, tries `option_id` field (line 220-222). Handles LLM confusion between single/multi schemas.
+- **Prompt caching**: `build_system_prompt` returns `list[dict]` with `cache_control: {"type": "ephemeral"}` on the static strategy block. Dynamic decision guidance in a separate block. Correct structure for Anthropic prompt caching.
+- **Token budget management**: Strategy context truncated at 24,000 chars (~6000 tokens). Individual articles capped at 8,000 chars. `reasoning=False` mode reduces max_tokens from 512 to 128.
+- **Hidden information**: Narrator shows opponent hand SIZE only (line 97), never card contents. Equipment (public info) shown for both players. Correct information boundary.
+- **Tool schema adapts to decision type**: `_build_tool(multi, reasoning)` dynamically constructs the tool schema based on `max_selections > 1` and `reasoning` flag. Required fields adjust accordingly.
+- **Transcript recording**: Every decision (auto, LLM, or fallback) is recorded in `player.transcript`. Decision records include turn number, type, prompt, chosen option, reasoning, and option count. Sufficient for post-game analysis.
+- **23 tests all passing**: Good coverage of narration (basic, compact format, opponent turn, marked status, equipment, differentials), strategy context (cache blocks, hero-specific, decision guidance), and tool_use parsing (single-select, multi-select, invalid fallback, API error, no tool block, trivial skip, reasoning toggle).
+
+#### Observations
+
+- This is a **display/integration layer only** — zero changes to the game engine, card abilities, or rules processing. The LLM player is a drop-in replacement for RandomPlayer. Any bugs in this code cannot cause wrong game outcomes; they can only cause suboptimal LLM play or API errors (which fall back safely).
+- The architecture correctly separates concerns: narration (state_narrator), strategy (strategy_context), decision-making (llm_player), and analysis (analyst).
+
 ## Talishar Discrepancies
 
 *(None found yet)*

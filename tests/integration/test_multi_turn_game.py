@@ -17,7 +17,7 @@ from htc.engine.game import Game, GameResult
 from htc.enums import Phase, Zone
 from htc.player.random_player import RandomPlayer
 
-from tests.integration.test_full_game import parse_markdown_decklist
+from htc.decks.deck_list import parse_markdown_decklist
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 REF_DIR = Path(__file__).parent.parent.parent / "ref"

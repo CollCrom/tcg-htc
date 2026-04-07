@@ -5,7 +5,6 @@ validating game completion invariants, per-game state invariants, and event inva
 """
 from __future__ import annotations
 
-import re
 from collections import Counter
 from pathlib import Path
 
@@ -13,104 +12,15 @@ import pytest
 
 from htc.cards.card_db import CardDatabase
 from htc.cards.instance import CardInstance
-from htc.decks.deck_list import DeckEntry, DeckList
+from htc.decks.deck_list import parse_markdown_decklist
 from htc.engine.events import EventBus, EventType, GameEvent
 from htc.engine.game import Game, GameResult, MAX_TURNS
-from htc.enums import Color, EquipmentSlot, Zone
+from htc.enums import EquipmentSlot, Zone
 from htc.player.random_player import RandomPlayer
 from htc.state.player_state import PlayerState
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 REF_DIR = Path(__file__).parent.parent.parent / "ref"
-
-_COLOR_MAP = {
-    "red": Color.RED,
-    "yellow": Color.YELLOW,
-    "blue": Color.BLUE,
-}
-
-
-# ---------------------------------------------------------------------------
-# Markdown decklist parser (reused from test_full_game.py)
-# ---------------------------------------------------------------------------
-
-
-def parse_markdown_decklist(text: str) -> DeckList:
-    """Parse a markdown decklist (ref/ format) into a DeckList."""
-    hero_name = ""
-    weapons: list[str] = []
-    equipment: list[str] = []
-    cards: list[DeckEntry] = []
-    section = ""
-
-    for line in text.strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith("## Hero"):
-            section = "hero"
-            continue
-        elif line.startswith("## Weapon"):
-            section = "weapons"
-            continue
-        elif line.startswith("## Equipment"):
-            section = "equipment"
-            continue
-        elif line.startswith("## Deck"):
-            section = "deck"
-            continue
-        elif line.startswith("### "):
-            continue
-        elif line.startswith("## ") or line.startswith("# "):
-            section = ""
-            continue
-        elif line.startswith("**"):
-            continue
-
-        if section == "hero" and not line.startswith("-"):
-            hero_name = line
-        elif section == "weapons" and line.startswith("-"):
-            wname = _parse_equipment_line(line)
-            if wname:
-                weapons.append(wname)
-        elif section == "equipment" and line.startswith("-"):
-            ename = _parse_equipment_line(line)
-            if ename:
-                equipment.append(ename)
-        elif section == "deck" and line.startswith("-"):
-            entry = _parse_deck_card_line(line)
-            if entry:
-                cards.append(entry)
-
-    return DeckList(hero_name=hero_name, weapons=weapons, equipment=equipment, cards=cards)
-
-
-def _parse_equipment_line(line: str) -> str | None:
-    line = line.lstrip("- ").strip()
-    m = re.match(r"(\d+)x\s+", line)
-    if m:
-        line = line[m.end():]
-    line = re.sub(r"\s*\([^)]*\)\s*$", "", line)
-    return line.strip() if line.strip() else None
-
-
-def _parse_deck_card_line(line: str) -> DeckEntry | None:
-    line = line.lstrip("- ").strip()
-    count = 1
-    m = re.match(r"(\d+)x\s+", line)
-    if m:
-        count = int(m.group(1))
-        line = line[m.end():]
-    color: Color | None = None
-    for color_name, color_enum in _COLOR_MAP.items():
-        suffix = f"({color_name})"
-        if line.lower().endswith(suffix):
-            color = color_enum
-            line = line[: -len(suffix)].strip()
-            break
-    if not line:
-        return None
-    return DeckEntry(name=line, color=color, count=count)
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +87,12 @@ def _collect_all_cards(state) -> list[CardInstance]:
         cards.extend(ps.soul)
         cards.extend(ps.weapons)
         cards.extend(ps.permanents)
-        cards.extend(ps.demi_heroes)
+        # Demi-heroes: skip the active hero to avoid double-counting when
+        # Arakni is transformed (the active agent is in both hero and demi_heroes)
+        hero_id = ps.hero.instance_id if ps.hero else None
+        for dh in ps.demi_heroes:
+            if dh.instance_id != hero_id:
+                cards.append(dh)
         for eq in ps.equipment.values():
             if eq is not None:
                 # Skip equipment currently on the combat chain — it will be

@@ -7,31 +7,15 @@ calls Claude to generate strategic analysis, and writes to memory/playtester.md.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from htc.player.api_client import DEFAULT_MODEL, get_client
 from htc.player.llm_player import DecisionRecord
 
 log = logging.getLogger(__name__)
 
 _MEMORY_PATH = Path(__file__).resolve().parents[3] / "memory" / "playtester.md"
-
-# Lazy import — anthropic is optional
-_anthropic_client = None
-
-
-def _get_client():  # type: ignore[no-untyped-def]
-    """Lazily initialize the Anthropic client."""
-    global _anthropic_client
-    if _anthropic_client is None:
-        import anthropic
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY not set")
-        _anthropic_client = anthropic.Anthropic(api_key=api_key)
-    return _anthropic_client
 
 
 def analyze_game(
@@ -45,7 +29,7 @@ def analyze_game(
     my_deck_size: int,
     opp_deck_size: int,
     total_turns: int,
-    model: str = "claude-sonnet-4-6",
+    model: str = DEFAULT_MODEL,
 ) -> str:
     """Analyze a completed game and write summary to memory.
 
@@ -100,7 +84,7 @@ def analyze_game(
     user_message = f"{game_summary}\n\nDecision Log:\n{transcript_text}"
 
     try:
-        client = _get_client()
+        client = get_client()
         response = client.messages.create(
             model=model,
             max_tokens=1024,

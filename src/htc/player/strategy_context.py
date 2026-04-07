@@ -39,52 +39,62 @@ _MAX_CONTEXT_CHARS = 24_000  # ~6000 tokens
 def build_system_prompt(
     hero_name: str | None = None,
     decision_type: DecisionType | None = None,
-) -> str:
+) -> list[dict]:
     """Build the system prompt for the LLM player.
+
+    Returns a list of content blocks for the Anthropic ``system`` parameter.
+    The first block contains strategy context marked for prompt caching;
+    the second block contains per-decision guidance that changes each call.
 
     Args:
         hero_name: The hero's name (e.g. "Arakni, Marionette"). Used to load
             hero-specific strategy articles.
         decision_type: The type of decision being made. Used to emphasize
             relevant strategy theory.
-
-    Returns:
-        A system prompt string for the LLM.
     """
-    sections: list[str] = []
+    # --- Static block (cacheable across all decisions in a game) ---
+    static_sections: list[str] = [_ROLE_PREAMBLE]
 
-    # Role preamble
-    sections.append(_ROLE_PREAMBLE)
-
-    # Decision-specific guidance
-    if decision_type:
-        guidance = _DECISION_GUIDANCE.get(decision_type)
-        if guidance:
-            sections.append(f"## Decision Focus\n{guidance}")
-
-    # General strategy
     general_text = _load_articles(_GENERAL_FILES)
     if general_text:
-        sections.append(f"## General Strategy\n{general_text}")
+        static_sections.append(f"## General Strategy\n{general_text}")
 
-    # Hero-specific strategy
     if hero_name:
         hero_articles = _find_hero_articles(hero_name)
         if hero_articles:
             hero_text = _load_articles(hero_articles)
             if hero_text:
-                sections.append(f"## Hero Strategy ({hero_name})\n{hero_text}")
+                static_sections.append(f"## Hero Strategy ({hero_name})\n{hero_text}")
 
-    # Response format
-    sections.append(_RESPONSE_FORMAT)
+    static_text = "\n\n".join(static_sections)
+    if len(static_text) > _MAX_CONTEXT_CHARS:
+        static_text = static_text[:_MAX_CONTEXT_CHARS] + "\n\n[Strategy context truncated]"
 
-    prompt = "\n\n".join(sections)
+    # --- Dynamic block (changes per decision type) ---
+    dynamic_sections: list[str] = []
+    if decision_type:
+        guidance = _DECISION_GUIDANCE.get(decision_type)
+        if guidance:
+            dynamic_sections.append(f"## Decision Focus\n{guidance}")
 
-    # Truncate if over budget
-    if len(prompt) > _MAX_CONTEXT_CHARS:
-        prompt = prompt[:_MAX_CONTEXT_CHARS] + "\n\n[Strategy context truncated for token budget]"
+    dynamic_sections.append(
+        "## Instructions\n"
+        "Use the make_decision tool to submit your choice. "
+        "Pick the best option_id (or option_ids for multi-select) and give brief reasoning."
+    )
+    dynamic_text = "\n\n".join(dynamic_sections)
 
-    return prompt
+    return [
+        {
+            "type": "text",
+            "text": static_text,
+            "cache_control": {"type": "ephemeral"},
+        },
+        {
+            "type": "text",
+            "text": dynamic_text,
+        },
+    ]
 
 
 def _find_hero_articles(hero_name: str) -> list[str]:
@@ -135,16 +145,6 @@ Key principles:
 - Arsenal: save high-impact cards for future turns. Don't arsenal mediocre cards.
 - Equipment: use equipment blocks strategically — they're free defense but one-time use.
 """
-
-_RESPONSE_FORMAT = """## Response Format
-Return ONLY valid JSON with your decision:
-{"option_id": "<the action_id of your chosen option>", "reasoning": "<brief explanation>"}
-
-For multi-select decisions (like choosing defenders), return:
-{"option_ids": ["<id1>", "<id2>"], "reasoning": "<brief explanation>"}
-
-Be concise in reasoning — 1-2 sentences max."""
-
 
 _DECISION_GUIDANCE: dict[DecisionType, str] = {
     DecisionType.PLAY_OR_PASS: (
