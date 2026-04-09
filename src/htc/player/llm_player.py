@@ -123,16 +123,24 @@ class LLMPlayer:
         # Build the narrated game state
         user_message = narrate(game_state, decision)
 
-        # Resolve hero name from game state if not set
+        # Resolve hero names from game state
         hero = self.hero_name
         if hero is None and decision.player_index < len(game_state.players):
             me = game_state.players[decision.player_index]
             if me.hero:
                 hero = me.hero.name
 
+        opp_hero = None
+        opp_idx = 1 - decision.player_index
+        if opp_idx < len(game_state.players):
+            opp = game_state.players[opp_idx]
+            if opp.hero:
+                opp_hero = opp.hero.name
+
         # Build strategy-aware system prompt (returns cache-aware blocks)
         system_prompt = build_system_prompt(
             hero_name=hero,
+            opponent_name=opp_hero,
             decision_type=decision.decision_type,
         )
 

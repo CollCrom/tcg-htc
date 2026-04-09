@@ -316,10 +316,11 @@ class TestStrategyContext:
     def test_build_prompt_returns_cache_blocks(self) -> None:
         blocks = build_system_prompt()
         assert isinstance(blocks, list)
-        assert len(blocks) == 2
+        assert len(blocks) >= 2  # 2 without memory, 3 with memory
         assert blocks[0]["type"] == "text"
         assert blocks[0]["cache_control"] == {"type": "ephemeral"}
-        assert "cache_control" not in blocks[1]
+        # Last block (dynamic guidance) is not cached
+        assert "cache_control" not in blocks[-1]
 
     def test_build_prompt_basic(self) -> None:
         blocks = build_system_prompt()
@@ -352,7 +353,7 @@ class TestStrategyContext:
             decision_type=DecisionType.PLAY_OR_PASS,
         )
         cached = blocks[0]["text"]
-        dynamic = blocks[1]["text"]
+        dynamic = blocks[-1]["text"]  # last block is always dynamic guidance
         assert "General Strategy" in cached
         assert "Hero Strategy" in cached
         assert "Decision Focus" in dynamic
