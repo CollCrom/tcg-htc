@@ -1,10 +1,11 @@
-"""Run a game with the LLM player vs a RandomPlayer.
+"""Run a game with the LLM player vs a RandomPlayer or another LLM.
 
 Usage:
     ANTHROPIC_API_KEY=... .venv/bin/python -m tools.run_llm_game [--seed N] [--llm-hero cindra|arakni]
+    ANTHROPIC_API_KEY=... .venv/bin/python -m tools.run_llm_game --llm-vs-llm [--seed N]
 
 The LLM player plays the first hero (default: Cindra Blue).
-The RandomPlayer plays the second hero (default: Arakni).
+The RandomPlayer (or second LLM) plays the second hero (default: Arakni).
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ def main() -> None:
     )
     parser.add_argument("--no-reasoning", action="store_true",
                         help="Disable reasoning in LLM output (saves ~30-40%% output tokens)")
+    parser.add_argument("--llm-vs-llm", action="store_true",
+                        help="Both players are LLM-powered (2x API cost)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show LLM reasoning")
     args = parser.parse_args()
 
@@ -62,16 +65,24 @@ def main() -> None:
     arakni_deck = parse_markdown_decklist(arakni_text)
 
     # Set up players
-    if args.llm_hero == "cindra":
-        llm_player = LLMPlayer(model=args.model, hero_name="Cindra, Dracai of Retribution",
-                               reasoning=not args.no_reasoning)
-        random_player = RandomPlayer(seed=args.seed + 1)
+    reasoning = not args.no_reasoning
+    if args.llm_vs_llm:
+        player1 = LLMPlayer(model=args.model, hero_name="Cindra, Dracai of Retribution",
+                             reasoning=reasoning)
+        player2 = LLMPlayer(model=args.model, hero_name="Arakni, Marionette",
+                             reasoning=reasoning)
+        deck1, deck2 = cindra_deck, arakni_deck
+        hero1, hero2 = "Cindra (LLM)", "Arakni (LLM)"
+    elif args.llm_hero == "cindra":
+        player1 = LLMPlayer(model=args.model, hero_name="Cindra, Dracai of Retribution",
+                             reasoning=reasoning)
+        player2 = RandomPlayer(seed=args.seed + 1)
         deck1, deck2 = cindra_deck, arakni_deck
         hero1, hero2 = "Cindra (LLM)", "Arakni (Random)"
     else:
-        llm_player = LLMPlayer(model=args.model, hero_name="Arakni, Marionette",
-                               reasoning=not args.no_reasoning)
-        random_player = RandomPlayer(seed=args.seed + 1)
+        player1 = LLMPlayer(model=args.model, hero_name="Arakni, Marionette",
+                             reasoning=reasoning)
+        player2 = RandomPlayer(seed=args.seed + 1)
         deck1, deck2 = arakni_deck, cindra_deck
         hero1, hero2 = "Arakni (LLM)", "Cindra (Random)"
 
@@ -81,7 +92,7 @@ def main() -> None:
     print(f"{'='*60}\n")
 
     # Run game
-    game = Game(db, deck1, deck2, llm_player, random_player, seed=args.seed)
+    game = Game(db, deck1, deck2, player1, player2, seed=args.seed)
     result = game.play()
 
     # Print result
@@ -93,32 +104,40 @@ def main() -> None:
         print("  Result: Draw")
     print(f"  Turns: {result.turns}")
     print(f"  Final life: {hero1} {result.final_life[0]} | {hero2} {result.final_life[1]}")
-    print(f"  LLM decisions: {len(llm_player.transcript)}")
+    p1_decisions = len(player1.transcript) if hasattr(player1, "transcript") else 0
+    p2_decisions = len(player2.transcript) if hasattr(player2, "transcript") else 0
+    print(f"  LLM decisions: {hero1} {p1_decisions} | {hero2} {p2_decisions}")
     print(f"{'='*60}\n")
 
-    # Post-game analysis
-    print("Running post-game analysis...")
-    try:
-        from htc.player.analyst import analyze_game
+    # Post-game analysis for each LLM player
+    from htc.player.analyst import analyze_game
 
-        analysis = analyze_game(
-            transcript=llm_player.transcript,
-            winner=result.winner,
-            my_index=0,
-            my_hero=hero1.split(" (")[0],
-            opp_hero=hero2.split(" (")[0],
-            my_life=result.final_life[0],
-            opp_life=result.final_life[1],
-            my_deck_size=len(game.state.players[0].deck),
-            opp_deck_size=len(game.state.players[1].deck),
-            total_turns=result.turns,
-            model=args.model,
-        )
-        print("\n--- Post-Game Analysis ---")
-        print(analysis)
-        print("\n(Analysis also written to memory/playtester.md)")
-    except Exception as e:
-        print(f"Analysis failed: {e}")
+    for idx, (player, hero, opp_hero) in enumerate([
+        (player1, hero1, hero2),
+        (player2, hero2, hero1),
+    ]):
+        if not hasattr(player, "transcript"):
+            continue
+        print(f"Running post-game analysis for {hero}...")
+        try:
+            analysis = analyze_game(
+                transcript=player.transcript,
+                winner=result.winner,
+                my_index=idx,
+                my_hero=hero.split(" (")[0],
+                opp_hero=opp_hero.split(" (")[0],
+                my_life=result.final_life[idx],
+                opp_life=result.final_life[1 - idx],
+                my_deck_size=len(game.state.players[idx].deck),
+                opp_deck_size=len(game.state.players[1 - idx].deck),
+                total_turns=result.turns,
+                model=args.model,
+            )
+            print(f"\n--- Post-Game Analysis ({hero}) ---")
+            print(analysis)
+            print("\n(Analysis also written to memory/playtester.md)")
+        except Exception as e:
+            print(f"Analysis failed for {hero}: {e}")
 
 
 if __name__ == "__main__":
