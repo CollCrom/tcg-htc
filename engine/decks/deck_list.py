@@ -40,8 +40,16 @@ def parse_markdown_decklist(text: str) -> DeckList:
     """Parse a markdown decklist (ref/ format) into a DeckList.
 
     Handles the markdown structure with ## Hero, ## Weapons, ## Equipment,
-    and ## Deck sections. Card lines like '- 3x Card Name (Red)' or
-    '- Card Name (Head)'.
+    and ## Deck (or ## Maindeck / ## Mainboard) sections. Card lines like
+    '- 3x Card Name (Red)' or '- Card Name (Head)'.
+
+    ``### `` subheaders inside a section keep that section active (e.g.
+    ``### Red`` under ``## Deck``). The exception is ``### Sideboard ...``
+    which terminates the current section so sideboard cards aren't merged
+    into the maindeck or main equipment pool.
+
+    A ``## Sideboard`` block ends the current section; cards listed under
+    it are ignored.
     """
     hero_name = ""
     weapons: list[str] = []
@@ -64,8 +72,18 @@ def parse_markdown_decklist(text: str) -> DeckList:
         elif line.startswith("## Equipment"):
             section = "equipment"
             continue
-        elif line.startswith("## Deck"):
+        elif (
+            line.startswith("## Deck")
+            or line.startswith("## Maindeck")
+            or line.startswith("## Mainboard")
+        ):
             section = "deck"
+            continue
+        elif line.startswith("### Sideboard"):
+            # Subsection sideboard (e.g. "### Sideboard Equipment" under
+            # "## Equipment") ends the current section so sideboard cards
+            # aren't merged into the main pool.
+            section = ""
             continue
         elif line.startswith("### "):
             continue
@@ -106,9 +124,23 @@ def parse_markdown_decklist(text: str) -> DeckList:
     )
 
 
+_TRAILING_COMMENT_RE = re.compile(r"\s+(?:[—–-]{1,2})\s+.*$")
+
+
+def _strip_trailing_comment(line: str) -> str:
+    """Strip an editorial comment like ' — sideboard' or ' -- flex'.
+
+    Authors annotate deck markdown with notes after an em-dash / en-dash
+    / double-hyphen, e.g. ``- Flamescale Furnace (Chest) — sideboard``.
+    The note isn't part of the card name and breaks downstream lookup.
+    """
+    return _TRAILING_COMMENT_RE.sub("", line).rstrip()
+
+
 def _parse_equipment_line_with_count(line: str) -> tuple[str | None, int]:
     """Parse equipment line like '- 2x Kunai (1H Dagger)', returning (name, count)."""
     line = line.lstrip("- ").strip()
+    line = _strip_trailing_comment(line)
     count = 1
     m = re.match(r"(\d+)x\s+", line)
     if m:
@@ -122,6 +154,7 @@ def _parse_equipment_line_with_count(line: str) -> tuple[str | None, int]:
 def _parse_deck_card_line(line: str) -> DeckEntry | None:
     """Parse '- 3x Card Name (Red)' into a DeckEntry."""
     line = line.lstrip("- ").strip()
+    line = _strip_trailing_comment(line)
     count = 1
     m = re.match(r"(\d+)x\s+", line)
     if m:

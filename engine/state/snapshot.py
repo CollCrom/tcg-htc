@@ -225,11 +225,26 @@ def snapshot_for(
     or face-down placeholders. Cards include both base and effect-modified
     values so an agent can reason about post-modifier game-relevant
     numbers without re-implementing the effect engine.
+
+    .. warning::
+       This function requires both player states to be built. During
+       :meth:`engine.rules.game.Game._setup_game`, ``CHOOSE_EQUIPMENT``
+       decisions for multi-option slots fire **before** ``state.players``
+       is populated, which causes this function to raise. External
+       transports must guard against this (see ``HttpBridgePlayer._encode``
+       in ``tools/match_server.py`` for the pattern: emit a stripped
+       ``{"phase": "pre_game_setup"}`` payload until ``len(state.players)
+       == 2``). The plain ``engine.stdio`` path does **not** guard this
+       and will crash on decks with multi-option equipment slots.
     """
     if viewer_index not in (0, 1):
         raise ValueError(f"viewer_index must be 0 or 1, got {viewer_index!r}")
     if len(state.players) != 2:
-        raise ValueError(f"snapshot_for assumes a 2-player game; got {len(state.players)}")
+        raise ValueError(
+            f"snapshot_for assumes a 2-player game; got {len(state.players)}. "
+            "If you are calling this during _setup_game (before state.players "
+            "is populated), guard the call — see this function's docstring."
+        )
 
     you = state.players[viewer_index]
     opponent = state.players[1 - viewer_index]
