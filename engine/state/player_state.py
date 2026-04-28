@@ -85,6 +85,16 @@ class PlayerState:
     # See BanishPlayability for field docs.
     playable_from_banish: list[BanishPlayability] = field(default_factory=list)
 
+    # Cards in this player's hand whose identity has been revealed to other
+    # players (by peek effects like Cut from the Same Cloth, Persuasive
+    # Prognosis). Keyed by *observer* player_index → set of instance_ids the
+    # observer has seen. Persistent: once revealed, the observer remembers
+    # the card until it leaves this player's hand. Newly-drawn cards have
+    # fresh instance_ids and are not in the set, so they remain hidden.
+    hand_revealed_to: dict[int, set[int]] = field(
+        default_factory=lambda: {0: set(), 1: set()}
+    )
+
     def get_zone_cards(self, zone: Zone) -> list[CardInstance]:
         """Get the list of cards in a given zone for this player."""
         match zone:

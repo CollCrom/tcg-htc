@@ -534,7 +534,12 @@ def _cut_from_the_same_cloth(ctx: AbilityContext) -> None:
     opponent_index = 1 - ctx.controller_index
     opponent = ctx.state.players[opponent_index]
 
-    # Reveal hand and check for attack reaction
+    # Reveal hand: every card in opponent's hand becomes visible to the
+    # controller in subsequent state snapshots (persistent until the card
+    # leaves hand). Then check for an attack reaction and mark if found.
+    opponent.hand_revealed_to.setdefault(ctx.controller_index, set()).update(
+        c.instance_id for c in opponent.hand
+    )
     has_ar = any(c.definition.is_attack_reaction for c in opponent.hand)
     if has_ar:
         opponent.is_marked = True
@@ -1220,16 +1225,56 @@ def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
     if top_card.definition.is_action:
         gain_life(ctx, ctx.controller_index, 1, "Persuasive Prognosis")
 
-    # Look at hand, banish a card with same color
-    if banished_color is not None:
-        matching = [c for c in target.hand if c.definition.color == banished_color]
-        if matching:
-            card = matching[0]  # Simplified: first matching card
-            ctx.banish_card(card, target_index)
-            log.info(f"  Persuasive Prognosis: Banished {card.name} from hand (same color: {banished_color})")
+    # Look at hand: every card in the target's hand becomes visible to the
+    # controller in subsequent snapshots (persistent until the card leaves
+    # hand). Then banish a same-color card — controller chooses if multiple.
+    target.hand_revealed_to.setdefault(ctx.controller_index, set()).update(
+        c.instance_id for c in target.hand
+    )
+    if banished_color is None:
+        return
+    matching = [c for c in target.hand if c.definition.color == banished_color]
+    if not matching:
+        return
 
-            if card.definition.is_action:
-                gain_life(ctx, ctx.controller_index, 1, "Persuasive Prognosis")
+    if len(matching) == 1:
+        card = matching[0]
+    else:
+        options = [
+            ActionOption(
+                action_id=f"prognosis_banish_{c.instance_id}",
+                description=f"Banish {c.name} ({banished_color.value}) from hand",
+                action_type=ActionType.ACTIVATE_ABILITY,
+                card_instance_id=c.instance_id,
+            )
+            for c in matching
+        ]
+        decision = Decision(
+            player_index=ctx.controller_index,
+            decision_type=DecisionType.CHOOSE_TARGET,
+            prompt=(
+                f"Persuasive Prognosis: Choose a {banished_color.value} card "
+                f"to banish from {ctx.player_name(target_index)}'s hand"
+            ),
+            options=options,
+        )
+        response = ctx.ask(decision)
+        chosen_id = (
+            int(response.first.replace("prognosis_banish_", ""))
+            if response.first
+            else matching[0].instance_id
+        )
+        card = next(
+            (c for c in matching if c.instance_id == chosen_id), matching[0]
+        )
+
+    ctx.banish_card(card, target_index)
+    log.info(
+        f"  Persuasive Prognosis: Banished {card.name} from hand "
+        f"(same color: {banished_color})"
+    )
+    if card.definition.is_action:
+        gain_life(ctx, ctx.controller_index, 1, "Persuasive Prognosis")
 
 
 def _reapers_call_instant(ctx: AbilityContext) -> None:
