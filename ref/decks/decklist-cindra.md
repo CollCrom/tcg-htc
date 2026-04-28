@@ -7,13 +7,11 @@ Cindra, Dracai of Retribution
 
 ## Weapons
 - 2x Kunai of Retribution (1H Dagger)
-- 1x Claw of Vynserakai (1H Dagger) — sideboard
 
 ## Equipment
 - Mask of Momentum (Head)
 - Flick Knives (Arms)
 - Blood Splattered Vest (Chest)
-- Flamescale Furnace (Chest) — sideboard
 - Dragonscaler Flight Path (Legs)
 
 ## Maindeck (60)
