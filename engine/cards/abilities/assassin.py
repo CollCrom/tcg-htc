@@ -16,7 +16,6 @@ from engine.cards.abilities._helpers import (
     color_bonus,
     create_token,
     deal_dagger_damage,
-    draw_card,
     gain_life,
     MarkOnHitTrigger,
     get_player_name,
@@ -31,8 +30,8 @@ from engine.cards.abilities._helpers import (
     require_chain_link,
 )
 from engine.rules.abilities import AbilityContext, AbilityRegistry
-from engine.rules.actions import ActionOption, Decision, PlayerResponse
-from engine.rules.continuous import EffectDuration, make_defense_modifier, make_keyword_grant, make_power_modifier
+from engine.rules.actions import ActionOption, Decision
+from engine.rules.continuous import EffectDuration, make_defense_modifier, make_power_modifier
 from engine.rules.events import EventType, GameEvent, TriggeredEffect
 from engine.enums import ActionType, CardType, Color, DecisionType, Keyword, SubType, SuperType, Zone
 from engine.state.player_state import BanishPlayability, EXPIRY_END_OF_TURN
@@ -115,18 +114,12 @@ def _create_graphene_chelicera(state, controller_index: int, *, effect_engine=No
 
 
 
-def _is_assassin_attack(attack, ctx: AbilityContext | None = None) -> bool:
-    """Check if an attack is an Assassin attack (supertype).
-
-    When *ctx* is provided, uses the effect engine for modified supertypes.
-    Otherwise falls back to the card definition (for backward compatibility).
-    """
+def _is_assassin_attack(attack, ctx: AbilityContext) -> bool:
+    """Check if an attack is an Assassin attack (supertype, via effect engine)."""
     if attack is None:
         return False
-    if ctx is not None:
-        supertypes = ctx.effect_engine.get_modified_supertypes(ctx.state, attack)
-        return SuperType.ASSASSIN in supertypes
-    return SuperType.ASSASSIN in attack.definition.supertypes
+    supertypes = ctx.effect_engine.get_modified_supertypes(ctx.state, attack)
+    return SuperType.ASSASSIN in supertypes
 
 
 def _has_stealth(attack, ctx: AbilityContext) -> bool:
@@ -995,17 +988,6 @@ def _meet_madness_on_hit(ctx: AbilityContext) -> None:
         log.info(f"  Meet Madness: chosen mode {chosen} has no valid target")
 
 
-def _under_the_trap_door_on_hit(ctx: AbilityContext) -> None:
-    """Under the Trap-Door (Assassin, Attack Action):
-
-    On-hit: No on-hit effect. The card's main ability is an Instant discard
-    activation that banishes a trap from graveyard and lets you play it.
-    The instant discard is implemented in _under_the_trap_door_instant().
-    """
-    # No on-hit effect for this card.
-    pass
-
-
 @require_chain_link
 def _pain_in_the_backside_on_hit(ctx: AbilityContext) -> None:
     """Pain in the Backside (Assassin/Ninja, Attack Action):
@@ -1248,15 +1230,6 @@ def _persuasive_prognosis_on_hit(ctx: AbilityContext) -> None:
 
             if card.definition.is_action:
                 gain_life(ctx, ctx.controller_index, 1, "Persuasive Prognosis")
-
-
-def _reapers_call_on_hit(ctx: AbilityContext) -> None:
-    """Reaper's Call (Assassin, Attack Action):
-
-    No on-hit effect. Main body is Stealth (keyword).
-    The Instant discard activation is registered separately.
-    """
-    pass
 
 
 def _reapers_call_instant(ctx: AbilityContext) -> None:
