@@ -19,6 +19,11 @@ The engine is the largest open implementation question.
 
 - `AGENTS.md` → This file (project docs, architecture, roadmap)
 - `agents/orchestrator.md` → Coordinates work, spawns other agents
+- `tools/match_server.py` → HTTP server wrapping the engine; both seats served as `GET /pending?player=A|B` + `POST /action?player=A|B`. Wire payloads mirror the JSONL stdio protocol.
+- `tools/agent_cli.py` → Tiny stdlib CLI (`wait`/`pending`/`act`/`status`) used by sub-agents to drive `match_server.py` from Bash.
+- `playbook/match_protocol.md` → Wire-format briefing read by spawned **player** sub-agents.
+- `playbook/two_agent_match.md` → Operator runbook for "two Claude sub-agents play a game" — start here.
+- `playbook/player_spawn_prompt.md` → Parameterized template for the per-seat `Agent.prompt`.
 
 ## Architecture
 
@@ -30,7 +35,7 @@ The whole package lives under `engine/` at the repo root (no `src/` layer). Subm
   - `enums.py` — Shared enums (`Phase`, `Zone`, `CardType`, `SubType`, `SuperType`, `Keyword`, `DecisionType`, `ActionType`, etc.)
   - `__main__.py` — `python -m engine` random-vs-random demo runner (developer smoke test)
   - `_demo_deck.py` — `BRAVO_DECK_TEXT` constant shared by demo runners and tests
-  - `stdio.py` — CLI entry point (`python -m engine.stdio`) that runs a game with one seat driven over JSONL stdio and the other seat as a seeded `RandomPlayer`. See the module docstring for the wire format.
+  - `stdio.py` — CLI entry point (`python -m engine.stdio`) that runs a game with one seat driven over JSONL stdio and the other seat as a seeded `RandomPlayer`. **Single-seat path only**; for two external agents driving both seats use `tools/match_server.py`. Note: `engine.stdio` will crash on decks with multi-option equipment slots (latent `snapshot_for` bug — see `engine/state/snapshot.py`); `match_server.py` works around it.
 
 - **`engine/rules/`** — FaB rules engine
   - `game.py` — Game loop, turn structure, combat chain, damage
