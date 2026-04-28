@@ -1,66 +1,56 @@
-# Victor Goldmane, High and Mighty — Ding Dong the Witch is Dead
+# Victor Goldmane, High and Mighty — i love goooooolddd
 
-**Source:** https://fabrary.net/decks/01KKVDV95HSXMP166A40JGXENS
+**Source:** https://fabrary.net/decks/01KNMF9G4JEDRPDHE6ZNC003ZE
+**Format:** Classic Constructed
 
 ## Hero
 Victor Goldmane, High and Mighty
 
 ## Weapons
-- 1x Titan's Fist (Token)
-- 1x Miller's Grindstone — sideboard
+- 1x Miller's Grindstone
+- 1x Titan's Fist
 
 ## Equipment
-- Arcanite Skullcap (Head)
-- Aurum Aegis (Chest)
+- Aurum Aegis (Off-Hand)
+- Crown of Dominion (Head)
+- Fyendal's Spring Tunic (Chest)
 - Ironfist Revelation (Arms)
+- Nullrune Boots (Legs)
+- Nullrune Gloves (Arms)
+- Nullrune Hood (Head)
 - Quickdodge Flexors (Legs)
-- Tectonic Plating (Chest) — unclear if main or sideboard flex
+- Time Skippers (Legs)
 
-### Sideboard Equipment
-- Arcane Lantern
-- Crown of Dominion
-- Fyendal's Spring Tunic
-- Nullrune Boots
-- Nullrune Gloves
-- Time Skippers
+## Maindeck (69)
 
-## Maindeck (60)
-
-### Red (18)
+### Red
 - 3x Boulder Drop (Red)
 - 3x Command and Conquer (Red)
+- 2x Debilitate (Red)
 - 3x Enlightened Strike (Red)
-- 3x Pec Perfect (Red)
+- 3x Pummel (Red)
+- 3x Sink Below (Red)
 - 3x Spinal Crush (Red)
-- 3x Sink Below (Red) — Defense Reaction
+- 3x Test of Iron Grip (Red)
+- 3x Test of Strength (Red)
+- 2x Trounce (Red)
 
-### Yellow (5)
+### Yellow
+- 2x Clash of Bravado (Yellow)
+- 2x Remembrance (Yellow)
+- 1x Riches of Trōpal-Dhani (Yellow)
 - 3x The Golden Son (Yellow)
-- 1x Righteous Cleansing (Yellow)
-- 1x Riches of Tropal-Dhani (Yellow)
 
-### Blue (28)
-- 2x Aftershock (Blue)
-- 1x Buckling Blow (Blue)
-- 1x Chokeslam (Blue)
+### Blue
+- 2x Amulet of Echoes (Blue)
 - 3x Cranial Crush (Blue)
-- 1x Debilitate (Blue)
+- 3x Debilitate (Blue)
 - 3x Disable (Blue)
-- 2x Headbutt (Blue)
+- 3x Headbutt (Blue)
 - 3x Macho Grande (Blue)
-- 3x Right Behind You (Blue)
-- 1x Rubble Raiser (Blue)
+- 2x Right Behind You (Blue)
+- 3x Ripple Away (Blue)
+- 2x Rouse the Ancients (Blue)
 - 3x Thunder Quake (Blue)
 - 3x Thunk (Blue)
 - 3x Visit Goldmane Estate (Blue)
-
-### Blocks (3)
-- 3x Test of Strength (Red)
-
-## Sideboard (15)
-- 2x Clash of Bravado (Yellow)
-- 3x Pummel (Red) — Attack Reaction
-- 2x Remembrance (Yellow) — Instant
-- 3x Test of Iron Grip (Red) — Block
-- 2x Trounce (Red) — Block
-- Plus sideboard equipment listed above

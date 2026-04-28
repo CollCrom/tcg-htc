@@ -40,3 +40,7 @@ demo_snapshots.json
 board_view.html
 scenario_snapshots/
 scenario_combined.html
+
+# Match-server runtime logs (the replays/ dir is tracked via .gitkeep)
+replays/*
+!replays/.gitkeep

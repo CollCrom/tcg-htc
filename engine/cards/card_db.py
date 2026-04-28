@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import csv
 import re
+import unicodedata
 from pathlib import Path
 
 from engine.cards.card import CardDefinition
 from engine.enums import Color, Keyword, classify_type_string
+
+
+def _normalize_name(name: str) -> str:
+    """Diacritic- and case-insensitive normal form for card-name lookup.
+
+    Decomposes (NFKD), drops combining marks, and case-folds. Used so deck
+    files that spell ``Riches of Tropal-Dhani`` still resolve to the
+    canonical ``Riches of Trōpal-Dhani`` in the card DB. Doesn't transliterate
+    characters that aren't decompositions of an ASCII letter (e.g. Norse
+    eth ``ð`` stays as ``ð``); exact-match lookup handles those.
+    """
+    decomposed = unicodedata.normalize("NFKD", name)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +148,10 @@ class CardDatabase:
     def __init__(self) -> None:
         self._by_id: dict[str, CardDefinition] = {}
         self._by_name: dict[str, list[CardDefinition]] = {}
+        # Parallel index on diacritic-/case-normalized names so deck files
+        # written without macrons / accents still resolve. Populated alongside
+        # _by_name in ``load``; consulted as a fallback in get_by_name.
+        self._by_normalized_name: dict[str, list[CardDefinition]] = {}
 
     @classmethod
     def load(cls, tsv_path: str | Path) -> CardDatabase:
@@ -146,14 +164,23 @@ class CardDatabase:
                 if card is not None:
                     db._by_id[card.unique_id] = card
                     db._by_name.setdefault(card.name, []).append(card)
+                    db._by_normalized_name.setdefault(
+                        _normalize_name(card.name), []
+                    ).append(card)
         return db
 
     def get_by_id(self, unique_id: str) -> CardDefinition | None:
         return self._by_id.get(unique_id)
 
     def get_by_name(self, name: str, color: Color | None = None) -> CardDefinition | None:
-        """Look up a card by name. If color is given, return that variant."""
+        """Look up a card by name. If color is given, return that variant.
+
+        Falls back to a diacritic-/case-insensitive lookup if the exact name
+        misses, so deck files that spell ``Tropal`` still find ``Trōpal``.
+        """
         cards = self._by_name.get(name, [])
+        if not cards:
+            cards = self._by_normalized_name.get(_normalize_name(name), [])
         if not cards:
             return None
         if color is not None:
@@ -163,15 +190,23 @@ class CardDatabase:
         return cards[0]
 
     def get_all_by_name(self, name: str) -> list[CardDefinition]:
-        return self._by_name.get(name, [])
+        cards = self._by_name.get(name)
+        if cards:
+            return cards
+        return self._by_normalized_name.get(_normalize_name(name), [])
 
     def search(self, name_substring: str) -> list[CardDefinition]:
-        """Search for cards whose name contains the substring (case-insensitive)."""
-        lower = name_substring.lower()
+        """Search for cards whose name contains the substring.
+
+        Diacritic- and case-insensitive: searching ``"tropal"`` finds
+        ``Riches of Trōpal-Dhani``.
+        """
+        needle = _normalize_name(name_substring)
         results = []
-        for name, cards in self._by_name.items():
-            if lower in name.lower():
-                results.extend(cards)
+        for cards in self._by_name.values():
+            for card in cards:
+                if needle in _normalize_name(card.name):
+                    results.append(card)
         return results
 
     @property
