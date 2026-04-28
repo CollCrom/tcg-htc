@@ -424,6 +424,66 @@ class TestCutFromTheSameCloth:
 
         assert not game.state.players[1].is_marked
 
+    def test_reveals_opponent_hand_to_controller(self):
+        """After resolution, every card in opponent's hand is revealed to the
+        controller and shows up in their per-player snapshot."""
+        from engine.state.snapshot import snapshot_for
+
+        game = make_game_shell()
+        # Opponent (P1) has three cards in hand — controller (P0) plays Cut.
+        c1 = make_card(instance_id=70, owner_index=1, zone=Zone.HAND, name="Mystery 1")
+        c2 = make_card(instance_id=71, owner_index=1, zone=Zone.HAND, name="Mystery 2")
+        c3 = _make_attack_reaction("Some AR", instance_id=72, owner_index=1)
+        game.state.players[1].hand.extend([c1, c2, c3])
+
+        card = _make_non_attack_action("Cut from the Same Cloth", color=Color.RED)
+        game._apply_card_ability(card, 0, "on_play")
+
+        # All three opponent-hand instance_ids are now revealed to player 0.
+        revealed = game.state.players[1].hand_revealed_to[0]
+        assert revealed == {70, 71, 72}
+
+        # And the snapshot from P0's viewpoint surfaces them under hand_revealed,
+        # while still reporting the full hand_size and redacting `hand`.
+        snap = snapshot_for(game.state, viewer_index=0, effect_engine=game.effect_engine)
+        opp = snap["opponent"]
+        assert opp["hand_size"] == 3
+        assert "hand" not in opp
+        revealed_ids = {c["instance_id"] for c in opp["hand_revealed"]}
+        assert revealed_ids == {70, 71, 72}
+
+        # The opposite snapshot (from P1's viewpoint of P0) should NOT show
+        # P0's hand revealed — peeks are directional.
+        snap_p1 = snapshot_for(game.state, viewer_index=1, effect_engine=game.effect_engine)
+        assert snap_p1["opponent"]["hand_revealed"] == []
+
+    def test_revealed_card_disappears_when_it_leaves_hand(self):
+        """Persistent reveal is filtered against current hand contents — a
+        revealed card that gets played/pitched/discarded falls off the snapshot."""
+        from engine.state.snapshot import snapshot_for
+
+        game = make_game_shell()
+        c1 = make_card(instance_id=80, owner_index=1, zone=Zone.HAND, name="Will leave")
+        c2 = make_card(instance_id=81, owner_index=1, zone=Zone.HAND, name="Will stay")
+        game.state.players[1].hand.extend([c1, c2])
+
+        card = _make_non_attack_action("Cut from the Same Cloth", color=Color.RED)
+        game._apply_card_ability(card, 0, "on_play")
+
+        # Both revealed initially.
+        snap = snapshot_for(game.state, viewer_index=0, effect_engine=game.effect_engine)
+        assert {c["instance_id"] for c in snap["opponent"]["hand_revealed"]} == {80, 81}
+
+        # Move c1 out of hand (e.g. into pitch). Snapshot should now only show c2.
+        game.state.players[1].hand.remove(c1)
+        c1.zone = Zone.PITCH
+        game.state.players[1].pitch.append(c1)
+
+        snap = snapshot_for(game.state, viewer_index=0, effect_engine=game.effect_engine)
+        revealed_ids = {c["instance_id"] for c in snap["opponent"]["hand_revealed"]}
+        assert revealed_ids == {81}
+        assert snap["opponent"]["hand_size"] == 1
+
 
 class TestCodexOfFrailty:
     """Codex of Frailty: Arsenal from GY, discard, create tokens."""
@@ -934,6 +994,93 @@ class TestPersuasivePrognosis:
 
         # Controller gains 1 life (banished an action card)
         assert game.state.players[0].life_total == 21
+
+    def test_controller_chooses_when_multiple_matching_colors(self):
+        """When 2+ matching-color cards are in hand, the controller is asked
+        which one to banish — not auto-picked."""
+
+        class _AskRecorder:
+            """PlayerInterface impl that asserts a single CHOOSE_TARGET decision
+            is asked of player 0 and returns the second matching card's id."""
+            def __init__(self):
+                self.decisions: list = []
+
+            def decide(self, state, decision):
+                self.decisions.append(decision)
+                # Pick the second offered option (card_b), not the first.
+                return PlayerResponse(selected_option_ids=[decision.options[1].action_id])
+
+        game = make_game_shell()
+        # Top of deck: Red action card.
+        deck_card = _make_dagger_attack(instance_id=50, owner_index=1)
+        deck_card.zone = Zone.DECK
+        game.state.players[1].deck = [deck_card]
+
+        # Two Red cards in opponent's hand — controller must choose between them.
+        card_a = _make_dagger_attack(instance_id=60, owner_index=1)
+        card_a.zone = Zone.HAND
+        card_b = _make_dagger_attack(instance_id=61, owner_index=1)
+        card_b.zone = Zone.HAND
+        game.state.players[1].hand = [card_a, card_b]
+
+        # A non-matching Yellow card should not appear among options.
+        card_yellow = _make_attack_reaction(
+            "Yellow Distractor", instance_id=62, color=Color.YELLOW, owner_index=1,
+        )
+        game.state.players[1].hand.append(card_yellow)
+
+        recorder = _AskRecorder()
+        game.interfaces = {0: recorder, 1: recorder}
+
+        attack = _make_stealth_attack(instance_id=1, name="Persuasive Prognosis")
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        game._apply_card_ability(attack, 0, "on_hit")
+
+        # Exactly one Decision was asked, of player 0, with the documented prompt
+        # and only the two Red cards as options.
+        assert len(recorder.decisions) == 1
+        d = recorder.decisions[0]
+        assert d.player_index == 0
+        assert "Persuasive Prognosis" in d.prompt
+        offered_ids = {opt.card_instance_id for opt in d.options}
+        assert offered_ids == {60, 61}, "only matching-color cards should be offered"
+
+        # The chosen card (card_b, id 61) was banished; card_a (id 60) was not.
+        assert card_b in game.state.players[1].banished
+        assert card_a not in game.state.players[1].banished
+        assert card_a in game.state.players[1].hand
+        # The yellow distractor never moved.
+        assert card_yellow in game.state.players[1].hand
+
+    def test_single_matching_card_is_auto_banished_no_decision(self):
+        """With exactly one matching-color card, no Decision is asked."""
+
+        class _AssertNoAsk:
+            def decide(self, state, decision):
+                raise AssertionError(
+                    f"unexpected Decision asked: {decision.prompt!r}"
+                )
+
+        game = make_game_shell()
+        deck_card = _make_dagger_attack(instance_id=50, owner_index=1)  # Red
+        deck_card.zone = Zone.DECK
+        game.state.players[1].deck = [deck_card]
+
+        only_red = _make_dagger_attack(instance_id=60, owner_index=1)  # Red
+        only_red.zone = Zone.HAND
+        game.state.players[1].hand = [only_red]
+
+        game.interfaces = {0: _AssertNoAsk(), 1: _AssertNoAsk()}
+
+        attack = _make_stealth_attack(instance_id=1, name="Persuasive Prognosis")
+        game.combat_mgr.open_chain(game.state)
+        game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+        game._apply_card_ability(attack, 0, "on_hit")
+
+        assert only_red in game.state.players[1].banished
 
 
 class TestMeetMadness:

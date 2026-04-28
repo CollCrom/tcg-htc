@@ -16,9 +16,19 @@ Engine → agent (one of):
           "action_type": "play_card", "card_instance_id": 42},
          {"action_id": "pass", "description": "Pass", "action_type": "pass",
           "card_instance_id": null}
-     ]}
+     ],
+     "state": {"you": {...}, "opponent": {...},
+               "combat_chain": {...}, "turn": {...}}}
 
     {"type": "game_over", "winner": 0, "turns": 14, "final_life": [0, 4]}
+
+The ``state`` field is a per-player snapshot from the deciding seat's
+viewpoint: the viewer's own zones (hand, arsenal, etc.) are fully
+visible; the opponent's hidden zones are replaced with sizes or
+face-down placeholders. See :func:`engine.state.snapshot.snapshot_for`
+for the exact schema. Cards include both base values and effect-modified
+values (post-continuous-effects) so the agent can reason about the
+current game-relevant numbers without re-implementing the effect engine.
 
 Agent → engine:
 
@@ -35,10 +45,14 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import asdict
-from typing import IO
+from typing import IO, TYPE_CHECKING
 
 from engine.rules.actions import Decision, PlayerResponse
 from engine.state.game_state import GameState
+from engine.state.snapshot import snapshot_for
+
+if TYPE_CHECKING:
+    from engine.rules.effects import EffectEngine
 
 
 class StdioPlayer:
@@ -47,16 +61,30 @@ class StdioPlayer:
     The default streams are ``sys.stdin`` / ``sys.stdout`` so the engine can
     be launched as a subprocess by an agent. Pass explicit streams to drive
     it from tests or to redirect to pipes/sockets.
+
+    Usage::
+
+        player = StdioPlayer(player_index=0)
+        game = Game(db, deck1, deck2, player, opponent, seed=7)
+        # AFTER constructing Game (so the effect engine exists):
+        player.effect_engine = game.effect_engine
+        game.play()
+
+    The effect engine is required so the snapshot can include
+    effect-modified values (modified power on the active attack,
+    modified cost on cards in hand, etc.).
     """
 
     def __init__(
         self,
         player_index: int,
         *,
+        effect_engine: EffectEngine | None = None,
         stdin: IO[str] | None = None,
         stdout: IO[str] | None = None,
     ) -> None:
         self.player_index = player_index
+        self.effect_engine: EffectEngine | None = effect_engine
         self._stdin = stdin if stdin is not None else sys.stdin
         self._stdout = stdout if stdout is not None else sys.stdout
 
@@ -65,7 +93,12 @@ class StdioPlayer:
     # ------------------------------------------------------------------
 
     def decide(self, game_state: GameState, decision: Decision) -> PlayerResponse:
-        self._send(self._encode_decision(decision))
+        if self.effect_engine is None:
+            raise RuntimeError(
+                "StdioPlayer.effect_engine must be set before decide() is called "
+                "(typically by the entry point after constructing Game)"
+            )
+        self._send(self._encode_decision(decision, game_state))
         line = self._stdin.readline()
         if not line:
             raise RuntimeError(
@@ -87,7 +120,10 @@ class StdioPlayer:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _encode_decision(self, decision: Decision) -> dict:
+    def _encode_decision(self, decision: Decision, game_state: GameState) -> dict:
+        # effect_engine is asserted non-None at the top of decide().
+        assert self.effect_engine is not None
+        state_snapshot = snapshot_for(game_state, self.player_index, self.effect_engine)
         return {
             "type": "decision",
             "player_index": decision.player_index,
@@ -103,6 +139,7 @@ class StdioPlayer:
                 }
                 for opt in decision.options
             ],
+            "state": state_snapshot,
         }
 
     def _send(self, payload: dict) -> None:

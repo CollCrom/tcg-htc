@@ -17,11 +17,19 @@ waits for one JSON response line on stdin. When the game ends, a single
     {"type": "decision", "player_index": 0, "decision_type": "play_or_pass",
      "prompt": "...", "min_selections": 1, "max_selections": 1,
      "options": [{"action_id": "pass", "description": "Pass",
-                  "action_type": "pass", "card_instance_id": null}]}
+                  "action_type": "pass", "card_instance_id": null}],
+     "state": {"you": {...}, "opponent": {...},
+               "combat_chain": {...}, "turn": {...}}}
     {"type": "game_over", "winner": 0, "turns": 14, "final_life": [0, 4]}
 
     # agent -> engine
     {"selected_option_ids": ["pass"]}
+
+The ``state`` field on every ``decision`` is a per-player snapshot from
+the agent's viewpoint with hidden zones redacted (opponent hand becomes
+``hand_size``; opponent face-down banished becomes a count). Cards
+include both base and effect-modified values. Schema is defined in
+``engine/state/snapshot.py``.
 
 The opponent is a random player (seeded). Logs go to stderr so stdout
 stays a clean JSONL channel.
@@ -133,6 +141,11 @@ def main(argv: list[str] | None = None) -> int:
     emit_event({"type": "ready", "player_index": stdio_index, "seed": args.seed})
 
     game = Game(db, deck1, deck2, p1, p2, seed=args.seed)
+    # Wire the effect engine into the stdio player so per-decision snapshots
+    # can include effect-modified values (modified power on the active
+    # attack, modified cost on cards in hand, etc.).
+    stdio_player.effect_engine = game.effect_engine
+
     try:
         result = game.play()
     except RuntimeError as exc:

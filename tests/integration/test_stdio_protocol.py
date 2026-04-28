@@ -135,6 +135,33 @@ def test_stdio_runs_full_game_p1():
             # card_instance_id is int | None
             assert opt["card_instance_id"] is None or isinstance(opt["card_instance_id"], int)
 
+        # State snapshot — present on every decision, well-formed, and redacted.
+        state = d["state"]
+        assert set(state.keys()) == {"you", "opponent", "combat_chain", "turn"}, (
+            f"unexpected state keys: {sorted(state.keys())}"
+        )
+        you, opp = state["you"], state["opponent"]
+        # Viewer's own zones are visible (lists of cards).
+        assert isinstance(you["hand"], list)
+        assert isinstance(you["arsenal"], list)
+        assert isinstance(you["life"], int)
+        # Opponent's hidden zones are redacted.
+        assert isinstance(opp["hand_size"], int) and opp["hand_size"] >= 0
+        assert "hand" not in opp, "opponent hand must be redacted to hand_size only"
+        # Cards revealed by peek effects (e.g. Cut from the Same Cloth) appear
+        # in hand_revealed; defaults to empty list when no peeks have happened.
+        assert isinstance(opp["hand_revealed"], list)
+        assert len(opp["hand_revealed"]) <= opp["hand_size"]
+        assert isinstance(opp["banished_face_down_count"], int)
+        # The viewer index in `you` matches the decision routing.
+        assert you["index"] == d["player_index"]
+        assert opp["index"] == 1 - d["player_index"]
+        # Turn block has the documented fields.
+        turn = state["turn"]
+        assert isinstance(turn["number"], int)
+        assert isinstance(turn["phase"], str)
+        assert turn["active_player_index"] in (0, 1)
+
     assert game_over["winner"] in (0, 1, None)
     assert isinstance(game_over["turns"], int) and game_over["turns"] > 0
     assert isinstance(game_over["final_life"], list) and len(game_over["final_life"]) == 2

@@ -6,10 +6,14 @@ A Flesh and Blood TCG testing environment. Simulate games, analyze gameplay, and
 
 Train and test FaB decks by simulating full games, analyzing play logs for better lines, and evaluating decklists for card and sideboard improvements.
 
-## Tech Stack
+## Stack (planned, not yet built)
 
-- **Language:** Python
-- **Domain:** Flesh and Blood TCG rules engine, game simulation, strategy analysis
+- **Engine**: Python rules engine in `engine/`. Server-side legal-action enforcement. Per-player state snapshot API that redacts hidden zones.
+- **Card data**: `ref/cards/` (JSON, source TBD — official LSS or fabdb-equivalent).
+- **Rules**: `ref/rules/` (saved local copy of official rules).
+- **Format**: starting with **Blitz** (40-card decks).
+
+The engine is the largest open implementation question.
 
 ## Key Files
 
