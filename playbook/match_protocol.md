@@ -42,6 +42,13 @@ Until the game ends, repeat:
    Response: `{"ok": true, "status": {...}}` or an `{"error": ...}` if
    you submitted nonsense.
 
+   **If you get an `error` containing `unknown action_ids`**, the engine
+   moved to a different decision for your seat between your `wait` and
+   your `act`. Don't bail — go back to step 1, call `wait` again to get
+   the current decision, and re-pick from its options. Don't reuse the
+   stale `action_id`. If the same submission 409s twice in a row, that's
+   a real bug; report it instead of looping forever.
+
 5. Loop.
 
 If you ever want a quick read on overall match state without a pending
