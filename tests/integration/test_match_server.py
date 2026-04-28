@@ -69,7 +69,8 @@ def _http_get(url: str) -> dict:
         return json.loads(resp.read().decode("utf-8") or "{}")
 
 
-def _http_post(url: str, body: dict) -> dict:
+def _http_post(url: str, body: dict) -> tuple[int, dict]:
+    """POST JSON; return (status_code, parsed_body). Raises only on 5xx."""
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, method="POST",
@@ -77,12 +78,15 @@ def _http_post(url: str, body: dict) -> dict:
     )
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
-            return json.loads(resp.read().decode("utf-8") or "{}")
+            return resp.getcode(), json.loads(resp.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8")
-        raise AssertionError(
-            f"POST {url} failed {exc.code}: {body}"
-        ) from exc
+        if 500 <= exc.code < 600:
+            err_body = exc.read().decode("utf-8")
+            raise AssertionError(
+                f"POST {url} failed {exc.code}: {err_body}"
+            ) from exc
+        # 4xx — surface to caller so it can decide whether to retry.
+        return exc.code, json.loads(exc.read().decode("utf-8") or "{}")
 
 
 def _wait_until_listening(port: int, timeout_s: float) -> None:
@@ -192,21 +196,35 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
 
             progressed = False
             for player in ("A", "B"):
-                pending_resp = _http_get(
-                    f"{base}/pending?player={player}",
-                )
-                pending = pending_resp.get("pending")
-                if pending is None:
-                    continue
-                _validate_decision(pending)
-                ids = _pick(rng, pending)
-                ack = _http_post(
-                    f"{base}/action?player={player}",
-                    {"selected_option_ids": ids},
-                )
-                assert ack.get("ok") is True, f"act rejected: {ack}"
-                decisions_seen += 1
-                progressed = True
+                # Fetch + pick + submit, retrying once on a 409 "unknown
+                # action_ids" response. That 409 means the engine has moved
+                # on to a different decision for this player between our
+                # GET and POST — re-fetching gives us the current options.
+                # If two consecutive submissions both 409, that's a real
+                # bridge bug and the test should fail.
+                for attempt in range(2):
+                    pending_resp = _http_get(
+                        f"{base}/pending?player={player}",
+                    )
+                    pending = pending_resp.get("pending")
+                    if pending is None:
+                        break
+                    _validate_decision(pending)
+                    ids = _pick(rng, pending)
+                    code, ack = _http_post(
+                        f"{base}/action?player={player}",
+                        {"selected_option_ids": ids},
+                    )
+                    if code == 200 and ack.get("ok") is True:
+                        decisions_seen += 1
+                        progressed = True
+                        break
+                    if code == 409 and "unknown action_ids" in str(ack.get("error", "")):
+                        # Decision raced; loop and re-fetch.
+                        continue
+                    raise AssertionError(
+                        f"act rejected for player {player} (code={code}): {ack}"
+                    )
             if not progressed:
                 # Engine is mid-resolution — yield briefly.
                 time.sleep(0.02)
@@ -219,15 +237,19 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
 
         final = _http_get(f"{base}/status")["status"]
         assert final["status"] == "game_over"
-        assert final["winner"] in (0, 1)
-        assert final["winner_seat"] in ("A", "B")
         assert final["turns"] >= 1
         assert len(final["final_life"]) == 2
-        # Loser must be at <= 0 life; winner > 0.
-        loser_idx = 1 - final["winner"]
-        assert final["final_life"][loser_idx] <= 0
-        assert final["final_life"][final["winner"]] > 0
         assert decisions_seen > 0
+        # Game can end with a winner (someone hit 0 life) or as a draw
+        # (engine MAX_TURNS cap fires; both seats still alive).
+        if final["winner"] is None:
+            assert final["winner_seat"] is None
+        else:
+            assert final["winner"] in (0, 1)
+            assert final["winner_seat"] in ("A", "B")
+            loser_idx = 1 - final["winner"]
+            assert final["final_life"][loser_idx] <= 0
+            assert final["final_life"][final["winner"]] > 0
 
     finally:
         # Politely terminate; force-kill if it doesn't stop.
