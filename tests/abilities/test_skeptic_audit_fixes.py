@@ -8,12 +8,12 @@ Covers:
 5. Fyendal's Spring Tunic player agency (instant activation instead of auto-spend)
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import ActionOption, Decision, PlayerResponse
-from htc.engine.continuous import EffectDuration, make_supertype_grant
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import ActionOption, Decision, PlayerResponse
+from engine.rules.continuous import EffectDuration, make_supertype_grant
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     ActionType,
     CardType,
     Color,
@@ -498,7 +498,7 @@ class TestAmuletOfEchoes:
 
     def test_card_names_tracked_on_play(self):
         """TurnCounters.card_names_played is populated when cards are played."""
-        from htc.state.turn_counters import TurnCounters
+        from engine.state.turn_counters import TurnCounters
         tc = TurnCounters()
         tc.card_names_played.append("Pummel")
         tc.card_names_played.append("Pummel")
@@ -506,7 +506,7 @@ class TestAmuletOfEchoes:
 
     def test_no_duplicate_card_names(self):
         """has_duplicate_card_name returns False for unique names."""
-        from htc.state.turn_counters import TurnCounters
+        from engine.state.turn_counters import TurnCounters
         tc = TurnCounters()
         tc.card_names_played.append("Pummel")
         tc.card_names_played.append("Crush")
@@ -520,7 +520,7 @@ class TestAmuletOfEchoes:
 
 def _make_spring_tunic(instance_id: int = 70, owner_index: int = 0) -> CardInstance:
     """Create a Fyendal's Spring Tunic equipment."""
-    from htc.enums import EquipmentSlot
+    from engine.enums import EquipmentSlot
     defn = CardDefinition(
         unique_id=f"tunic-{instance_id}",
         name="Fyendal's Spring Tunic",
@@ -562,7 +562,7 @@ class TestSpringTunicPlayerAgency:
     def test_precondition_needs_3_counters(self):
         """Activation blocked when tunic has fewer than 3 energy counters."""
         game = make_game_shell()
-        from htc.enums import EquipmentSlot
+        from engine.enums import EquipmentSlot
         tunic = _make_spring_tunic()
         tunic.counters["energy"] = 2
         game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
@@ -573,7 +573,7 @@ class TestSpringTunicPlayerAgency:
     def test_precondition_met_with_3_counters(self):
         """Activation allowed when tunic has 3+ energy counters."""
         game = make_game_shell()
-        from htc.enums import EquipmentSlot
+        from engine.enums import EquipmentSlot
         tunic = _make_spring_tunic()
         tunic.counters["energy"] = 3
         game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
@@ -584,7 +584,7 @@ class TestSpringTunicPlayerAgency:
     def test_activation_removes_counters_gains_resource(self):
         """Activation removes 3 energy counters and grants 1 resource."""
         game = make_game_shell()
-        from htc.enums import EquipmentSlot
+        from engine.enums import EquipmentSlot
         tunic = _make_spring_tunic()
         tunic.counters["energy"] = 3
         game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
@@ -597,11 +597,11 @@ class TestSpringTunicPlayerAgency:
 
     def test_no_auto_spend_at_3_counters(self):
         """Energy counters reaching 3 does NOT auto-spend anymore."""
-        from htc.cards.abilities.equipment import SpringTunicTrigger
-        from htc.engine.events import EventType, GameEvent
+        from engine.cards.abilities.equipment import SpringTunicTrigger
+        from engine.rules.events import EventType, GameEvent
 
         game = make_game_shell()
-        from htc.enums import EquipmentSlot
+        from engine.enums import EquipmentSlot
         tunic = _make_spring_tunic()
         tunic.counters["energy"] = 2
         game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
@@ -629,11 +629,11 @@ class TestSpringTunicPlayerAgency:
 
     def test_trigger_stops_at_3(self):
         """Trigger does not add counter when already at 3."""
-        from htc.cards.abilities.equipment import SpringTunicTrigger
-        from htc.engine.events import EventType, GameEvent
+        from engine.cards.abilities.equipment import SpringTunicTrigger
+        from engine.rules.events import EventType, GameEvent
 
         game = make_game_shell()
-        from htc.enums import EquipmentSlot
+        from engine.enums import EquipmentSlot
         tunic = _make_spring_tunic()
         tunic.counters["energy"] = 3
         game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
@@ -655,7 +655,7 @@ class TestSpringTunicPlayerAgency:
     def test_cost_is_zero(self):
         """Spring Tunic equipment instant cost is 0 (no resource cost)."""
         game = make_game_shell()
-        from htc.enums import EquipmentSlot
+        from engine.enums import EquipmentSlot
         tunic = _make_spring_tunic()
         game.state.players[0].equipment[EquipmentSlot.CHEST] = tunic
 

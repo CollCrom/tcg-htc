@@ -1,10 +1,10 @@
 """Tests for arcane damage and Arcane Barrier prevention."""
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.engine.game import Game
-from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.rules.game import Game
+from engine.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
 from tests.conftest import make_equipment, make_game_shell, make_pitch_card, make_weapon
 
 

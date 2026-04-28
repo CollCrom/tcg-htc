@@ -7,13 +7,13 @@ Covers:
 4. Take Up the Mantle — copy effect via definition_override
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext, AbilityRegistry
-from htc.engine.actions import ActionOption, Decision, PlayerResponse
-from htc.engine.continuous import EffectDuration, make_power_modifier
-from htc.engine.events import EventBus, EventType, GameEvent, ReplacementEffect
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.abilities import AbilityContext, AbilityRegistry
+from engine.rules.actions import ActionOption, Decision, PlayerResponse
+from engine.rules.continuous import EffectDuration, make_power_modifier
+from engine.rules.events import EventBus, EventType, GameEvent, ReplacementEffect
+from engine.enums import (
     ActionType,
     CardType,
     Color,
@@ -138,7 +138,7 @@ def _make_stealth_attack_in_gy(
 
 def test_pain_in_the_backside_deals_dagger_damage():
     """Pain in the Backside: dagger deals 1 damage on hit, dagger gets HIT event."""
-    from htc.state.combat_state import ChainLink
+    from engine.state.combat_state import ChainLink
 
     game = make_game_shell()
     game.state.players[1].life_total = 20
@@ -189,7 +189,7 @@ def test_pain_in_the_backside_deals_dagger_damage():
 
 def test_pain_in_the_backside_no_dagger_no_damage():
     """Pain in the Backside: no daggers → no damage dealt."""
-    from htc.state.combat_state import ChainLink
+    from engine.state.combat_state import ChainLink
 
     game = make_game_shell()
     game.state.players[1].life_total = 20
@@ -246,7 +246,7 @@ def test_authority_of_ataya_pitch_increases_dr_cost():
     game._ask = make_mock_ask({})
 
     # Pitch the card
-    from htc.engine.cost import pitch_card
+    from engine.rules.cost import pitch_card
     pitch_card(game.state, 0, ataya, game.events)
 
     # Check that defense reactions for opponent (player 1) cost +1
@@ -263,7 +263,7 @@ def test_authority_of_ataya_does_not_affect_controller_dr():
 
     game._ask = make_mock_ask({})
 
-    from htc.engine.cost import pitch_card
+    from engine.rules.cost import pitch_card
     pitch_card(game.state, 0, ataya, game.events)
 
     # Controller's defense reactions are unaffected
@@ -280,7 +280,7 @@ def test_authority_of_ataya_does_not_affect_non_dr():
 
     game._ask = make_mock_ask({})
 
-    from htc.engine.cost import pitch_card
+    from engine.rules.cost import pitch_card
     pitch_card(game.state, 0, ataya, game.events)
 
     # Attack reaction for opponent — should not be affected
@@ -292,8 +292,8 @@ def test_authority_of_ataya_does_not_affect_non_dr():
 def test_pitch_card_emits_event():
     """pitch_card emits PITCH_CARD event when event_bus is provided."""
     events = EventBus()
-    from htc.state.game_state import GameState
-    from htc.state.player_state import PlayerState
+    from engine.state.game_state import GameState
+    from engine.state.player_state import PlayerState
 
     state = GameState()
     state.players = [PlayerState(index=0, life_total=20), PlayerState(index=1, life_total=20)]
@@ -305,7 +305,7 @@ def test_pitch_card_emits_event():
     emitted = []
     events.register_handler(EventType.PITCH_CARD, lambda e: emitted.append(e))
 
-    from htc.engine.cost import pitch_card
+    from engine.rules.cost import pitch_card
     gained = pitch_card(state, 0, card, events)
 
     assert gained == 3
@@ -316,8 +316,8 @@ def test_pitch_card_emits_event():
 
 def test_pitch_card_no_event_without_bus():
     """pitch_card does NOT emit events when event_bus is None (backward compat)."""
-    from htc.state.game_state import GameState
-    from htc.state.player_state import PlayerState
+    from engine.state.game_state import GameState
+    from engine.state.player_state import PlayerState
 
     state = GameState()
     state.players = [PlayerState(index=0, life_total=20), PlayerState(index=1, life_total=20)]
@@ -326,7 +326,7 @@ def test_pitch_card_no_event_without_bus():
     card = make_pitch_card(instance_id=200, owner_index=0, pitch=2)
     state.players[0].hand.append(card)
 
-    from htc.engine.cost import pitch_card
+    from engine.rules.cost import pitch_card
     gained = pitch_card(state, 0, card)  # no event bus
 
     assert gained == 2
@@ -447,7 +447,7 @@ def test_shelter_is_registered_as_instant_discard():
 
 def test_take_up_the_mantle_unmarked_plus2():
     """Take Up the Mantle: +2 power when target is not marked."""
-    from htc.state.combat_state import ChainLink
+    from engine.state.combat_state import ChainLink
 
     game = make_game_shell()
     game.state.players[1].is_marked = False
@@ -474,7 +474,7 @@ def test_take_up_the_mantle_unmarked_plus2():
 
 def test_take_up_the_mantle_marked_plus3():
     """Take Up the Mantle: +3 power when target is marked."""
-    from htc.state.combat_state import ChainLink
+    from engine.state.combat_state import ChainLink
 
     game = make_game_shell()
     game.state.players[1].is_marked = True
@@ -502,7 +502,7 @@ def test_take_up_the_mantle_marked_plus3():
 
 def test_take_up_the_mantle_copy_effect():
     """Take Up the Mantle: banish stealth card, attack becomes a copy."""
-    from htc.state.combat_state import ChainLink
+    from engine.state.combat_state import ChainLink
 
     game = make_game_shell()
     game.state.players[1].is_marked = True
@@ -547,7 +547,7 @@ def test_take_up_the_mantle_copy_effect():
 
 def test_take_up_the_mantle_copy_banishes_card():
     """Take Up the Mantle: the chosen card is actually banished from graveyard."""
-    from htc.state.combat_state import ChainLink
+    from engine.state.combat_state import ChainLink
 
     game = make_game_shell()
     game.state.players[1].is_marked = True
@@ -578,7 +578,7 @@ def test_take_up_the_mantle_copy_banishes_card():
 
 def test_take_up_the_mantle_no_stealth_no_effect():
     """Take Up the Mantle: no effect if attack doesn't have Stealth."""
-    from htc.state.combat_state import ChainLink
+    from engine.state.combat_state import ChainLink
 
     game = make_game_shell()
     non_stealth = make_card(instance_id=1, name="Non-Stealth Attack", power=3)
@@ -639,9 +639,9 @@ def test_definition_override_changes_name():
 
 def test_definition_override_affects_effect_engine_keywords():
     """EffectEngine reads keywords from _effective_definition."""
-    from htc.engine.effects import EffectEngine
-    from htc.state.game_state import GameState
-    from htc.state.player_state import PlayerState
+    from engine.rules.effects import EffectEngine
+    from engine.state.game_state import GameState
+    from engine.state.player_state import PlayerState
 
     state = GameState()
     state.players = [PlayerState(index=0, life_total=20)]

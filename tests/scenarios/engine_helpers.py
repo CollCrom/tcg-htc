@@ -7,15 +7,11 @@ specific game sequences through the full engine.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from htc.cards.card_db import CardDatabase
-from htc.decks.deck_list import DeckList, parse_markdown_decklist
-from htc.engine.game import Game
-from htc.player.scripted_player import ScriptedPlayer
-
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-REF_DIR = Path(__file__).resolve().parent.parent.parent / "ref"
+from engine.cards.card_db import CardDatabase
+from engine.decks.deck_list import DeckList, parse_markdown_decklist
+from engine.rules.game import Game
+from tests._helpers.scripted_player import ScriptedPlayer
+from tests.conftest import CARDS_TSV, REF_DIR
 
 # Module-level cache so we don't re-parse on every test
 _cached_db: CardDatabase | None = None
@@ -26,14 +22,14 @@ _cached_arakni: DeckList | None = None
 def _get_db() -> CardDatabase:
     global _cached_db
     if _cached_db is None:
-        _cached_db = CardDatabase.load(DATA_DIR / "cards.tsv")
+        _cached_db = CardDatabase.load(CARDS_TSV)
     return _cached_db
 
 
 def _get_cindra_deck() -> DeckList:
     global _cached_cindra
     if _cached_cindra is None:
-        text = (REF_DIR / "decklist-cindra-blue.md").read_text()
+        text = (REF_DIR / "decks" / "decklist-cindra-blue.md").read_text()
         _cached_cindra = parse_markdown_decklist(text)
     return _cached_cindra
 
@@ -41,7 +37,7 @@ def _get_cindra_deck() -> DeckList:
 def _get_arakni_deck() -> DeckList:
     global _cached_arakni
     if _cached_arakni is None:
-        text = (REF_DIR / "decklist-arakni.md").read_text()
+        text = (REF_DIR / "decks" / "decklist-arakni.md").read_text()
         _cached_arakni = parse_markdown_decklist(text)
     return _cached_arakni
 

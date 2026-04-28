@@ -8801,7 +8801,7 @@ Create a Ponder token."	Wizard Instant	False	True	True	False	True
 WKb8wmGL6MRRzwLnzqLBj	Saving Grace	Yellow	2	0		3				Light, Warrior, Defense Reaction		Charge					Charge	"As an additional cost to play this, you may **charge** your hero's soul.
 
 If you've **charged** this turn, target attack gets -2{p}."	Light Warrior Defense Reaction	False	True	True	False	True
-nmc8wLKtTmPhJFb7FH8BG	Savor Bloodshed	Red	1	0		3				Assassin, Warrior, Action		Go again					Mark	"You next dagger attack this turn gets +4{p}.
+nmc8wLKtTmPhJFb7FH8BG	Savor Bloodshed	Red	1	0		3				Assassin, Warrior, Action		Go again					Mark	"Your next dagger attack this turn gets +4{p}.
 
 The next time you hit a **marked** hero with a dagger this turn, draw a card.
 

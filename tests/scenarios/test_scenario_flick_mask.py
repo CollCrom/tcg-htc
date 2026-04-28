@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 
-from htc.enums import EquipmentSlot
+from engine.enums import EquipmentSlot
 from tests.scenarios.engine_helpers import make_scripted_game
 
 log = logging.getLogger(__name__)

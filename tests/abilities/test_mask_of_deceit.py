@@ -14,15 +14,15 @@ from __future__ import annotations
 
 from random import Random
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.equipment import MaskOfDeceitTrigger, register_equipment_triggers
-from htc.decks.deck_list import DeckList
-from htc.decks.loader import AGENT_OF_CHAOS_DEMI_HEROES, parse_deck_list
-from htc.engine.actions import Decision, PlayerResponse
-from htc.engine.events import EventBus, EventType, GameEvent
-from htc.engine.effects import EffectEngine
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.equipment import MaskOfDeceitTrigger, register_equipment_triggers
+from engine.decks.deck_list import DeckList
+from engine.decks.loader import AGENT_OF_CHAOS_DEMI_HEROES, parse_deck_list
+from engine.rules.actions import Decision, PlayerResponse
+from engine.rules.events import EventBus, EventType, GameEvent
+from engine.rules.effects import EffectEngine
+from engine.enums import (
     CardType,
     DecisionType,
     EquipmentSlot,
@@ -31,10 +31,10 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.combat_state import ChainLink
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
-from htc.engine.actions import PlayerResponse
+from engine.state.combat_state import ChainLink
+from engine.state.game_state import GameState
+from engine.state.player_state import PlayerState
+from engine.rules.actions import PlayerResponse
 from tests.conftest import make_card, make_equipment, make_game_shell, make_state
 
 

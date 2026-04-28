@@ -9,19 +9,17 @@ Tests:
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
-from htc.cards.card_db import CardDatabase
-from htc.decks.deck_list import parse_markdown_decklist
-from htc.engine.abilities import AbilityRegistry
-from htc.engine.game import Game, GameResult
-from htc.enums import EquipmentSlot
-from htc.player.random_player import RandomPlayer
+from engine.cards.card_db import CardDatabase
+from engine.decks.deck_list import parse_markdown_decklist
+from engine.rules.abilities import AbilityRegistry
+from engine.rules.game import Game, GameResult
+from engine.enums import EquipmentSlot
+from engine.player.random_player import RandomPlayer
 
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-REF_DIR = Path(__file__).parent.parent.parent / "ref"
+from tests.conftest import CARDS_TSV, REF_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -31,18 +29,18 @@ REF_DIR = Path(__file__).parent.parent.parent / "ref"
 
 @pytest.fixture(scope="module")
 def card_db() -> CardDatabase:
-    return CardDatabase.load(DATA_DIR / "cards.tsv")
+    return CardDatabase.load(CARDS_TSV)
 
 
 @pytest.fixture(scope="module")
 def cindra_deck() -> DeckList:
-    text = (REF_DIR / "decklist-cindra-blue.md").read_text()
+    text = (REF_DIR / "decks" / "decklist-cindra-blue.md").read_text()
     return parse_markdown_decklist(text)
 
 
 @pytest.fixture(scope="module")
 def arakni_deck() -> DeckList:
-    text = (REF_DIR / "decklist-arakni.md").read_text()
+    text = (REF_DIR / "decks" / "decklist-arakni.md").read_text()
     return parse_markdown_decklist(text)
 
 
@@ -168,7 +166,7 @@ class TestHeroAbilities:
         self, card_db: CardDatabase, arakni_deck: DeckList, cindra_deck: DeckList,
     ) -> None:
         """Arakni's triggered ability should be on the EventBus."""
-        from htc.cards.abilities.heroes import ArakniMarionetteTrigger
+        from engine.cards.abilities.heroes import ArakniMarionetteTrigger
 
         p1 = RandomPlayer(seed=1)
         p2 = RandomPlayer(seed=2)
@@ -185,7 +183,7 @@ class TestHeroAbilities:
         self, card_db: CardDatabase, cindra_deck: DeckList, arakni_deck: DeckList,
     ) -> None:
         """Cindra's triggered ability should be on the EventBus."""
-        from htc.cards.abilities.heroes import CindraRetributionTrigger
+        from engine.cards.abilities.heroes import CindraRetributionTrigger
 
         p1 = RandomPlayer(seed=1)
         p2 = RandomPlayer(seed=2)
@@ -210,7 +208,7 @@ class TestEquipmentAbilities:
         self, card_db: CardDatabase, cindra_deck: DeckList, arakni_deck: DeckList,
     ) -> None:
         """Mask of Momentum trigger should be on EventBus for Cindra."""
-        from htc.cards.abilities.equipment import MaskOfMomentumTrigger
+        from engine.cards.abilities.equipment import MaskOfMomentumTrigger
 
         p1 = RandomPlayer(seed=1)
         p2 = RandomPlayer(seed=2)
@@ -230,7 +228,7 @@ class TestEquipmentAbilities:
         Cindra has both Blood Splattered Vest and Fyendal's Spring Tunic
         as chest options. Only one fits in the CHEST slot (first loaded wins).
         """
-        from htc.cards.abilities.equipment import (
+        from engine.cards.abilities.equipment import (
             BloodSplatteredVestTrigger,
             SpringTunicTrigger,
         )
@@ -252,7 +250,7 @@ class TestEquipmentAbilities:
         self, card_db: CardDatabase, arakni_deck: DeckList, cindra_deck: DeckList,
     ) -> None:
         """Arakni's Spring Tunic should be registered."""
-        from htc.cards.abilities.equipment import SpringTunicTrigger
+        from engine.cards.abilities.equipment import SpringTunicTrigger
 
         p1 = RandomPlayer(seed=1)
         p2 = RandomPlayer(seed=2)
@@ -276,9 +274,7 @@ class TestCardAbilitiesRegistered:
     def test_generic_abilities_registered(self) -> None:
         """Generic cards shared by both decks should be registered."""
         registry = AbilityRegistry()
-        from htc.cards.abilities import (
-            register_generic_abilities,
-        )
+        from engine.cards.abilities.generic import register_generic_abilities
         register_generic_abilities(registry)
 
         # Ancestral Empowerment, Razor Reflex, Sink Below, Fate Foreseen
@@ -290,7 +286,7 @@ class TestCardAbilitiesRegistered:
     def test_assassin_abilities_registered(self) -> None:
         """Assassin cards from Arakni deck should be registered."""
         registry = AbilityRegistry()
-        from htc.cards.abilities.assassin import register_assassin_abilities
+        from engine.cards.abilities.assassin import register_assassin_abilities
         register_assassin_abilities(registry)
 
         # Key Arakni cards
@@ -301,7 +297,7 @@ class TestCardAbilitiesRegistered:
     def test_ninja_abilities_registered(self) -> None:
         """Ninja/Draconic cards from Cindra deck should be registered."""
         registry = AbilityRegistry()
-        from htc.cards.abilities.ninja import register_ninja_abilities
+        from engine.cards.abilities.ninja import register_ninja_abilities
         register_ninja_abilities(registry)
 
         # Key Cindra cards — check a few
@@ -310,7 +306,7 @@ class TestCardAbilitiesRegistered:
     def test_equipment_abilities_registered(self) -> None:
         """Equipment abilities should be registered."""
         registry = AbilityRegistry()
-        from htc.cards.abilities.equipment import register_equipment_abilities
+        from engine.cards.abilities.equipment import register_equipment_abilities
         register_equipment_abilities(registry)
 
         assert registry.lookup("attack_reaction_effect", "Flick Knives") is not None

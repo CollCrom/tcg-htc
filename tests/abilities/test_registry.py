@@ -2,12 +2,12 @@
 
 from unittest.mock import MagicMock
 
-from htc.engine.abilities import AbilityContext, AbilityRegistry
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus
-from htc.engine.keyword_engine import KeywordEngine
-from htc.engine.combat import CombatManager
-from htc.enums import Zone
+from engine.rules.abilities import AbilityContext, AbilityRegistry
+from engine.rules.effects import EffectEngine
+from engine.rules.events import EventBus
+from engine.rules.keyword_engine import KeywordEngine
+from engine.rules.combat import CombatManager
+from engine.enums import Zone
 from tests.conftest import make_card, make_state
 
 

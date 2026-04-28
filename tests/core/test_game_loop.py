@@ -1,8 +1,8 @@
 """Test a full game between two random players with simple warrior decks."""
 import logging
 
-from htc.cards.card_db import CardDatabase
-from htc.decks.loader import parse_deck_list
+from engine.cards.card_db import CardDatabase
+from engine.decks.loader import parse_deck_list
 
 from tests.conftest import DATA_DIR, WARRIOR_DECK, run_game
 

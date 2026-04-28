@@ -3,8 +3,8 @@
 Mark is a condition on a hero. It persists until the hero is hit by
 an opponent's source, at which point it is removed.
 """
-from htc.engine.events import EventType, GameEvent
-from htc.enums import Zone
+from engine.rules.events import EventType, GameEvent
+from engine.enums import Zone
 from tests.conftest import make_card, make_game_shell
 
 

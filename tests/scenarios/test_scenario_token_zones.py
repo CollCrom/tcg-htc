@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import logging
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.tokens import InertiaEndPhaseTrigger, register_token_triggers
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.tokens import InertiaEndPhaseTrigger, register_token_triggers
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     SubType,

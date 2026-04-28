@@ -1,6 +1,6 @@
 """Tests for continuous effects and the staging system."""
 
-from htc.engine.continuous import (
+from engine.rules.continuous import (
     ContinuousEffect,
     EffectDuration,
     ModStage,
@@ -11,9 +11,9 @@ from htc.engine.continuous import (
     make_keyword_grant,
     make_power_modifier,
 )
-from htc.engine.effects import EffectEngine
-from htc.enums import Keyword, SubType, Zone
-from htc.state.combat_state import ChainLink
+from engine.rules.effects import EffectEngine
+from engine.enums import Keyword, SubType, Zone
+from engine.state.combat_state import ChainLink
 from tests.conftest import make_card, make_state
 
 
@@ -411,7 +411,7 @@ def test_effect_ids_are_unique():
 
 
 def test_combat_manager_uses_modified_power():
-    from htc.engine.combat import CombatManager
+    from engine.rules.combat import CombatManager
 
     engine = EffectEngine()
     state = make_state()
@@ -432,7 +432,7 @@ def test_combat_manager_uses_modified_power():
 
 
 def test_combat_manager_uses_modified_defense():
-    from htc.engine.combat import CombatManager
+    from engine.rules.combat import CombatManager
 
     engine = EffectEngine()
     state = make_state()

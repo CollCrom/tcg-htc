@@ -14,11 +14,11 @@ Covers:
 11. Stains of the Redback cost reduction via intrinsic modifier registry
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import ActionOption, Decision, PlayerResponse
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import ActionOption, Decision, PlayerResponse
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     ActionType,
     CardType,
     Color,
@@ -727,7 +727,7 @@ class TestIsDraconicUsesEffectEngine:
 
     def test_effect_granted_draconic_detected(self):
         """A non-Draconic card with a granted Draconic supertype is detected."""
-        from htc.engine.continuous import EffectDuration, make_supertype_grant
+        from engine.rules.continuous import EffectDuration, make_supertype_grant
 
         game = make_game_shell()
 
@@ -749,7 +749,7 @@ class TestIsDraconicUsesEffectEngine:
         game.effect_engine.add_continuous_effect(game.state, grant)
 
         # _is_draconic without ctx falls back to definition (misses it)
-        from htc.cards.abilities.ninja import _is_draconic
+        from engine.cards.abilities.ninja import _is_draconic
         assert not _is_draconic(attack)
 
         # _is_draconic with ctx should detect the granted supertype
@@ -763,7 +763,7 @@ class TestIsDraconicUsesEffectEngine:
 
     def test_dragon_power_triggers_with_granted_draconic(self):
         """Dragon Power grants +3 power when Draconic is effect-granted."""
-        from htc.engine.continuous import EffectDuration, make_supertype_grant
+        from engine.rules.continuous import EffectDuration, make_supertype_grant
 
         game = make_game_shell()
 
@@ -806,6 +806,6 @@ class TestStainsCostModifierRegistry:
     def test_no_hardcoded_name_check_in_get_modified_cost(self):
         """get_modified_cost does not contain a hardcoded Stains check."""
         import inspect
-        from htc.engine.effects import EffectEngine
+        from engine.rules.effects import EffectEngine
         source = inspect.getsource(EffectEngine.get_modified_cost)
         assert "Stains of the Redback" not in source

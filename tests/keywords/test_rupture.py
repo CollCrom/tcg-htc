@@ -3,9 +3,9 @@
 Rupture: If this is played at chain link 4 or higher, bonus effects apply.
 This tests the infrastructure check; per-card bonus effects are Phase 5.
 """
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.enums import CardType, Keyword, SubType, Zone
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.enums import CardType, Keyword, SubType, Zone
 from tests.conftest import make_card, make_game_shell
 
 

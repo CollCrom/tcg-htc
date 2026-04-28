@@ -1,12 +1,8 @@
 """Tests for parameterized keyword parsing (e.g. 'Arcane Barrier 2')."""
 
-from pathlib import Path
-
-from htc.cards.card_db import CardDatabase, _parse_keywords
-from htc.enums import Keyword
-from tests.conftest import make_card
-
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
+from engine.cards.card_db import CardDatabase, _parse_keywords
+from engine.enums import Keyword
+from tests.conftest import CARDS_TSV, make_card
 
 
 def test_parse_keyword_with_number():
@@ -43,8 +39,8 @@ def test_parse_empty_string():
 
 def test_keyword_value_accessor():
     """CardDefinition.keyword_value() returns the param or default."""
-    from htc.cards.card import CardDefinition
-    from htc.enums import CardType, SubType
+    from engine.cards.card import CardDefinition
+    from engine.enums import CardType, SubType
 
     defn = CardDefinition(
         unique_id="test-ab",
@@ -72,7 +68,7 @@ def test_keyword_value_accessor():
 
 def test_real_csv_arcane_barrier_values():
     """Cards loaded from CSV should have Arcane Barrier values parsed."""
-    db = CardDatabase.load(DATA_DIR / "cards.tsv")
+    db = CardDatabase.load(CARDS_TSV)
     ab_cards = [c for c in db.all_cards if Keyword.ARCANE_BARRIER in c.keywords]
     assert len(ab_cards) > 0, "Should find cards with Arcane Barrier"
     for card in ab_cards:
@@ -82,9 +78,9 @@ def test_real_csv_arcane_barrier_values():
 
 def test_card_instance_keyword_values_delegation():
     """CardInstance.keyword_values should delegate to definition."""
-    from htc.cards.card import CardDefinition
-    from htc.cards.instance import CardInstance
-    from htc.enums import CardType, Zone
+    from engine.cards.card import CardDefinition
+    from engine.cards.instance import CardInstance
+    from engine.enums import CardType, Zone
 
     defn = CardDefinition(
         unique_id="test-ward",

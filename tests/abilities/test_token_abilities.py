@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import unittest
 
-from htc.cards.abilities._helpers import create_token
-from htc.cards.abilities.tokens import (
+from engine.cards.abilities._helpers import create_token
+from engine.cards.abilities.tokens import (
     BloodrotPoxEndPhaseTrigger,
     FealtyEndPhaseTrigger,
     FrailtyEndPhaseTrigger,
@@ -24,9 +24,9 @@ from htc.cards.abilities.tokens import (
     register_frailty_continuous_effect,
     register_token_triggers,
 )
-from htc.engine.actions import PlayerResponse
-from htc.engine.events import EventType, GameEvent
-from htc.enums import CardType, Keyword, SubType, SuperType, Zone
+from engine.rules.actions import PlayerResponse
+from engine.rules.events import EventType, GameEvent
+from engine.enums import CardType, Keyword, SubType, SuperType, Zone
 from tests.abilities.conftest import make_dagger_weapon, make_weapon_proxy
 from tests.conftest import make_card, make_game_shell, make_mock_ask, make_pitch_card
 
@@ -396,7 +396,7 @@ class TestFealtyToken(unittest.TestCase):
         handler = game.ability_registry.lookup("permanent_instant_effect", "Fealty")
         assert handler is not None
 
-        from htc.engine.abilities import AbilityContext
+        from engine.rules.abilities import AbilityContext
         ctx = AbilityContext(
             state=game.state,
             source_card=token,
@@ -447,11 +447,11 @@ class TestSilverToken(unittest.TestCase):
         p0 = game.state.players[0]
         p0.deck.append(make_card(instance_id=300, name="Drawn Card"))
 
-        from htc.cards.abilities.assassin import _create_silver_token
+        from engine.cards.abilities.assassin import _create_silver_token
         token = _create_silver_token(game.state, 0)
 
         handler = game.ability_registry.lookup("permanent_action_effect", "Silver")
-        from htc.engine.abilities import AbilityContext
+        from engine.rules.abilities import AbilityContext
         ctx = AbilityContext(
             state=game.state,
             source_card=token,
@@ -482,7 +482,7 @@ class TestSilverToken(unittest.TestCase):
         game.state.turn_player_index = 0
         p0 = game.state.players[0]
 
-        from htc.cards.abilities.assassin import _create_silver_token
+        from engine.cards.abilities.assassin import _create_silver_token
         _create_silver_token(game.state, 0)
 
         # Player needs resources (3 from pitching or pool)
@@ -504,7 +504,7 @@ class TestSilverToken(unittest.TestCase):
         p0 = game.state.players[0]
         p0.hand.clear()  # No cards to pitch
 
-        from htc.cards.abilities.assassin import _create_silver_token
+        from engine.cards.abilities.assassin import _create_silver_token
         _create_silver_token(game.state, 0)
 
         decision = game.action_builder.build_action_decision(
@@ -528,7 +528,7 @@ class TestGrapheneCheliceraToken(unittest.TestCase):
     def test_created_as_weapon(self):
         """Graphene Chelicera is created as a weapon, not a permanent."""
         game = make_game_shell()
-        from htc.cards.abilities.assassin import _create_graphene_chelicera
+        from engine.cards.abilities.assassin import _create_graphene_chelicera
         _create_graphene_chelicera(game.state, 0)
 
         weapons = [w for w in game.state.players[0].weapons if w.name == "Graphene Chelicera"]
@@ -538,7 +538,7 @@ class TestGrapheneCheliceraToken(unittest.TestCase):
     def test_weapon_properties(self):
         """Graphene Chelicera has correct weapon properties."""
         game = make_game_shell()
-        from htc.cards.abilities.assassin import _create_graphene_chelicera
+        from engine.cards.abilities.assassin import _create_graphene_chelicera
         _create_graphene_chelicera(game.state, 0)
 
         weapon = game.state.players[0].weapons[-1]
@@ -551,7 +551,7 @@ class TestGrapheneCheliceraToken(unittest.TestCase):
     def test_activation_cost_is_one(self):
         """Graphene Chelicera costs 1 resource to activate."""
         game = make_game_shell()
-        from htc.cards.abilities.assassin import _create_graphene_chelicera
+        from engine.cards.abilities.assassin import _create_graphene_chelicera
         _create_graphene_chelicera(game.state, 0)
 
         weapon = game.state.players[0].weapons[-1]
@@ -564,7 +564,7 @@ class TestGrapheneCheliceraToken(unittest.TestCase):
         game.state.turn_player_index = 0
         p0 = game.state.players[0]
 
-        from htc.cards.abilities.assassin import _create_graphene_chelicera
+        from engine.cards.abilities.assassin import _create_graphene_chelicera
         _create_graphene_chelicera(game.state, 0)
 
         # Player needs 1 resource to activate

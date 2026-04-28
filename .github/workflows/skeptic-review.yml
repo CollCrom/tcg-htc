@@ -3,9 +3,9 @@ name: Skeptic Review (disabled)
 on:
   pull_request:
     paths:
-      - 'src/htc/engine/**'
-      - 'src/htc/state/**'
-      - 'src/htc/cards/**'
+      - 'engine/rules/**'
+      - 'engine/state/**'
+      - 'engine/cards/**'
 
 jobs:
   skeptic-review:

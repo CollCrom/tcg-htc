@@ -3,7 +3,7 @@
 Opt N: Look at the top N cards of your deck, you may put any of them
 on the bottom in any order.
 """
-from htc.enums import Zone
+from engine.enums import Zone
 from tests.conftest import make_card, make_game_shell, make_mock_ask
 
 

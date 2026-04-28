@@ -5,14 +5,14 @@ Covers Arakni, Marionette and Cindra, Dracai of Retribution.
 
 import pytest
 
-from htc.cards.abilities.heroes import (
+from engine.cards.abilities.heroes import (
     ArakniMarionetteTrigger,
     CindraRetributionTrigger,
     register_hero_abilities,
 )
-from htc.engine.continuous import EffectDuration
-from htc.engine.events import EventBus, EventType, GameEvent
-from htc.enums import Keyword, Zone
+from engine.rules.continuous import EffectDuration
+from engine.rules.events import EventBus, EventType, GameEvent
+from engine.enums import Keyword, Zone
 from tests.conftest import make_card, make_game_shell
 from tests.abilities.conftest import (
     make_stealth_attack as _make_stealth_attack,
@@ -22,7 +22,7 @@ from tests.abilities.conftest import (
 
 def _make_non_stealth_attack(instance_id: int = 2, power: int = 4, owner_index: int = 0):
     """Create a non-stealth attack for testing (no Stealth keyword)."""
-    from htc.enums import SuperType
+    from engine.enums import SuperType
     return _shared_make_ninja_attack(
         instance_id, "Regular Strike", power=power, cost=0,
         owner_index=owner_index, supertypes=frozenset({SuperType.ASSASSIN}),

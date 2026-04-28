@@ -6,8 +6,8 @@ matching the pattern used by attack cards (rule 7.6.2 / 8.3.5).
 
 from __future__ import annotations
 
-from htc.engine.continuous import EffectDuration, make_keyword_grant
-from htc.enums import Keyword, Zone
+from engine.rules.continuous import EffectDuration, make_keyword_grant
+from engine.enums import Keyword, Zone
 
 from tests.conftest import make_card, make_game_shell
 

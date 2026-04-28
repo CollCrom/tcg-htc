@@ -5,7 +5,7 @@ Defense reactions contribute defense value via the normal combat system;
 these tests verify their additional effects.
 """
 
-from htc.enums import Color, Zone
+from engine.enums import Color, Zone
 from tests.conftest import make_card, make_game_shell, make_mock_ask
 from tests.abilities.conftest import make_defense_reaction as _make_defense_reaction
 

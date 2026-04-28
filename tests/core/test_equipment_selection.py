@@ -9,22 +9,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from htc.cards.card import CardDefinition
-from htc.cards.card_db import CardDatabase
-from htc.decks.deck_list import DeckEntry, DeckList
-from htc.decks.loader import parse_deck_list
-from htc.engine.actions import Decision, PlayerResponse
-from htc.engine.game import Game
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.card_db import CardDatabase
+from engine.decks.deck_list import DeckEntry, DeckList
+from engine.decks.loader import parse_deck_list
+from engine.rules.actions import Decision, PlayerResponse
+from engine.rules.game import Game
+from engine.enums import (
     CardType,
     DecisionType,
     EquipmentSlot,
     SubType,
 )
-from htc.player.random_player import RandomPlayer
-from htc.state.game_state import GameState
-
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
+from engine.player.random_player import RandomPlayer
+from engine.state.game_state import GameState
+from tests.conftest import CARDS_TSV
 
 
 # --- Deck fixtures ---
@@ -113,7 +112,7 @@ class EquipmentTrackingPlayer:
 
 
 def _load_db() -> CardDatabase:
-    return CardDatabase.load(DATA_DIR / "cards.tsv")
+    return CardDatabase.load(CARDS_TSV)
 
 
 # --- Tests ---
@@ -270,12 +269,12 @@ def test_cindra_deck_equipment_selection():
     db = _load_db()
 
     ref_dir = Path(__file__).parent.parent.parent / "ref"
-    decklist_path = ref_dir / "decklist-cindra-blue.md"
+    decklist_path = ref_dir / "decks" / "decklist-cindra-blue.md"
     if not decklist_path.exists():
         return  # Skip if ref decklist not available
 
     # Import the markdown parser from integration tests
-    from htc.decks.deck_list import parse_markdown_decklist
+    from engine.decks.deck_list import parse_markdown_decklist
     deck = parse_markdown_decklist(decklist_path.read_text())
 
     # Cindra has 2 chest (Blood Splattered Vest, Fyendal's Spring Tunic)

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from htc.engine.actions import PlayerResponse
-from htc.enums import Zone
+from engine.rules.actions import PlayerResponse
+from engine.enums import Zone
 from tests.conftest import make_game_shell, make_pitch_card
 
 

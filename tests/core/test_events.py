@@ -1,5 +1,5 @@
 """Tests for the event system."""
-from htc.engine.events import (
+from engine.rules.events import (
     EventBus,
     EventType,
     GameEvent,

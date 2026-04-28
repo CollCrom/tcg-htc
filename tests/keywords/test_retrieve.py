@@ -3,7 +3,7 @@
 Retrieve: Return a card from your graveyard to hand.
 This tests the generic infrastructure; specific card restrictions are Phase 5.
 """
-from htc.enums import Zone
+from engine.enums import Zone
 from tests.conftest import make_card, make_game_shell, make_mock_ask
 
 

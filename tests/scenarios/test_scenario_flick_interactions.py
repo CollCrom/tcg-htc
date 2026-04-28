@@ -20,14 +20,14 @@ from __future__ import annotations
 
 import logging
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.equipment import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.equipment import (
     MaskOfMomentumTrigger,
     _flick_knives,
 )
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,
@@ -36,7 +36,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.combat_state import ChainLink
+from engine.state.combat_state import ChainLink
 from tests.conftest import make_game_shell
 from tests.abilities.conftest import (
     make_ability_context,
@@ -688,7 +688,7 @@ class TestDaggerRebuyActivation:
         kunai.zone = Zone.COMBAT_CHAIN
 
         # Verify it can't activate again
-        from htc.engine.action_builder import ActionBuilder
+        from engine.rules.action_builder import ActionBuilder
         assert not ActionBuilder._can_activate_weapon(state, 0, kunai), (
             "Kunai should NOT be activatable after attacking this turn"
         )
@@ -699,7 +699,7 @@ class TestDaggerRebuyActivation:
         p0.graveyard.append(kunai)
 
         # Wire up player interfaces — ScriptedPlayer picks first option (the dagger)
-        from htc.player.scripted_player import ScriptedPlayer
+        from tests._helpers.scripted_player import ScriptedPlayer
         game.interfaces = {0: ScriptedPlayer(["*first"]), 1: ScriptedPlayer([])}
 
         # Retrieve: get it back from graveyard to hand
@@ -739,7 +739,7 @@ class TestDaggerRebuyActivation:
         p0.graveyard.append(kunai)
 
         # Wire up player interfaces — ScriptedPlayer picks first option (the dagger)
-        from htc.player.scripted_player import ScriptedPlayer
+        from tests._helpers.scripted_player import ScriptedPlayer
         game.interfaces = {0: ScriptedPlayer(["*first"]), 1: ScriptedPlayer([])}
 
         # Retrieve from graveyard
@@ -753,7 +753,7 @@ class TestDaggerRebuyActivation:
 
         # Should be able to activate again
         state.action_points[0] = 1
-        from htc.engine.action_builder import ActionBuilder
+        from engine.rules.action_builder import ActionBuilder
         assert ActionBuilder._can_activate_weapon(state, 0, kunai), (
             "Re-equipped Kunai should be activatable — it's a new game object"
         )

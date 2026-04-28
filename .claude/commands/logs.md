@@ -11,11 +11,10 @@ The argument should be a numeric seed (e.g., `/logs 42`). Defaults to seed 0 if 
 ```bash
 python3 -c "
 import logging, sys
-sys.path.insert(0, 'src')
 from pathlib import Path
-from htc.cards.card_db import CardDatabase
-from htc.engine.game import Game
-from htc.player.random_player import RandomPlayer
+from engine.cards.card_db import CardDatabase
+from engine.rules.game import Game
+from engine.player.random_player import RandomPlayer
 from tests.integration.test_full_game import parse_markdown_decklist
 
 seed = int(sys.argv[1])
@@ -24,8 +23,8 @@ logging.basicConfig(level=logging.INFO, format='%(message)s',
                               logging.StreamHandler()])
 
 db = CardDatabase.load(Path('data/cards.tsv'))
-cindra = parse_markdown_decklist(Path('ref/decklist-cindra-blue.md').read_text())
-arakni = parse_markdown_decklist(Path('ref/decklist-arakni.md').read_text())
+cindra = parse_markdown_decklist(Path('ref/decks/decklist-cindra-blue.md').read_text())
+arakni = parse_markdown_decklist(Path('ref/decks/decklist-arakni.md').read_text())
 game = Game(db, cindra, arakni, RandomPlayer(seed=seed), RandomPlayer(seed=seed+100), seed=seed)
 game.play()
 ps = game.state.players

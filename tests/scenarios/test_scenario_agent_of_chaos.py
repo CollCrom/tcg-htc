@@ -13,15 +13,15 @@ from __future__ import annotations
 
 from random import Random
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.equipment import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.equipment import (
     MaskOfDeceitTrigger,
     register_equipment_triggers,
 )
-from htc.engine.actions import Decision, PlayerResponse
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.rules.actions import Decision, PlayerResponse
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     DecisionType,
     EquipmentSlot,
@@ -30,7 +30,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.combat_state import ChainLink
+from engine.state.combat_state import ChainLink
 from tests.conftest import make_card, make_game_shell
 
 # ---------------------------------------------------------------------------

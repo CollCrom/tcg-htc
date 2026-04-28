@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import unittest
 
-from htc.cards.abilities._helpers import create_token
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.abilities._helpers import create_token
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     Keyword,

@@ -3,8 +3,8 @@
 Covers Ancestral Empowerment and Razor Reflex.
 """
 
-from htc.engine.actions import PlayerResponse
-from htc.enums import Color, Keyword, SubType, Zone
+from engine.rules.actions import PlayerResponse
+from engine.enums import Color, Keyword, SubType, Zone
 from tests.conftest import make_card, make_game_shell
 from tests.abilities.conftest import (
     make_ninja_attack as _make_ninja_attack,
@@ -83,7 +83,7 @@ def test_ancestral_empowerment_no_effect_on_non_ninja():
 
 def test_razor_reflex_mode2_gives_power_and_go_again_on_hit():
     """Razor Reflex mode 2 gives +N power immediately, and go again on hit."""
-    from htc.engine.events import EventType, GameEvent
+    from engine.rules.events import EventType, GameEvent
 
     game = make_game_shell()
     # Attack action with cost 1 (eligible for mode 2)

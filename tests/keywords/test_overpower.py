@@ -1,9 +1,9 @@
 """Tests for Overpower keyword (8.3.9): limits defense to 1 action card from hand."""
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.enums import CardType, EquipmentSlot, Keyword, SubType, Zone
 from tests.conftest import make_card, make_equipment, make_game_shell, make_mock_ask_once
 
 

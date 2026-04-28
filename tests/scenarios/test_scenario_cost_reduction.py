@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import logging
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.ninja import _ignite_on_attack, _art_of_the_dragon_blood_on_attack
-from htc.cards.abilities.tokens import _fealty_instant
-from htc.engine.continuous import EffectDuration, make_cost_modifier
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.ninja import _ignite_on_attack, _art_of_the_dragon_blood_on_attack
+from engine.cards.abilities.tokens import _fealty_instant
+from engine.rules.continuous import EffectDuration, make_cost_modifier
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,

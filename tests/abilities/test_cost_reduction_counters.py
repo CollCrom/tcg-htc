@@ -5,14 +5,14 @@ and Ignite (next 1 Draconic card costs 1 less) correctly track and
 decrement their usage counters instead of applying blanket reductions.
 """
 
-from htc.engine.continuous import (
+from engine.rules.continuous import (
     ContinuousEffect,
     EffectDuration,
     NumericProperty,
     make_cost_modifier,
 )
-from htc.engine.effects import EffectEngine
-from htc.enums import SuperType
+from engine.rules.effects import EffectEngine
+from engine.enums import SuperType
 from tests.conftest import make_card, make_game_shell, make_state
 from tests.abilities.conftest import (
     make_ability_context,
@@ -154,7 +154,7 @@ class TestArtOfTheDragonBloodCounter:
 
         # Open combat chain and set up a chain link with a Draconic attack
         game.combat_mgr.open_chain(state)
-        from htc.state.combat_state import ChainLink
+        from engine.state.combat_state import ChainLink
         link = ChainLink(
             link_number=1,
             attack_target_index=1,
@@ -166,7 +166,7 @@ class TestArtOfTheDragonBloodCounter:
         from tests.abilities.conftest import make_ability_context
         ctx = make_ability_context(game, blood, 0, chain_link=link, ask=lambda d: None)
 
-        from htc.cards.abilities.ninja import _art_of_the_dragon_blood_on_attack
+        from engine.cards.abilities.ninja import _art_of_the_dragon_blood_on_attack
         _art_of_the_dragon_blood_on_attack(ctx)
 
         # Find the cost effect (not the Go Again keyword effect)
@@ -258,7 +258,7 @@ class TestIgniteCounter:
         )
 
         game.combat_mgr.open_chain(state)
-        from htc.state.combat_state import ChainLink
+        from engine.state.combat_state import ChainLink
         link = ChainLink(
             link_number=1,
             attack_target_index=1,
@@ -268,7 +268,7 @@ class TestIgniteCounter:
 
         ctx = make_ability_context(game, ignite, 0, chain_link=link, ask=lambda d: None)
 
-        from htc.cards.abilities.ninja import _ignite_on_attack
+        from engine.cards.abilities.ninja import _ignite_on_attack
         _ignite_on_attack(ctx)
 
         cost_effects = [

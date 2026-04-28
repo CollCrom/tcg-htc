@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from htc.engine.events import EventType, GameEvent
+from engine.rules.events import EventType, GameEvent
 from tools.snapshot import capture_snapshot
 
 
