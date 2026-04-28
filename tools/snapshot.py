@@ -6,10 +6,10 @@ written to a file and read by the board viewer.
 
 from __future__ import annotations
 
-from htc.cards.instance import CardInstance
-from htc.enums import EquipmentSlot
-from htc.state.combat_state import ChainLink
-from htc.state.game_state import GameState
+from engine.cards.instance import CardInstance
+from engine.enums import EquipmentSlot
+from engine.state.combat_state import ChainLink
+from engine.state.game_state import GameState
 
 
 def _card_info(card: CardInstance, *, visible: bool = True) -> dict:

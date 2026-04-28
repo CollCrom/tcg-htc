@@ -6,10 +6,10 @@ Covers:
 - Death Touch: can only be played from arsenal
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import ActionOption
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import ActionOption
+from engine.enums import (
     ActionType,
     CardType,
     Color,
@@ -18,7 +18,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.player_state import BanishPlayability
+from engine.state.player_state import BanishPlayability
 from tests.conftest import make_card, make_game_shell
 from tests.abilities.conftest import (
     make_attack_reaction,
@@ -151,7 +151,7 @@ def test_cnc_on_attack_sets_defense_reactions_blocked():
     assert link.defense_reactions_blocked is False
 
     # Fire on_attack handler
-    from htc.cards.abilities.ninja import _command_and_conquer_on_attack
+    from engine.cards.abilities.ninja import _command_and_conquer_on_attack
     from tests.abilities.conftest import make_ability_context
 
     ctx = make_ability_context(game, attack, 0, chain_link=link)

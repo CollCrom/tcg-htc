@@ -3,8 +3,8 @@
 Spellvoid N: If you would be dealt arcane damage, you may destroy this
 to prevent N of that damage.
 """
-from htc.engine.actions import ActionOption, PlayerResponse
-from htc.enums import EquipmentSlot, Keyword, SubType, Zone
+from engine.rules.actions import ActionOption, PlayerResponse
+from engine.enums import EquipmentSlot, Keyword, SubType, Zone
 from tests.conftest import make_card, make_equipment, make_game_shell
 
 

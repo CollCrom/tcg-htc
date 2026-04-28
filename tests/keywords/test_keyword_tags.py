@@ -4,9 +4,9 @@ These keywords are recognized/parsed from card data but have no generic
 engine mechanic (or only deckbuilding constraints). This verifies they
 are correctly parsed and accessible.
 """
-from htc.cards.card import CardDefinition
-from htc.cards.card_db import _parse_keywords
-from htc.enums import CardType, Keyword, SubType
+from engine.cards.card import CardDefinition
+from engine.cards.card_db import _parse_keywords
+from engine.enums import CardType, Keyword, SubType
 
 
 def test_stealth_parsed():

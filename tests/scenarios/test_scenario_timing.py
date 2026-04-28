@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import logging
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.equipment import _dragonscaler_flight_path, _flick_knives
-from htc.cards.abilities.ninja import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.equipment import _dragonscaler_flight_path, _flick_knives
+from engine.cards.abilities.ninja import (
     _fire_tenet_strike_first_on_attack,
     _ignite_on_attack,
     _take_the_tempo_on_hit,
@@ -31,11 +31,11 @@ from htc.cards.abilities.ninja import (
     _enflame_the_firebrand_on_attack,
     _spreading_flames_on_attack,
 )
-from htc.cards.abilities.tokens import _fealty_instant
-from htc.engine.continuous import EffectDuration, make_cost_modifier
-from htc.engine.events import EventType, GameEvent
-from htc.state.player_state import EXPIRY_END_OF_NEXT_TURN, EXPIRY_END_OF_TURN
-from htc.enums import (
+from engine.cards.abilities.tokens import _fealty_instant
+from engine.rules.continuous import EffectDuration, make_cost_modifier
+from engine.rules.events import EventType, GameEvent
+from engine.state.player_state import EXPIRY_END_OF_NEXT_TURN, EXPIRY_END_OF_TURN
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,

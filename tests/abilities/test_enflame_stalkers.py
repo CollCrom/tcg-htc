@@ -12,9 +12,9 @@ Stalker's Steps (Assassin Equipment, Legs):
 - "Attack Reaction - Destroy this: Target attack with stealth gets go again."
 """
 
-from htc.cards.abilities.ninja import count_draconic_chain_links
-from htc.engine.actions import PlayerResponse
-from htc.enums import (
+from engine.cards.abilities.ninja import count_draconic_chain_links
+from engine.rules.actions import PlayerResponse
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,
@@ -41,8 +41,8 @@ from tests.abilities.conftest import (
 
 def _make_enflame(instance_id: int = 50, owner_index: int = 0):
     """Create an Enflame the Firebrand card for testing."""
-    from htc.cards.card import CardDefinition
-    from htc.cards.instance import CardInstance
+    from engine.cards.card import CardDefinition
+    from engine.cards.instance import CardInstance
 
     defn = CardDefinition(
         unique_id=f"enflame-{instance_id}",
@@ -241,7 +241,7 @@ class TestEnflameTheFirebrand:
         assert count_draconic_chain_links(ctx) == 1
 
         # Grant Draconic to all controller's cards via effect
-        from htc.engine.continuous import EffectDuration, make_supertype_grant
+        from engine.rules.continuous import EffectDuration, make_supertype_grant
         effect = make_supertype_grant(
             frozenset({SuperType.DRACONIC}),
             0,

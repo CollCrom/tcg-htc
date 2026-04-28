@@ -1,9 +1,9 @@
 """Tests for skeptic-identified critical issues."""
 
-from htc.cards.card import CardDefinition
-from htc.engine.continuous import make_keyword_grant
-from htc.engine.effects import EffectEngine
-from htc.enums import CardType, Keyword, SubType, Zone
+from engine.cards.card import CardDefinition
+from engine.rules.continuous import make_keyword_grant
+from engine.rules.effects import EffectEngine
+from engine.enums import CardType, Keyword, SubType, Zone
 from tests.conftest import make_card, make_state, run_game
 
 
@@ -29,7 +29,7 @@ def test_life_total_floors_at_zero():
 
 def test_simultaneous_death_is_draw():
     """If both players reach 0 life, winner should be None (draw)."""
-    from htc.engine.game import Game
+    from engine.rules.game import Game
     state = make_state()
     state.players[0].life_total = 0
     state.players[1].life_total = 0
@@ -40,7 +40,7 @@ def test_simultaneous_death_is_draw():
 
     import logging
     # Suppress log output during test
-    game_logger = logging.getLogger("htc.engine.game")
+    game_logger = logging.getLogger("engine.rules.game")
     old_level = game_logger.level
     game_logger.setLevel(logging.CRITICAL)
 
@@ -54,7 +54,7 @@ def test_simultaneous_death_is_draw():
 
 def test_single_death_has_winner():
     """If only one player reaches 0 life, the other wins."""
-    from htc.engine.game import Game
+    from engine.rules.game import Game
     state = make_state()
     state.players[0].life_total = 0
     state.players[1].life_total = 5
@@ -63,7 +63,7 @@ def test_single_death_has_winner():
     game.state = state
 
     import logging
-    game_logger = logging.getLogger("htc.engine.game")
+    game_logger = logging.getLogger("engine.rules.game")
     old_level = game_logger.level
     game_logger.setLevel(logging.CRITICAL)
 

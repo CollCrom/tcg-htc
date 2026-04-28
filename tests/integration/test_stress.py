@@ -6,21 +6,19 @@ validating game completion invariants, per-game state invariants, and event inva
 from __future__ import annotations
 
 from collections import Counter
-from pathlib import Path
 
 import pytest
 
-from htc.cards.card_db import CardDatabase
-from htc.cards.instance import CardInstance
-from htc.decks.deck_list import parse_markdown_decklist
-from htc.engine.events import EventBus, EventType, GameEvent
-from htc.engine.game import Game, GameResult, MAX_TURNS
-from htc.enums import EquipmentSlot, Zone
-from htc.player.random_player import RandomPlayer
-from htc.state.player_state import PlayerState
+from engine.cards.card_db import CardDatabase
+from engine.cards.instance import CardInstance
+from engine.decks.deck_list import parse_markdown_decklist
+from engine.rules.events import EventBus, EventType, GameEvent
+from engine.rules.game import Game, GameResult, MAX_TURNS
+from engine.enums import EquipmentSlot, Zone
+from engine.player.random_player import RandomPlayer
+from engine.state.player_state import PlayerState
 
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-REF_DIR = Path(__file__).parent.parent.parent / "ref"
+from tests.conftest import CARDS_TSV, REF_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -30,18 +28,18 @@ REF_DIR = Path(__file__).parent.parent.parent / "ref"
 
 @pytest.fixture(scope="module")
 def card_db() -> CardDatabase:
-    return CardDatabase.load(DATA_DIR / "cards.tsv")
+    return CardDatabase.load(CARDS_TSV)
 
 
 @pytest.fixture(scope="module")
 def cindra_deck() -> DeckList:
-    text = (REF_DIR / "decklist-cindra-blue.md").read_text()
+    text = (REF_DIR / "decks" / "decklist-cindra-blue.md").read_text()
     return parse_markdown_decklist(text)
 
 
 @pytest.fixture(scope="module")
 def arakni_deck() -> DeckList:
-    text = (REF_DIR / "decklist-arakni.md").read_text()
+    text = (REF_DIR / "decks" / "decklist-arakni.md").read_text()
     return parse_markdown_decklist(text)
 
 

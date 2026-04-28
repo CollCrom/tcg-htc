@@ -9,15 +9,15 @@ Verifies:
    vs conditional keywords.
 """
 
-from htc.cards.abilities.equipment import (
+from engine.cards.abilities.equipment import (
     _dragonscaler_flight_path,
     _tide_flippers,
 )
-from htc.cards.abilities.ninja import count_draconic_chain_links
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.enums import (
+from engine.cards.abilities.ninja import count_draconic_chain_links
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,
@@ -504,7 +504,7 @@ class TestKeywordParsing:
 
     def test_enflame_no_inherent_go_again(self):
         """Enflame the Firebrand: Go Again is conditional (gets go again)."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         text = (
             "When this attacks, if you control 2 or more Draconic chain links, "
             "this gets **go again**, 3 or more, your attacks are Draconic this "
@@ -514,17 +514,17 @@ class TestKeywordParsing:
 
     def test_surging_strike_has_inherent_go_again(self):
         """Surging Strike: Go Again is inherent (standalone bold)."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         assert _is_keyword_inherent(Keyword.GO_AGAIN, "**Go again**")
 
     def test_keyword_not_in_text_trusted(self):
         """Keywords not mentioned in text at all are trusted from Card Keywords."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         assert _is_keyword_inherent(Keyword.STEALTH, "Some other text")
 
     def test_gains_is_conditional(self):
         """'gains go again' is conditional."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         assert not _is_keyword_inherent(
             Keyword.GO_AGAIN,
             "This gains **go again**.",
@@ -532,7 +532,7 @@ class TestKeywordParsing:
 
     def test_has_is_conditional(self):
         """'has go again' is conditional."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         assert not _is_keyword_inherent(
             Keyword.GO_AGAIN,
             "If this hits, it has **go again**.",
@@ -540,7 +540,7 @@ class TestKeywordParsing:
 
     def test_loses_is_conditional(self):
         """'loses dominate' is conditional."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         assert not _is_keyword_inherent(
             Keyword.DOMINATE,
             "This loses **dominate**.",
@@ -548,7 +548,7 @@ class TestKeywordParsing:
 
     def test_standalone_bold_is_inherent(self):
         """Standalone bold keyword is inherent."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         assert _is_keyword_inherent(
             Keyword.DOMINATE,
             "**Dominate**\nDo something else.",
@@ -556,13 +556,13 @@ class TestKeywordParsing:
 
     def test_mixed_inherent_and_conditional(self):
         """If keyword appears both standalone and conditional, it's inherent."""
-        from htc.cards.card_db import _is_keyword_inherent
+        from engine.cards.card_db import _is_keyword_inherent
         text = "**Go again**. If something else, this gets **go again**."
         assert _is_keyword_inherent(Keyword.GO_AGAIN, text)
 
     def test_real_card_data_enflame(self):
         """Verify Enflame does NOT have Go Again in parsed card data."""
-        from htc.cards.card_db import CardDatabase
+        from engine.cards.card_db import CardDatabase
         db = CardDatabase.load("data/cards.tsv")
         enflame = db.get_by_name("Enflame the Firebrand")
         assert enflame is not None
@@ -570,7 +570,7 @@ class TestKeywordParsing:
 
     def test_real_card_data_surging_strike(self):
         """Verify Surging Strike DOES have Go Again in parsed card data."""
-        from htc.cards.card_db import CardDatabase
+        from engine.cards.card_db import CardDatabase
         db = CardDatabase.load("data/cards.tsv")
         surging = db.get_by_name("Surging Strike")
         assert surging is not None
@@ -804,7 +804,7 @@ class TestTideFlippersDestructionAsCost:
         game.combat_mgr.add_chain_link(game.state, atk, 1)
 
         # Directly call the handler function to verify it destroys first
-        from htc.cards.abilities.equipment import _tide_flippers
+        from engine.cards.abilities.equipment import _tide_flippers
         ctx = make_ability_context(game, tide, controller_index=0)
         _tide_flippers(ctx)
 

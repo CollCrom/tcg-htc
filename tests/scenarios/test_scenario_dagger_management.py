@@ -9,12 +9,12 @@ Verifies:
 
 from __future__ import annotations
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.equipment import _flick_knives
-from htc.engine.action_builder import ActionBuilder
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.equipment import _flick_knives
+from engine.rules.action_builder import ActionBuilder
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     CombatStep,
@@ -24,7 +24,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.combat_state import ChainLink
+from engine.state.combat_state import ChainLink
 from tests.conftest import make_card, make_game_shell, make_weapon
 from tests.abilities.conftest import (
     make_ability_context,

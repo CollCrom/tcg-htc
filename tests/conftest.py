@@ -5,58 +5,40 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from htc.cards.card import CardDefinition
-from htc.cards.card_db import CardDatabase
-from htc.cards.instance import CardInstance
-from htc.decks.loader import parse_deck_list
-from htc.engine.action_builder import ActionBuilder
-from htc.engine.actions import PlayerResponse
-from htc.engine.combat import CombatManager
-from htc.engine.cost_manager import CostManager
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventBus
-from htc.engine.abilities import AbilityRegistry
-from htc.engine.game import Game, GameResult
-from htc.engine.keyword_engine import KeywordEngine
-from htc.engine.stack import StackManager
-from htc.enums import CardType, EquipmentSlot, SubType, Zone
-from htc.player.random_player import RandomPlayer
-from htc.state.game_state import GameState
-from htc.state.player_state import PlayerState
+from engine.cards.card import CardDefinition
+from engine.cards.card_db import CardDatabase
+from engine.cards.instance import CardInstance
+from engine.decks.loader import parse_deck_list
+from engine.rules.action_builder import ActionBuilder
+from engine.rules.actions import PlayerResponse
+from engine.rules.combat import CombatManager
+from engine.rules.cost_manager import CostManager
+from engine.rules.effects import EffectEngine
+from engine.rules.events import EventBus
+from engine.rules.abilities import AbilityRegistry
+from engine.rules.game import Game, GameResult
+from engine.rules.keyword_engine import KeywordEngine
+from engine.rules.stack import StackManager
+from engine.enums import CardType, EquipmentSlot, SubType, Zone
+from engine.player.random_player import RandomPlayer
+from engine.state.game_state import GameState
+from engine._demo_deck import BRAVO_DECK_TEXT
+from engine.state.player_state import PlayerState
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+# Shared filesystem layout — every test file imports from here rather than
+# recomputing its own Path(__file__) chain.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = REPO_ROOT / "data"
+REF_DIR = REPO_ROOT / "ref"
+CARDS_TSV = DATA_DIR / "cards.tsv"
 
-WARRIOR_DECK = """\
-Hero: Bravo, Showstopper
-Weapons: Anothos
-Equipment: Crater Fist, Helm of Isen's Peak, Tectonic Plating, Ironrot Legs
----
-3x Adrenaline Rush (Red)
-3x Adrenaline Rush (Yellow)
-3x Adrenaline Rush (Blue)
-3x Debilitate (Red)
-3x Debilitate (Yellow)
-3x Debilitate (Blue)
-3x Pummel (Red)
-3x Pummel (Yellow)
-3x Pummel (Blue)
-3x Cartilage Crush (Red)
-3x Cartilage Crush (Yellow)
-3x Cartilage Crush (Blue)
-3x Disable (Red)
-3x Disable (Yellow)
-3x Disable (Blue)
-3x Sink Below (Red)
-3x Sink Below (Yellow)
-3x Sink Below (Blue)
-3x Sigil of Solace (Red)
-3x Sigil of Solace (Blue)
-"""
+# Backwards-compatible alias for the demo deck.
+WARRIOR_DECK = BRAVO_DECK_TEXT
 
 
 def run_game(seed: int = 7, p1_seed: int = 42, p2_seed: int = 123) -> GameResult:
     """Run a complete game between two random players with warrior decks."""
-    db = CardDatabase.load(DATA_DIR / "cards.tsv")
+    db = CardDatabase.load(CARDS_TSV)
     deck1 = parse_deck_list(WARRIOR_DECK)
     deck2 = parse_deck_list(WARRIOR_DECK)
     p1 = RandomPlayer(seed=p1_seed)

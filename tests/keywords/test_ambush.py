@@ -2,10 +2,10 @@
 
 Ambush: While in your arsenal, you may defend with this card.
 """
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.enums import CardType, Keyword, SubType, Zone
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.enums import CardType, Keyword, SubType, Zone
 from tests.conftest import make_card, make_game_shell, make_mock_ask_once
 
 

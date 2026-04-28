@@ -10,16 +10,16 @@ Verifies:
 
 from __future__ import annotations
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.tokens import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.tokens import (
     FealtyEndPhaseTrigger,
     _fealty_instant,
     register_token_triggers,
 )
-from htc.engine.continuous import EffectDuration, make_supertype_grant
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.rules.continuous import EffectDuration, make_supertype_grant
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,

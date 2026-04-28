@@ -12,10 +12,10 @@ on the active attack type:
 
 from __future__ import annotations
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.action_builder import ActionBuilder
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.action_builder import ActionBuilder
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,

@@ -6,11 +6,11 @@ files. Avoids duplication of CardDefinition boilerplate.
 
 from __future__ import annotations
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
-from htc.engine.actions import PlayerResponse
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.abilities import AbilityContext
+from engine.rules.actions import PlayerResponse
+from engine.enums import (
     CardType,
     Color,
     Keyword,

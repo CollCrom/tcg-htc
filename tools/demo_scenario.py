@@ -15,13 +15,11 @@ import logging
 import sys
 from pathlib import Path
 
-# Ensure project root is on the path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from htc.cards.card_db import CardDatabase
-from htc.engine.game import Game
-from htc.player.random_player import RandomPlayer
+from engine.cards.card_db import CardDatabase
+from engine.rules.game import Game
+from engine.player.random_player import RandomPlayer
 
 # Reuse the integration test's markdown parser
 from tests.integration.test_full_game import parse_markdown_decklist
@@ -112,8 +110,8 @@ def main():
 
     # Load card database and decklists
     db = CardDatabase.load(DATA_DIR / "cards.tsv")
-    cindra_text = (REF_DIR / "decklist-cindra-blue.md").read_text()
-    arakni_text = (REF_DIR / "decklist-arakni.md").read_text()
+    cindra_text = (REF_DIR / "decks" / "decklist-cindra-blue.md").read_text()
+    arakni_text = (REF_DIR / "decks" / "decklist-arakni.md").read_text()
     cindra_deck = parse_markdown_decklist(cindra_text)
     arakni_deck = parse_markdown_decklist(arakni_text)
 

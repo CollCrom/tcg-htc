@@ -4,10 +4,10 @@ Covers attack reactions, defense reaction traps, non-attack action on_play
 effects, and attack action on_attack/on_hit effects.
 """
 
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     Keyword,
@@ -293,7 +293,7 @@ class TestDenOfTheSpider:
         link = game.combat_mgr.add_chain_link(game.state, attack, 1)
 
         # Boost attack power above base
-        from htc.engine.continuous import EffectDuration, make_power_modifier
+        from engine.rules.continuous import EffectDuration, make_power_modifier
         effect = make_power_modifier(2, 0, duration=EffectDuration.END_OF_COMBAT,
                                      target_filter=lambda c: c.instance_id == 1)
         game.effect_engine.add_continuous_effect(game.state, effect)
@@ -382,7 +382,7 @@ class TestInertiaTrap:
         game.combat_mgr.open_chain(game.state)
         game.combat_mgr.add_chain_link(game.state, attack, 1)
 
-        from htc.engine.continuous import EffectDuration, make_power_modifier
+        from engine.rules.continuous import EffectDuration, make_power_modifier
         effect = make_power_modifier(2, 0, duration=EffectDuration.END_OF_COMBAT,
                                      target_filter=lambda c: c.instance_id == 1)
         game.effect_engine.add_continuous_effect(game.state, effect)
@@ -666,7 +666,7 @@ class TestOvercrowded:
     def test_bonus_from_aura_tokens(self):
         game = make_game_shell()
         # Create 2 different aura tokens
-        from htc.cards.abilities._helpers import create_token as _create_token
+        from engine.cards.abilities._helpers import create_token as _create_token
         _create_token(game.state, 0, "Frailty", SubType.AURA)
         _create_token(game.state, 1, "Inertia", SubType.AURA)
 
@@ -861,7 +861,7 @@ class TestPainInTheBackside:
 
     def test_multi_dagger_choose_second(self):
         """With 2 daggers, player chooses the second — HIT source should be that dagger."""
-        from htc.engine.actions import PlayerResponse
+        from engine.rules.actions import PlayerResponse
 
         game = make_game_shell(life=20)
         dagger1 = _make_dagger_weapon(instance_id=100, owner_index=0)

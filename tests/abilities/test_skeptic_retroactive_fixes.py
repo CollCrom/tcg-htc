@@ -6,11 +6,11 @@ Covers:
 3. Return-to-brood: no skip_first, fires on controller's first end phase
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import ActionOption, Decision, PlayerResponse
-from htc.engine.events import EventBus, EventType, GameEvent
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import ActionOption, Decision, PlayerResponse
+from engine.rules.events import EventBus, EventType, GameEvent
+from engine.enums import (
     ActionType,
     CardType,
     Color,
@@ -246,7 +246,7 @@ class TestShelterFromTheStormExpiry:
         controller = 1  # defender
 
         # Register the prevention via the ability handler
-        from htc.cards.abilities.generic import _shelter_from_the_storm_instant
+        from engine.cards.abilities.generic import _shelter_from_the_storm_instant
         from tests.abilities.conftest import make_ability_context
 
         shelter = make_card(instance_id=99, name="Shelter from the Storm", is_attack=False)
@@ -270,7 +270,7 @@ class TestShelterFromTheStormExpiry:
         game = make_game_shell(life=20)
         controller = 1
 
-        from htc.cards.abilities.generic import _shelter_from_the_storm_instant
+        from engine.cards.abilities.generic import _shelter_from_the_storm_instant
         from tests.abilities.conftest import make_ability_context
 
         shelter = make_card(instance_id=99, name="Shelter from the Storm", is_attack=False)
@@ -290,7 +290,7 @@ class TestShelterFromTheStormExpiry:
         game = make_game_shell(life=20)
         controller = 1
 
-        from htc.cards.abilities.generic import _shelter_from_the_storm_instant
+        from engine.cards.abilities.generic import _shelter_from_the_storm_instant
         from tests.abilities.conftest import make_ability_context
 
         shelter = make_card(instance_id=99, name="Shelter from the Storm", is_attack=False)

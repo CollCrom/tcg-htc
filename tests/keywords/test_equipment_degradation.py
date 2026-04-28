@@ -1,8 +1,8 @@
 """Tests for equipment degradation: Battleworn, Blade Break, Temper."""
 
-from htc.cards.instance import CardInstance
-from htc.engine.game import Game
-from htc.enums import EquipmentSlot, Keyword, SubType, Zone
+from engine.cards.instance import CardInstance
+from engine.rules.game import Game
+from engine.enums import EquipmentSlot, Keyword, SubType, Zone
 from tests.conftest import make_card, make_equipment, make_game_shell
 
 

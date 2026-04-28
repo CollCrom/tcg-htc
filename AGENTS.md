@@ -27,7 +27,9 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 
 ### Modules
 
-- **`engine/`** — FaB rules engine (2945 lines)
+The whole package lives under `engine/` at the repo root (no `src/` layer). Submodules:
+
+- **`engine/rules/`** — FaB rules engine
   - `game.py` — Game loop, turn structure, combat chain, damage
   - `action_builder.py` — Decision building, legal action sets
   - `keyword_engine.py` — Keyword enforcement (Arcane Barrier, Phantasm, Stealth, etc.)
@@ -40,25 +42,27 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
   - `stack.py` — LIFO stack for plays
   - `actions.py` — Action type definitions
 
-- **`state/`** — Game state (246 lines)
+- **`engine/state/`** — Game state
   - `game_state.py` — Root state, turn/phase tracking
   - `player_state.py` — Per-player state (hand, life, zones, equipment, mark)
   - `combat_state.py` — Combat chain links and chain state
   - `turn_counters.py` — Per-turn tracking (attacks played, damage dealt)
 
-- **`cards/`** — Card definitions (334 lines)
+- **`engine/cards/`** — Card definitions
   - `card.py` — CardDefinition (frozen, from CSV)
   - `instance.py` — CardInstance (mutable per-game state)
   - `card_db.py` — CardDatabase (4562 cards from Fabrary dataset TSV)
 
-- **`decks/`** — Deck management (207 lines)
-  - `deck_list.py` — DeckList structure
+- **`engine/decks/`** — Deck management
+  - `deck_list.py` — DeckList structure (the type `Game` accepts as input)
   - `loader.py` — Parse deck lists from card database
-  - `validation.py` — Legendary/Specialization constraints
 
-- **`player/`** — Player interfaces (66 lines)
+- **`engine/player/`** — Player interfaces
   - `interface.py` — Abstract PlayerInterface
   - `random_player.py` — Random decision-making player
+  - `stdio_player.py` — JSONL stdin/stdout PlayerInterface for external agents
+
+- **`engine/stdio.py`** — CLI entry point (`python -m engine.stdio`) that runs a game with one seat driven over JSONL stdio and the other seat as a seeded `RandomPlayer`. See the module docstring for the wire format.
 
 - **Analysis** (future) — Log parsing, line suggestions, deck optimization
 
@@ -71,10 +75,10 @@ Train and test FaB decks by simulating full games, analyzing play logs for bette
 | `ref/talishar-card-definitions.md` | How Talishar defines card abilities |
 | `ref/fab-cube-dataset.md` | FaB Cube card dataset schema and fields |
 | `ref/elephant-method.md` | Elephant Method for sideboard-first deckbuilding |
-| `ref/decklist-cindra-blue.md` | Target deck: Blue Cindra ("What if Redline was good") |
-| `ref/decklist-arakni.md` | Target deck: Arakni Marionette (Calling Memphis 1st) |
-| `ref/decklist-cindra.md` | Reference deck: Red Cindra (Calling Brisbane) |
-| `ref/decklist-victor.md` | Reference deck: Victor Goldmane |
+| `ref/decks/decklist-cindra-blue.md` | Target deck: Blue Cindra ("What if Redline was good") |
+| `ref/decks/decklist-arakni.md` | Target deck: Arakni Marionette (Calling Memphis 1st) |
+| `ref/decks/decklist-cindra.md` | Reference deck: Red Cindra (Calling Brisbane) |
+| `ref/decks/decklist-victor.md` | Reference deck: Victor Goldmane |
 
 ## Versioning
 

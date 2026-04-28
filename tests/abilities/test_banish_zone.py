@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import pytest
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.abilities import AbilityContext
-from htc.engine.actions import ActionOption, Decision, PlayerResponse
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.abilities import AbilityContext
+from engine.rules.actions import ActionOption, Decision, PlayerResponse
+from engine.enums import (
     ActionType,
     CardType,
     Color,
@@ -30,7 +30,7 @@ from htc.enums import (
     Zone,
 )
 
-from htc.state.player_state import BanishPlayability
+from engine.state.player_state import BanishPlayability
 from tests.conftest import make_card, make_game_shell, make_state, make_weapon
 
 
@@ -652,7 +652,7 @@ class TestGrapheneCheliceraCostReduction:
 
     def test_normal_activation_cost(self):
         """Graphene Chelicera should cost 1 resource normally."""
-        from htc.engine.action_builder import ActionBuilder
+        from engine.rules.action_builder import ActionBuilder
         state = make_state()
         player = state.players[0]
         player.hero = _make_hero("Arakni, Marionette", owner_index=0)
@@ -663,7 +663,7 @@ class TestGrapheneCheliceraCostReduction:
 
     def test_orb_weaver_reduces_cost(self):
         """Orb-Weaver should reduce Graphene Chelicera cost to 0."""
-        from htc.engine.action_builder import ActionBuilder
+        from engine.rules.action_builder import ActionBuilder
         state = make_state()
         player = state.players[0]
         player.hero = _make_demi_hero("Arakni, Orb-Weaver", owner_index=0)
@@ -674,7 +674,7 @@ class TestGrapheneCheliceraCostReduction:
 
     def test_orb_weaver_doesnt_reduce_other_weapons(self):
         """Orb-Weaver should not reduce cost of non-Graphene weapons."""
-        from htc.engine.action_builder import ActionBuilder
+        from engine.rules.action_builder import ActionBuilder
         state = make_state()
         player = state.players[0]
         player.hero = _make_demi_hero("Arakni, Orb-Weaver", owner_index=0)
@@ -685,7 +685,7 @@ class TestGrapheneCheliceraCostReduction:
 
     def test_orb_weaver_can_activate_free(self):
         """With Orb-Weaver, Graphene Chelicera should be activatable without resources."""
-        from htc.engine.action_builder import ActionBuilder
+        from engine.rules.action_builder import ActionBuilder
         state = make_state()
         state.action_points = {0: 1, 1: 0}
         state.resource_points = {0: 0, 1: 0}
@@ -699,7 +699,7 @@ class TestGrapheneCheliceraCostReduction:
 
     def test_without_orb_weaver_needs_resource(self):
         """Without Orb-Weaver, Graphene Chelicera should need 1 resource."""
-        from htc.engine.action_builder import ActionBuilder
+        from engine.rules.action_builder import ActionBuilder
         state = make_state()
         state.action_points = {0: 1, 1: 0}
         state.resource_points = {0: 0, 1: 0}
@@ -724,7 +724,7 @@ class TestGrapheneCheliceraCostReduction:
 
     def test_base_weapon_activation_cost_unchanged(self):
         """_base_weapon_activation_cost should return the raw cost."""
-        from htc.engine.game import Game
+        from engine.rules.game import Game
         gc = _make_graphene_chelicera(owner_index=0)
         cost = Game._base_weapon_activation_cost(gc)
         assert cost == 1  # {r} in functional text
@@ -769,7 +769,7 @@ class TestDefendingCardBanishRedirect:
     def test_defending_card_banished_on_chain_close(self):
         """A trap defense reaction played from banish should return to banish
         when the chain closes, not graveyard."""
-        from htc.state.combat_state import ChainLink
+        from engine.state.combat_state import ChainLink
 
         game = make_game_shell()
         state = game.state
@@ -798,7 +798,7 @@ class TestDefendingCardBanishRedirect:
 
     def test_non_banish_defending_card_goes_to_graveyard(self):
         """A normal defending card (not played from banish) should go to graveyard."""
-        from htc.state.combat_state import ChainLink
+        from engine.state.combat_state import ChainLink
 
         game = make_game_shell()
         state = game.state
@@ -820,7 +820,7 @@ class TestDefendingCardBanishRedirect:
 
     def test_mixed_defending_cards_redirect(self):
         """When multiple defenders, only the one played from banish is redirected."""
-        from htc.state.combat_state import ChainLink
+        from engine.state.combat_state import ChainLink
 
         game = make_game_shell()
         state = game.state

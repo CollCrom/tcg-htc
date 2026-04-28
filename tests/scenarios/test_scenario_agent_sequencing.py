@@ -14,17 +14,17 @@ from __future__ import annotations
 
 import logging
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.agents import _trap_door_on_become
-from htc.cards.abilities.assassin import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.agents import _trap_door_on_become
+from engine.cards.abilities.assassin import (
     _kiss_of_death_on_hit,
     _mark_of_the_black_widow_on_hit,
     _leave_no_witnesses_on_attack,
 )
-from htc.engine.actions import PlayerResponse
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.rules.actions import PlayerResponse
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,

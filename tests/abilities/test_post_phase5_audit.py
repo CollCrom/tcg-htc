@@ -12,11 +12,11 @@ Covers:
 
 from __future__ import annotations
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.engine.events import EventType, GameEvent, ReplacementEffect
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.rules.events import EventType, GameEvent, ReplacementEffect
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,
@@ -25,7 +25,7 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.combat_state import ChainLink, CombatChainState
+from engine.state.combat_state import ChainLink, CombatChainState
 from tests.conftest import make_card, make_equipment, make_game_shell, make_state
 from tests.abilities.conftest import (
     make_ability_context,
@@ -53,7 +53,7 @@ def _make_ctx(game, source_card, link, controller_index=0):
 
 def test_throw_dagger_emits_damage_event():
     """Throw Dagger should deal damage via DEAL_DAMAGE event, not direct subtraction."""
-    from htc.cards.abilities.ninja import _throw_dagger
+    from engine.cards.abilities.ninja import _throw_dagger
 
     game = make_game_shell(life=20)
     state = game.state
@@ -114,7 +114,7 @@ def test_throw_dagger_emits_damage_event():
 
 def test_throw_dagger_emits_hit_event():
     """Throw Dagger should emit a HIT event when damage is dealt."""
-    from htc.cards.abilities.ninja import _throw_dagger
+    from engine.cards.abilities.ninja import _throw_dagger
 
     game = make_game_shell(life=20)
     state = game.state
@@ -145,7 +145,7 @@ def test_throw_dagger_emits_hit_event():
 
 def test_art_of_dragon_fire_emits_damage_event():
     """Art of the Dragon: Fire should deal damage via DEAL_DAMAGE event."""
-    from htc.cards.abilities.ninja import _art_of_the_dragon_fire_on_attack
+    from engine.cards.abilities.ninja import _art_of_the_dragon_fire_on_attack
 
     game = make_game_shell(life=20)
     state = game.state
@@ -177,7 +177,7 @@ def test_art_of_dragon_fire_emits_damage_event():
 
 def test_blood_runs_deep_emits_damage_events():
     """Blood Runs Deep should emit DEAL_DAMAGE + HIT per dagger."""
-    from htc.cards.abilities.ninja import _blood_runs_deep_on_attack
+    from engine.cards.abilities.ninja import _blood_runs_deep_on_attack
 
     game = make_game_shell(life=20)
     state = game.state
@@ -215,7 +215,7 @@ def test_blood_runs_deep_emits_damage_events():
 
 def test_art_of_dragon_scale_counter_uses_counters_dict():
     """Art of the Dragon: Scale should set card.counters['defense'], not defense_counters."""
-    from htc.cards.abilities.ninja import _ArtOfDragonScaleHitTrigger
+    from engine.cards.abilities.ninja import _ArtOfDragonScaleHitTrigger
 
     game = make_game_shell(life=20)
     state = game.state
@@ -259,7 +259,7 @@ def test_art_of_dragon_scale_counter_uses_counters_dict():
 
 def test_art_of_dragon_scale_counter_destroys_at_zero():
     """Equipment with 1 defense should be destroyed after -1 counter."""
-    from htc.cards.abilities.ninja import _ArtOfDragonScaleHitTrigger
+    from engine.cards.abilities.ninja import _ArtOfDragonScaleHitTrigger
 
     game = make_game_shell(life=20)
     state = game.state
@@ -470,7 +470,7 @@ def test_kiss_of_death_life_loss_bypasses_damage_prevention():
     This is the core design reason for routing Kiss of Death through
     LOSE_LIFE instead of DEAL_DAMAGE.
     """
-    from htc.cards.abilities.assassin import _kiss_of_death_on_hit
+    from engine.cards.abilities.assassin import _kiss_of_death_on_hit
 
     game = make_game_shell(life=20)
     state = game.state
@@ -499,7 +499,7 @@ def test_kiss_of_death_life_loss_bypasses_damage_prevention():
 def test_throw_dagger_no_draw_when_damage_prevented():
     """Throw Dagger: if damage is prevented (actual_damage == 0), no card
     should be drawn."""
-    from htc.cards.abilities.ninja import _throw_dagger
+    from engine.cards.abilities.ninja import _throw_dagger
 
     game = make_game_shell(life=20)
     state = game.state
@@ -543,7 +543,7 @@ def test_throw_dagger_no_draw_when_damage_prevented():
 def test_blood_runs_deep_partial_prevention():
     """Blood Runs Deep: if one dagger's damage is prevented but the other's
     isn't, only one HIT event should fire."""
-    from htc.cards.abilities.ninja import _blood_runs_deep_on_attack
+    from engine.cards.abilities.ninja import _blood_runs_deep_on_attack
 
     game = make_game_shell(life=20)
     state = game.state
@@ -597,7 +597,7 @@ def test_blood_runs_deep_partial_prevention():
 def test_art_of_dragon_fire_damage_prevented():
     """Art of the Dragon: Fire — if the 2 damage is prevented, it shouldn't
     go through."""
-    from htc.cards.abilities.ninja import _art_of_the_dragon_fire_on_attack
+    from engine.cards.abilities.ninja import _art_of_the_dragon_fire_on_attack
 
     game = make_game_shell(life=20)
     state = game.state

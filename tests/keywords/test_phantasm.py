@@ -4,11 +4,11 @@ Phantasm: if defended by a non-Illusionist attack action card with 6+ power,
 destroy the Phantasm attack.
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.continuous import make_power_modifier
-from htc.engine.game import Game
-from htc.enums import CardType, Keyword, SubType, SuperType, Zone
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.continuous import make_power_modifier
+from engine.rules.game import Game
+from engine.enums import CardType, Keyword, SubType, SuperType, Zone
 from tests.conftest import make_card, make_equipment, make_game_shell
 
 

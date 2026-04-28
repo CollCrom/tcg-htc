@@ -7,20 +7,18 @@ consistency, and that key mechanics fire for both heroes.
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
-from htc.cards.card_db import CardDatabase
-from htc.engine.events import EventType, GameEvent
-from htc.engine.game import Game, GameResult
-from htc.enums import Phase, Zone
-from htc.player.random_player import RandomPlayer
+from engine.cards.card_db import CardDatabase
+from engine.rules.events import EventType, GameEvent
+from engine.rules.game import Game, GameResult
+from engine.enums import Phase, Zone
+from engine.player.random_player import RandomPlayer
 
-from htc.decks.deck_list import parse_markdown_decklist
+from engine.decks.deck_list import parse_markdown_decklist
 
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-REF_DIR = Path(__file__).parent.parent.parent / "ref"
+from tests.conftest import CARDS_TSV, REF_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -30,18 +28,18 @@ REF_DIR = Path(__file__).parent.parent.parent / "ref"
 
 @pytest.fixture(scope="module")
 def card_db() -> CardDatabase:
-    return CardDatabase.load(DATA_DIR / "cards.tsv")
+    return CardDatabase.load(CARDS_TSV)
 
 
 @pytest.fixture(scope="module")
 def cindra_deck():
-    text = (REF_DIR / "decklist-cindra-blue.md").read_text()
+    text = (REF_DIR / "decks" / "decklist-cindra-blue.md").read_text()
     return parse_markdown_decklist(text)
 
 
 @pytest.fixture(scope="module")
 def arakni_deck():
-    text = (REF_DIR / "decklist-arakni.md").read_text()
+    text = (REF_DIR / "decks" / "decklist-arakni.md").read_text()
     return parse_markdown_decklist(text)
 
 
@@ -453,7 +451,7 @@ class TestHeroSpecificMechanics:
                 break
             game2._run_turn()
 
-        from htc.enums import Keyword
+        from engine.enums import Keyword
         stealth_attacks = [
             e for e in collector2.filter(EventType.ATTACK_DECLARED)
             if e.source and Keyword.STEALTH in (e.source.definition.keywords or set())

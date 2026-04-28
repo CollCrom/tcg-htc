@@ -5,9 +5,9 @@ supertypes granted by continuous effects (e.g. Enflame's Draconic grant),
 not just base definition supertypes.
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.continuous import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.continuous import (
     ContinuousEffect,
     EffectDuration,
     ModStage,
@@ -17,7 +17,7 @@ from htc.engine.continuous import (
     make_power_modifier,
     make_supertype_grant,
 )
-from htc.enums import CardType, Color, Keyword, SubType, SuperType, Zone
+from engine.enums import CardType, Color, Keyword, SubType, SuperType, Zone
 from tests.conftest import make_game_shell
 
 

@@ -8,18 +8,18 @@ Covers:
 5. Combat chain state interactions with Go Again
 """
 
-from htc.engine.continuous import (
+from engine.rules.continuous import (
     ContinuousEffect,
     EffectDuration,
     ModStage,
     ModSubstage,
     make_keyword_grant,
 )
-from htc.engine.effects import EffectEngine
-from htc.engine.events import EventType, GameEvent
-from htc.enums import Keyword, Zone
-from htc.state.combat_state import ChainLink, CombatChainState
-from htc.state.turn_counters import TurnCounters
+from engine.rules.effects import EffectEngine
+from engine.rules.events import EventType, GameEvent
+from engine.enums import Keyword, Zone
+from engine.state.combat_state import ChainLink, CombatChainState
+from engine.state.turn_counters import TurnCounters
 from tests.conftest import make_card, make_game_shell, make_state
 
 

@@ -17,18 +17,18 @@ from __future__ import annotations
 
 import logging
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.cards.abilities.tokens import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.cards.abilities.tokens import (
     FealtyEndPhaseTrigger,
     _fealty_instant,
     register_token_triggers,
 )
-from htc.cards.abilities.assassin import _tarantula_toxin
-from htc.cards.abilities.ninja import _register_loyalty_beyond_trigger
-from htc.engine.actions import PlayerResponse
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.abilities.assassin import _tarantula_toxin
+from engine.cards.abilities.ninja import _register_loyalty_beyond_trigger
+from engine.rules.actions import PlayerResponse
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     CardType,
     Color,
     EquipmentSlot,
@@ -257,8 +257,8 @@ class TestFealtyMultiTurnSurvival:
 
 def _make_loyalty_beyond(instance_id: int, owner_index: int = 0) -> "CardInstance":
     """Create a Loyalty Beyond the Grave card."""
-    from htc.cards.card import CardDefinition
-    from htc.cards.instance import CardInstance
+    from engine.cards.card import CardDefinition
+    from engine.cards.instance import CardInstance
     defn = CardDefinition(
         unique_id=f"loyalty-{instance_id}",
         name="Loyalty Beyond the Grave",
@@ -305,8 +305,8 @@ class TestLoyaltyBeyondTheGrave:
         state.players[0].graveyard.extend([loy1, loy2])
 
         # Put a card in deck to draw
-        from htc.cards.card import CardDefinition
-        from htc.cards.instance import CardInstance
+        from engine.cards.card import CardDefinition
+        from engine.cards.instance import CardInstance
         draw_target = CardInstance(
             instance_id=800,
             definition=CardDefinition(
@@ -455,8 +455,8 @@ class TestLoyaltyBeyondTheGrave:
         state.players[0].graveyard.extend(copies)
 
         # Cards to draw
-        from htc.cards.card import CardDefinition
-        from htc.cards.instance import CardInstance
+        from engine.cards.card import CardDefinition
+        from engine.cards.instance import CardInstance
         for i in range(2):
             d = CardInstance(
                 instance_id=800 + i,
@@ -589,7 +589,7 @@ class TestBlueCindraResourceCurve:
         state = game.state
         recorder = scenario_recorder.bind(game)
 
-        from htc.engine.continuous import EffectDuration, make_cost_modifier
+        from engine.rules.continuous import EffectDuration, make_cost_modifier
 
         # 0-cost card with a -1 cost reduction
         atk = make_draconic_ninja_attack(

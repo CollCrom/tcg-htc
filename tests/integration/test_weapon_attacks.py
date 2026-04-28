@@ -1,7 +1,7 @@
 """Tests for weapon attack activation (rules 1.4.3)."""
 
-from htc.enums import Keyword, SubType, Zone
-from htc.state.turn_counters import TurnCounters
+from engine.enums import Keyword, SubType, Zone
+from engine.state.turn_counters import TurnCounters
 from tests.conftest import make_game_shell, make_pitch_card, make_weapon
 
 

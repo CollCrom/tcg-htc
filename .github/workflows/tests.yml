@@ -22,4 +22,4 @@ jobs:
           pip install pytest pytest-cov
 
       - name: Run tests
-        run: python -m pytest -v --cov=src/htc --cov-report=term-missing
+        run: python -m pytest -v --cov=engine --cov-report=term-missing

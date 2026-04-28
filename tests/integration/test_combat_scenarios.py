@@ -7,17 +7,17 @@
 5. Game-over during combat (life to 0 mid-combat)
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import PlayerResponse
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import PlayerResponse
+from engine.enums import (
     CardType,
     EquipmentSlot,
     Keyword,
     SubType,
     Zone,
 )
-from htc.state.combat_state import ChainLink, CombatChainState
+from engine.state.combat_state import ChainLink, CombatChainState
 from tests.conftest import (
     make_card,
     make_equipment,

@@ -10,12 +10,12 @@ Covers items 18-24 from the cleanup task:
 24. _process_pending_triggers coverage (DRAW_CARD, CREATE_TOKEN)
 """
 
-from htc.cards.card import CardDefinition
-from htc.cards.instance import CardInstance
-from htc.engine.actions import ActionOption, Decision, PlayerResponse
-from htc.engine.continuous import EffectDuration, make_cost_modifier
-from htc.engine.events import EventType, GameEvent
-from htc.enums import (
+from engine.cards.card import CardDefinition
+from engine.cards.instance import CardInstance
+from engine.rules.actions import ActionOption, Decision, PlayerResponse
+from engine.rules.continuous import EffectDuration, make_cost_modifier
+from engine.rules.events import EventType, GameEvent
+from engine.enums import (
     ActionType,
     CardType,
     Color,
@@ -25,8 +25,8 @@ from htc.enums import (
     SuperType,
     Zone,
 )
-from htc.state.combat_state import ChainLink
-from htc.state.turn_counters import TurnCounters
+from engine.state.combat_state import ChainLink
+from engine.state.turn_counters import TurnCounters
 
 from tests.conftest import (
     make_card,
@@ -47,7 +47,7 @@ class TestGrapheneChelicera2HWeapon:
 
     def test_fails_with_2h_weapon(self):
         """2H weapon occupies both hand slots: no room for Graphene Chelicera."""
-        from htc.cards.abilities.assassin import _create_graphene_chelicera
+        from engine.cards.abilities.assassin import _create_graphene_chelicera
 
         game = make_game_shell()
         state = game.state
@@ -67,7 +67,7 @@ class TestGrapheneChelicera2HWeapon:
 
     def test_succeeds_with_one_1h_weapon(self):
         """One 1H weapon leaves one hand slot open: Graphene Chelicera fits."""
-        from htc.cards.abilities.assassin import _create_graphene_chelicera
+        from engine.cards.abilities.assassin import _create_graphene_chelicera
 
         game = make_game_shell()
         state = game.state
@@ -85,7 +85,7 @@ class TestGrapheneChelicera2HWeapon:
 
     def test_fails_with_two_1h_weapons(self):
         """Two 1H weapons fill both hand slots: no room."""
-        from htc.cards.abilities.assassin import _create_graphene_chelicera
+        from engine.cards.abilities.assassin import _create_graphene_chelicera
 
         game = make_game_shell()
         state = game.state
@@ -146,7 +146,7 @@ class TestAuthorityOfAtayaExpiry:
         state = game.state
 
         # Simulate pitching Authority of Ataya by directly adding the effect
-        from htc.engine.continuous import EffectDuration, make_cost_modifier
+        from engine.rules.continuous import EffectDuration, make_cost_modifier
         effect = make_cost_modifier(
             +1,
             0,  # controller
@@ -387,7 +387,7 @@ class TestTriggerProcessingCoverage:
 
     def test_draw_card_triggers_processed(self):
         """Triggers registered for DRAW_CARD should fire during _draw_cards."""
-        from htc.engine.events import TriggeredEffect
+        from engine.rules.events import TriggeredEffect
         from dataclasses import dataclass
 
         game = make_game_shell()
@@ -419,7 +419,7 @@ class TestTriggerProcessingCoverage:
 
     def test_create_token_triggers_processed(self):
         """CREATE_TOKEN event should have triggers processed."""
-        from htc.engine.events import TriggeredEffect
+        from engine.rules.events import TriggeredEffect
         from dataclasses import dataclass
 
         game = make_game_shell()
