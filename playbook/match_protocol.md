@@ -80,7 +80,7 @@ engine is authoritative.
 | `choose_target` | Generic target selection for an ability (a card, player, or other targetable). | usually exactly 1 |
 | `choose_mode` | Modal effect — pick one of N branches ("choose one: A or B"). | exactly 1 |
 | `order_triggers` | When multiple triggered abilities go on the stack at once, the controller orders them. | full list of trigger ids in chosen order |
-| `choose_agent` | Mask of Deceit pre-game: pick which Agent of Chaos demi-hero this seat starts as. Arakni-specific. | exactly 1 |
+| `choose_agent` | Mask of Deceit triggered ability — when Mask of Deceit defends an attack from a **marked** hero, you choose which Agent of Chaos demi-hero to transform into. (Against an unmarked attacker the engine picks randomly without asking.) Arakni-specific, fires mid-combat, not pre-game. | exactly 1 |
 
 ---
 
@@ -104,17 +104,37 @@ Top-level keys: `you`, `opponent`, `combat_chain`, `turn`.
 - `banished` is split into `banished_face_up[]` (full) and
   `banished_face_down_count` (number only).
 
-**Card dicts** (every card in any zone) include both base values and
-effect-modified values:
-- Base: `name`, `cost`, `power`, `defense`, `pitch`, `health`,
-  `intellect`, `arcane`, `types`, `subtypes`, `keywords`, `type_text`,
-  `functional_text`.
+**Card dicts** (every card in any zone) include base values plus, when
+they differ from base, effect-modified values:
+
+- Base (always present): `name`, `cost`, `power`, `defense`, `pitch`,
+  `health`, `intellect`, `arcane`, `types`, `subtypes`, `supertypes`,
+  `keywords`, `color`. Plus `instance_id` (use for identity — `action_id`s
+  reference it) and `zone`.
+- Hot-zone only (hand, arsenal, pitch, equipment, weapons, permanents,
+  hero, soul, combat chain): `type_text`, `functional_text`, `is_tapped`,
+  `activated_this_turn`, `face_up`, `counters`, `is_proxy`.
+- Cold zones (graveyard, banished face-up): rules text and per-instance
+  flags are **stripped** to save tokens. All strategic fields above are
+  preserved — name, types, subtypes, supertypes, keywords, stats — so
+  card-counting and type-aware effects still work. If you really need the
+  rules text of a cold-zone card, look it up:
+
+  ```bash
+  .venv/Scripts/python.exe tools/agent_cli.py --port $PORT card --name "Codex of Frailty"
+  ```
+
 - Modified (post continuous effects): `modified_power`,
   `modified_defense`, `modified_cost`, `modified_subtypes`,
-  `modified_keywords`. Use these for combat math; they reflect the
-  current board state.
-- Other: `instance_id` (use for identity — `action_id`s reference it),
-  `zone`, `is_tapped`, `activated_this_turn`, `face_up`, `counters`.
+  `modified_keywords`, `modified_supertypes`. **Only present when they
+  differ from base.** A missing `modified_X` means "no continuous effect
+  changed this; modified equals base." Use modified values for combat
+  math when they're present; fall back to base otherwise.
+
+The engine auto-resolves any decision where the player has exactly one
+option and must pick exactly one (~73% of all prompts in practice — most
+``play_or_pass`` and ``reaction`` windows). You will only be asked when
+there's a real choice.
 
 **`combat_chain`**: `is_open` (bool) and `links[]` with `link_number`,
 `active_attack` (the card on top), `attack_source`,
@@ -124,6 +144,24 @@ effect-modified values:
 **`turn`**: `number`, `phase` (e.g. `start`, `action`, `end`),
 `combat_step`, `active_player_index`, `priority_player_index`. Check
 `active_player_index == your_index` to see whose turn it is.
+
+**`active_effects[]`**: replacement effects currently registered that
+won't otherwise show up as `modified_*` values on cards. Most commonly:
+damage prevention (e.g. Shelter from the Storm activated as an instant —
+the card sits in graveyard, but its effect is still live). Each entry:
+
+- `source_name` — the card that created the effect.
+- `controller` — player_index that activated/owns it.
+- `target_player` — player_index it applies to.
+- `kind` — short slug like `"damage_prevention"`.
+- `remaining_uses` — int charges left, or absent if not usage-limited.
+- `summary` — one-line human-readable description.
+
+Both seats see the same list. If you're calculating damage from an
+attack and `active_effects` includes a `damage_prevention` targeting
+the defender, expect each of your damage instances to be reduced by
+the prevention's per-instance amount until it expires. Empty list when
+nothing is active.
 
 Pre-game equipment-selection decisions arrive with a stripped-down
 `state` (`{"phase": "pre_game_setup", "note": "..."}`) — pick from

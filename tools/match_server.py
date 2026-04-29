@@ -8,8 +8,18 @@ transport differs.
 Usage::
 
     python tools/match_server.py --port 8080 --seed 7 \\
+        --match-id calling-rerun-001 \\
         --deck-a ref/decks/decklist-cindra-blue.md \\
         --deck-b ref/decks/decklist-arakni.md
+
+Replay artifacts land in ``<replays-dir>/<match-id>/``:
+
+* ``events.jsonl`` — one line per :class:`engine.rules.events.GameEvent`,
+  serialized as ``{turn, phase, type, source, card, target_player,
+  amount, modified, data}``. This is the analyst's ground-truth feed.
+* Players append their own per-decision rationale to
+  ``player{A,B}.log`` in the same directory; that's a player-side
+  responsibility, not the server's.
 
 Endpoints
 ---------
@@ -50,6 +60,7 @@ from urllib.parse import parse_qs, urlparse
 from engine.cards.card_db import CardDatabase
 from engine.decks.deck_list import DeckList, parse_markdown_decklist
 from engine.rules.actions import Decision, PlayerResponse
+from engine.rules.events import EventType, GameEvent
 from engine.rules.game import Game
 from engine.state.game_state import GameState
 from engine.state.snapshot import snapshot_for
@@ -72,6 +83,7 @@ class HttpBridgePlayer:
     def __init__(self, player_index: int) -> None:
         self.player_index = player_index
         self.effect_engine: Any = None  # set by the server before play() starts
+        self.events: Any = None  # EventBus, set by the server before play() starts
         self._cv = threading.Condition()
         self._pending: dict | None = None
         self._allowed_ids: set[str] = set()
@@ -139,7 +151,9 @@ class HttpBridgePlayer:
                 ),
             }
         else:
-            snap = snapshot_for(game_state, self.player_index, self.effect_engine)
+            snap = snapshot_for(
+                game_state, self.player_index, self.effect_engine, self.events,
+            )
         return {
             "type": "decision",
             "player_index": decision.player_index,
@@ -167,19 +181,68 @@ class MatchServer:
         deck_a: DeckList,
         deck_b: DeckList,
         seed: int,
+        log_dir: Path | None = None,
     ) -> None:
+        self.db = db  # kept for /card lookup endpoint
         self.player_a = HttpBridgePlayer(0)
         self.player_b = HttpBridgePlayer(1)
         self.players: dict[str, HttpBridgePlayer] = {"A": self.player_a, "B": self.player_b}
         self.game = Game(db, deck_a, deck_b, self.player_a, self.player_b, seed=seed)
         self.player_a.effect_engine = self.game.effect_engine
         self.player_b.effect_engine = self.game.effect_engine
+        self.player_a.events = self.game.events
+        self.player_b.events = self.game.events
         self.deck_a_hero = deck_a.hero_name
         self.deck_b_hero = deck_b.hero_name
         self.seed = seed
         self.result: Any = None
         self.error: str | None = None
         self._thread = threading.Thread(target=self._run, daemon=True, name="game-thread")
+        # Optional events.jsonl writer so the analyst pipeline has ground truth.
+        self._log_dir = log_dir
+        self._events_file = None
+        if log_dir is not None:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            # Line-buffered so a forced kill still leaves a usable file.
+            self._events_file = (log_dir / "events.jsonl").open(
+                "w", encoding="utf-8", buffering=1,
+            )
+            self._register_event_logger()
+
+    # ----- event logging -----
+
+    def _register_event_logger(self) -> None:
+        """Subscribe a write-only handler to every EventType.
+
+        Runs after the engine's own handlers (registered in Game.__init__)
+        because we register here, after the Game is constructed. That means
+        we observe events post-mutation, which matches the analyst's
+        ``events.jsonl`` "what actually happened" contract. Cancelled events
+        never reach handlers (see EventBus.emit), so they correctly do not
+        appear in the log.
+        """
+        for et in EventType:
+            self.game.events.register_handler(et, self._log_event)
+
+    def _log_event(self, event: GameEvent) -> None:
+        if self._events_file is None:
+            return
+        try:
+            phase = self.game.state.phase.name if self.game.state.phase else None
+            record = {
+                "turn": self.game.state.turn_number,
+                "phase": phase,
+                "type": event.event_type.name,
+                "source": _card_brief(event.source),
+                "card": _card_brief(event.card),
+                "target_player": event.target_player,
+                "amount": event.amount,
+                "modified": event.modified,
+                "data": _safe_data(event.data),
+            }
+            self._events_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as exc:  # noqa: BLE001 — never break the engine for logging
+            log.warning("event log write failed: %s", exc)
 
     def start(self) -> None:
         self._thread.start()
@@ -219,6 +282,41 @@ class MatchServer:
     def shutdown(self) -> None:
         self.player_a.close()
         self.player_b.close()
+        if self._events_file is not None:
+            try:
+                self._events_file.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._events_file = None
+
+
+def _card_brief(card: Any) -> dict | None:
+    """Compact dict describing a CardInstance for the event log."""
+    if card is None:
+        return None
+    try:
+        return {
+            "instance_id": getattr(card, "instance_id", None),
+            "name": getattr(card, "name", None),
+            "owner": getattr(card, "owner_index", None),
+            "controller": getattr(card, "controller_index", None),
+        }
+    except Exception:  # noqa: BLE001
+        return {"repr": repr(card)}
+
+
+def _safe_data(data: dict | None) -> dict:
+    """Best-effort JSON-friendly copy of an event's free-form ``data`` dict."""
+    if not data:
+        return {}
+    out: dict = {}
+    for k, v in data.items():
+        try:
+            json.dumps(v)
+            out[k] = v
+        except (TypeError, ValueError):
+            out[k] = repr(v)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +360,26 @@ def make_handler(match: MatchServer) -> type[BaseHTTPRequestHandler]:
                     200,
                     {"pending": player.get_pending(), "status": match.status()},
                 )
+                return
+            if url.path == "/card":
+                # Escape hatch for cold-zone cards: full rules text + type
+                # line, on demand. Snapshots of graveyard/banished omit
+                # functional_text/type_text to save tokens; this lets an
+                # agent look up a card by name (case- and diacritic-
+                # insensitive) when it really needs the text.
+                name = (query.get("name") or [""])[0]
+                if not name:
+                    self._json(400, {"error": "missing required ?name=<card name>"})
+                    return
+                card = match.db.get_by_name(name)
+                if card is None:
+                    self._json(404, {"error": f"no card named {name!r}"})
+                    return
+                self._json(200, {
+                    "name": card.name,
+                    "type_text": card.type_text,
+                    "functional_text": card.functional_text,
+                })
                 return
             self._json(404, {"error": f"not found: {url.path}"})
 
@@ -323,6 +441,23 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=repo / "ref" / "decks" / "decklist-arakni.md",
         help="Markdown decklist for seat B (player_index 1).",
     )
+    p.add_argument(
+        "--match-id", default=None,
+        help=(
+            "Match identifier; events.jsonl and player logs land in "
+            "<replays-dir>/<match-id>/. Defaults to "
+            "'seed-<seed>-<YYYYMMDD-HHMMSS>'."
+        ),
+    )
+    p.add_argument(
+        "--replays-dir", type=Path,
+        default=repo / "replays",
+        help="Root directory for replay artifacts. Defaults to ./replays.",
+    )
+    p.add_argument(
+        "--no-event-log", action="store_true",
+        help="Disable writing events.jsonl (useful for tests).",
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
 
@@ -343,7 +478,10 @@ def main(argv: list[str] | None = None) -> int:
     deck_a = parse_markdown_decklist(args.deck_a.read_text(encoding="utf-8"))
     deck_b = parse_markdown_decklist(args.deck_b.read_text(encoding="utf-8"))
 
-    match = MatchServer(db, deck_a, deck_b, seed=args.seed)
+    match_id = args.match_id or f"seed-{args.seed}-{time.strftime('%Y%m%d-%H%M%S')}"
+    log_dir: Path | None = None if args.no_event_log else args.replays_dir / match_id
+
+    match = MatchServer(db, deck_a, deck_b, seed=args.seed, log_dir=log_dir)
     match.start()
 
     server = ThreadingHTTPServer((args.host, args.port), make_handler(match))
@@ -356,6 +494,8 @@ def main(argv: list[str] | None = None) -> int:
         f"match server listening on http://{args.host}:{args.port}\n"
         f"  seat A ({deck_a.hero_name}) vs seat B ({deck_b.hero_name})\n"
         f"  seed={args.seed}\n"
+        f"  match_id={match_id}\n"
+        f"  log_dir={log_dir if log_dir else '<disabled>'}\n"
         f"  endpoints:\n"
         f"    GET  /pending?player=A|B\n"
         f"    POST /action?player=A|B   body: {{\"selected_option_ids\": [...]}}\n"

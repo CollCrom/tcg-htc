@@ -17,6 +17,7 @@ Substitute the fields wrapped in `$...` before passing to `Agent.prompt`.
 | `$HERO_NAME` | `Cindra, Dracai of Retribution` | Pulled from the deck file's `## Hero` section. |
 | `$DECK_PATH` | `ref/decks/decklist-cindra-blue.md` | Path the agent reads as "their deck." |
 | `$DECK_BLURB` | `"Blue Cindra — what-if-Redline-was-good variant"` | One-line characterization, optional but useful. |
+| `$MATCH_ID` | `calling-rerun-001` | Match identifier; must match what `match_server.py` was started with. The agent appends per-action rationale to `replays/$MATCH_ID/player$SEAT.log`. |
 
 ---
 
@@ -53,8 +54,23 @@ Each loop iteration:
 2. If `status.status == "game_over"`, stop.
 3. Look at `pending.decision_type`, `pending.options`, and `pending.state` (your view).
 4. Pick `action_id`s from `pending.options`, matching `min_selections..max_selections`.
-5. `act --player $SEAT --id ...`
-6. Loop.
+5. **Log the decision and reasoning** to `replays/$MATCH_ID/player$SEAT.log` — append one line in this format (one `>>` redirect per action):
+
+   ```
+   [Turn N | Hero@HP_self | Opp@HP_opp | Pitch:N] ACTION — reasoning
+   ```
+
+   Pull `Turn N` from `pending.state.turn.number`, hit-points from `state.you.life` / `state.opponent.life`, and `Pitch:N` from `state.you.resource_points`. ACTION = the chosen `action_id`(s). One sentence of rationale. Tag uncertainty inline (`guessing they have X`); tag generalizable insights as `(LESSON CANDIDATE: ...)` so the analyst picks them up.
+6. `act --player $SEAT --id ...`
+7. Loop.
+
+Concrete log-write example (Bash):
+
+```bash
+echo "[Turn 3 | Cindra@30 | Arakni@36 | Pitch:0] play_42 — pitching the blue to swing for 5 to keep tempo" >> "replays/$MATCH_ID/player$SEAT.log"
+```
+
+The `replays/$MATCH_ID/` directory already exists (the match server created it). Don't create new files outside that directory and don't write to playbook/ or memory/.
 
 ## Constraints
 
@@ -71,7 +87,9 @@ When the game ends (status.status == "game_over"), reply with:
 - Outcome: `winner_seat`, `final_life`, `turns`.
 - 3–5 bullets: gameplan, what you actually got to do, biggest mistake or surprise, any engine weirdness.
 
-If you hit your tool-call budget without finishing, fetch `status` and `pending` once more and report current state. Do not write to playbook/ or memory/ — just reply.
+If you hit your tool-call budget without finishing, fetch `status` and `pending` once more and report current state.
+
+Allowed file writes: only `replays/$MATCH_ID/player$SEAT.log` (one append per action, format above). Do **not** write to playbook/, memory/, or any other path.
 
 Start now.
 ```

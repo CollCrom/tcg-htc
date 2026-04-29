@@ -311,6 +311,55 @@ class TestShelterFromTheStormExpiry:
         ))
         assert event.amount == 5
 
+    def test_prevention_appears_in_snapshot_active_effects(self):
+        """Active Shelter prevention surfaces via snapshot.active_effects[].
+
+        Regression test: the original issue was that the opponent saw
+        damage drop from 4→3 with no visible reason. The prevention
+        effect must appear in the snapshot for both seats.
+        """
+        from engine.cards.abilities.generic import _shelter_from_the_storm_instant
+        from engine.state.snapshot import snapshot_for
+        from tests.abilities.conftest import make_ability_context
+
+        game = make_game_shell(life=20)
+        controller = 1
+
+        shelter = make_card(instance_id=99, name="Shelter from the Storm", is_attack=False)
+        ctx = make_ability_context(game, shelter, controller)
+        _shelter_from_the_storm_instant(ctx)
+
+        # Both seats should see the same active_effects entry.
+        for viewer in (0, 1):
+            snap = snapshot_for(game.state, viewer, game.effect_engine, game.events)
+            effects = snap.get("active_effects", [])
+            assert len(effects) == 1, (
+                f"viewer {viewer}: expected 1 active effect, got {effects}"
+            )
+            eff = effects[0]
+            assert eff["source_name"] == "Shelter from the Storm"
+            assert eff["controller"] == controller
+            assert eff["target_player"] == controller
+            assert eff["kind"] == "damage_prevention"
+            assert eff["remaining_uses"] == 3
+
+        # After one use, remaining_uses should drop to 2 in the snapshot.
+        game.events.emit(GameEvent(
+            event_type=EventType.DEAL_DAMAGE,
+            target_player=controller,
+            amount=4,
+        ))
+        snap = snapshot_for(game.state, 0, game.effect_engine, game.events)
+        assert snap["active_effects"][0]["remaining_uses"] == 2
+
+    def test_snapshot_omits_active_effects_when_no_event_bus(self):
+        """Legacy callers passing no events get an empty active_effects list."""
+        from engine.state.snapshot import snapshot_for
+
+        game = make_game_shell(life=20)
+        snap = snapshot_for(game.state, 0, game.effect_engine)
+        assert snap["active_effects"] == []
+
 
 # ===========================================================================
 # 3. Return-to-brood — fires on controller's first end phase

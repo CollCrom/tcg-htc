@@ -213,6 +213,18 @@ class EventBus:
             if not current_duration_check(e)
         ]
 
+    def iter_replacement_effects(self) -> list[ReplacementEffect]:
+        """Snapshot of currently registered replacement effects.
+
+        Returns a defensive copy so callers can iterate without worrying
+        about mid-iteration registration. Used by
+        :func:`engine.state.snapshot.snapshot_for` to surface
+        publicly-known active effects (e.g. damage prevention from
+        Shelter from the Storm) that don't otherwise show up as modified
+        card values.
+        """
+        return list(self._replacement_effects)
+
 
 @dataclass
 class ReplacementEffect:
@@ -230,6 +242,31 @@ class ReplacementEffect:
     def replace(self, event: GameEvent) -> GameEvent:
         """Modify the event. May cancel it by setting event.cancelled = True."""
         return event
+
+    def describe(self) -> dict | None:
+        """Public-information description of this effect for snapshots.
+
+        Override on subclasses to expose effects whose activations are
+        publicly visible but whose ongoing influence isn't otherwise
+        reflected in card-level modified values (e.g. Shelter from the
+        Storm registers a damage-prevention replacement that the
+        opponent can't see in the chain or modified_power).
+
+        Return ``None`` (default) to keep the effect hidden from
+        snapshots — appropriate for purely-internal replacements that
+        either aren't player-facing or are already evident elsewhere.
+
+        The returned dict shape is intentionally loose; recommended
+        fields:
+
+        * ``source_name``: the card name that created this effect.
+        * ``controller``: player_index that controls / owns the effect.
+        * ``target_player``: player_index the effect applies to (if any).
+        * ``kind``: short slug like ``"damage_prevention"``.
+        * ``remaining_uses``: int charges left (if usage-limited).
+        * ``summary``: one-line human-readable description.
+        """
+        return None
 
 
 @dataclass

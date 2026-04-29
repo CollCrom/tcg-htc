@@ -311,6 +311,23 @@ def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
                 and self.uses_remaining > 0
             )
 
+        def describe(self) -> dict:
+            # Public — the activation (Shelter discarded from hand) was
+            # visible to all players, so the ongoing prevention should be
+            # too. Surfaced via snapshot ``active_effects[]``.
+            return {
+                "source_name": "Shelter from the Storm",
+                "controller": self.target_player,
+                "target_player": self.target_player,
+                "kind": "damage_prevention",
+                "remaining_uses": self.uses_remaining,
+                "summary": (
+                    f"Prevents 1 damage from each of the next "
+                    f"{self.uses_remaining} damage instance(s) dealt "
+                    f"to player {self.target_player} this turn"
+                ),
+            }
+
         def replace(self, event: GameEvent) -> GameEvent:
             source_name = event.source.name if event.source else "unknown"
             event.amount = max(0, event.amount - 1)

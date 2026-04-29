@@ -137,9 +137,14 @@ def test_stdio_runs_full_game_p1():
 
         # State snapshot — present on every decision, well-formed, and redacted.
         state = d["state"]
-        assert set(state.keys()) == {"you", "opponent", "combat_chain", "turn"}, (
+        assert {"you", "opponent", "combat_chain", "turn"}.issubset(state.keys()), (
             f"unexpected state keys: {sorted(state.keys())}"
         )
+        # active_effects is optional but if present must be a list of dicts.
+        if "active_effects" in state:
+            assert isinstance(state["active_effects"], list)
+            for eff in state["active_effects"]:
+                assert isinstance(eff, dict)
         you, opp = state["you"], state["opponent"]
         # Viewer's own zones are visible (lists of cards).
         assert isinstance(you["hand"], list)

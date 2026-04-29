@@ -29,6 +29,7 @@ from engine.state.game_state import GameState
 
 if TYPE_CHECKING:
     from engine.rules.effects import EffectEngine
+    from engine.rules.events import EventBus
     from engine.state.player_state import PlayerState
 
 
@@ -40,13 +41,36 @@ if TYPE_CHECKING:
 _FACE_DOWN: dict = {"face_down": True}
 
 
-def _card_dict(card: CardInstance, ee: EffectEngine, state: GameState) -> dict:
-    """Serialize a card to a dict with both base and effect-modified values.
+def _card_dict(
+    card: CardInstance,
+    ee: EffectEngine,
+    state: GameState,
+    *,
+    cold: bool = False,
+) -> dict:
+    """Serialize a card to a dict.
 
-    Modified values are computed via the effect engine so the agent sees
-    the actual game-relevant numbers (e.g. modified power on an active
-    attack, modified defense on defenders, modified cost on a cost-reduced
-    card in hand).
+    Two modes:
+
+    * **Hot** (default, ``cold=False``): full serialization including
+      ``functional_text`` / ``type_text`` and per-instance flags. Used for
+      cards the agent actively reasons about (hand, arsenal, equipment,
+      permanents, hero, weapons, pitch zone, combat chain).
+    * **Cold** (``cold=True``): drops the rules-text blob and dead-state
+      flags that are meaningless in inert zones (graveyard, banished
+      face-up). All strategic fields — name, types, subtypes, supertypes,
+      keywords, color, pitch, cost, power, defense — are preserved. The
+      ``functional_text`` of a card sitting in graveyard/banished is
+      ~75% of its serialized weight; stripping it shrinks cold-zone
+      payloads dramatically without losing info needed for card-counting,
+      type-aware recursion (e.g. Codex of Frailty), or play-around math.
+
+    Effect-modified values (``modified_power``, ``modified_keywords``,
+    etc.) are emitted **only when they differ from the base value**.
+    Most cards aren't being continuously modified most of the time, so
+    omitting redundant duplicates trims another ~40-60 bytes per card
+    across the snapshot. Consumers should treat a missing ``modified_X``
+    as "modified equals base."
     """
     defn = card._effective_definition
     out: dict = {
@@ -65,29 +89,56 @@ def _card_dict(card: CardInstance, ee: EffectEngine, state: GameState) -> dict:
         "subtypes": sorted(s.value for s in defn.subtypes),
         "supertypes": sorted(s.value for s in defn.supertypes),
         "keywords": sorted(k.value for k in defn.keywords),
-        "type_text": defn.type_text,
-        "functional_text": defn.functional_text,
-        "is_tapped": card.is_tapped,
-        "activated_this_turn": card.activated_this_turn,
-        "face_up": card.face_up,
-        "counters": dict(card.counters),
-        "is_proxy": card.is_proxy,
     }
-    # Effect-modified values — only present when the base value exists.
+    if not cold:
+        # Rules-text and per-instance state — only matter for active cards.
+        out["type_text"] = defn.type_text
+        out["functional_text"] = defn.functional_text
+        out["is_tapped"] = card.is_tapped
+        out["activated_this_turn"] = card.activated_this_turn
+        out["face_up"] = card.face_up
+        out["counters"] = dict(card.counters)
+        out["is_proxy"] = card.is_proxy
+
+    # Effect-modified values — only when (a) the base exists and (b) the
+    # modified value actually differs. Consumers infer "modified == base"
+    # from absence. Continuous effects rarely apply to cold-zone cards but
+    # we still let the effect engine answer to be consistent.
     if defn.power is not None:
-        out["modified_power"] = ee.get_modified_power(state, card)
+        modified_power = ee.get_modified_power(state, card)
+        if modified_power != defn.power:
+            out["modified_power"] = modified_power
     if defn.defense is not None:
-        out["modified_defense"] = ee.get_modified_defense(state, card)
+        modified_defense = ee.get_modified_defense(state, card)
+        if modified_defense != defn.defense:
+            out["modified_defense"] = modified_defense
     if defn.cost is not None:
-        out["modified_cost"] = ee.get_modified_cost(state, card)
-    out["modified_subtypes"] = sorted(s.value for s in ee.get_modified_subtypes(state, card))
-    out["modified_keywords"] = sorted(k.value for k in ee.get_modified_keywords(state, card))
-    out["modified_supertypes"] = sorted(s.value for s in ee.get_modified_supertypes(state, card))
+        modified_cost = ee.get_modified_cost(state, card)
+        if modified_cost != defn.cost:
+            out["modified_cost"] = modified_cost
+    base_subtypes = sorted(s.value for s in defn.subtypes)
+    modified_subtypes = sorted(s.value for s in ee.get_modified_subtypes(state, card))
+    if modified_subtypes != base_subtypes:
+        out["modified_subtypes"] = modified_subtypes
+    base_keywords = sorted(k.value for k in defn.keywords)
+    modified_keywords = sorted(k.value for k in ee.get_modified_keywords(state, card))
+    if modified_keywords != base_keywords:
+        out["modified_keywords"] = modified_keywords
+    base_supertypes = sorted(s.value for s in defn.supertypes)
+    modified_supertypes = sorted(s.value for s in ee.get_modified_supertypes(state, card))
+    if modified_supertypes != base_supertypes:
+        out["modified_supertypes"] = modified_supertypes
     return out
 
 
-def _cards(cards: list[CardInstance], ee: EffectEngine, state: GameState) -> list[dict]:
-    return [_card_dict(c, ee, state) for c in cards]
+def _cards(
+    cards: list[CardInstance],
+    ee: EffectEngine,
+    state: GameState,
+    *,
+    cold: bool = False,
+) -> list[dict]:
+    return [_card_dict(c, ee, state, cold=cold) for c in cards]
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +158,15 @@ def _equipment_dict(
 
 
 def _own_view(player: PlayerState, ee: EffectEngine, state: GameState) -> dict:
-    """Full visibility view of a player's own seat."""
+    """Full visibility view of a player's own seat.
+
+    Hot zones (hand, arsenal, pitch, permanents, equipment, weapons, hero,
+    soul) keep full card text — the agent is reasoning about plays from
+    these. Cold zones (graveyard, banished) drop functional/type text and
+    dead-state flags but keep all strategic fields (name, types,
+    subtypes, supertypes, keywords, stats) needed for card-counting,
+    type-aware recursion, and play-arounds.
+    """
     return {
         "index": player.index,
         "life": player.life_total,
@@ -121,8 +180,8 @@ def _own_view(player: PlayerState, ee: EffectEngine, state: GameState) -> dict:
         "hand": _cards(player.hand, ee, state),
         "arsenal": _cards(player.arsenal, ee, state),
         "pitch": _cards(player.pitch, ee, state),
-        "graveyard": _cards(player.graveyard, ee, state),
-        "banished": _cards(player.banished, ee, state),
+        "graveyard": _cards(player.graveyard, ee, state, cold=True),
+        "banished": _cards(player.banished, ee, state, cold=True),
         "soul": _cards(player.soul, ee, state),
         "deck_size": len(player.deck),
         "turn_counters": asdict(player.turn_counters),
@@ -169,8 +228,8 @@ def _opponent_view(
         "hand_revealed": hand_revealed,
         "arsenal": arsenal_view,
         "pitch": _cards(player.pitch, ee, state),
-        "graveyard": _cards(player.graveyard, ee, state),
-        "banished_face_up": _cards(banished_face_up, ee, state),
+        "graveyard": _cards(player.graveyard, ee, state, cold=True),
+        "banished_face_up": _cards(banished_face_up, ee, state, cold=True),
         "banished_face_down_count": banished_face_down_count,
         "deck_size": len(player.deck),
         "turn_counters": asdict(player.turn_counters),
@@ -217,6 +276,7 @@ def snapshot_for(
     state: GameState,
     viewer_index: int,
     effect_engine: EffectEngine,
+    events: EventBus | None = None,
 ) -> dict:
     """Build a per-player snapshot of the game state for *viewer_index*.
 
@@ -260,4 +320,39 @@ def snapshot_for(
             "active_player_index": state.turn_player_index,
             "priority_player_index": state.priority_player_index,
         },
+        "active_effects": _active_effects_view(events),
     }
+
+
+def _active_effects_view(events: EventBus | None) -> list[dict]:
+    """Public-information description of registered replacement effects.
+
+    Many continuous effects already surface as ``modified_*`` values on
+    the cards they target, so the agent can see them. Replacement
+    effects (most importantly damage prevention from cards like Shelter
+    from the Storm) don't show up that way — they intercept events at
+    resolution time, leaving the opponent to wonder why their 4-damage
+    attack only dealt 3.
+
+    This view enumerates registered replacement effects and asks each
+    to ``describe()`` itself. Effects that return ``None`` (the default)
+    are kept hidden — appropriate for purely-internal replacements.
+
+    The activations behind these effects are public actions in real FaB
+    (the card moved publicly to the graveyard, its text is printed), so
+    no info-leak concern: both seats see the same list.
+
+    Returns an empty list when no event bus is provided (legacy callers
+    of ``snapshot_for`` that haven't been updated to pass it).
+    """
+    if events is None:
+        return []
+    out: list[dict] = []
+    for effect in events.iter_replacement_effects():
+        try:
+            described = effect.describe()
+        except Exception:  # noqa: BLE001 — never break snapshots over a description
+            described = None
+        if described:
+            out.append(described)
+    return out
