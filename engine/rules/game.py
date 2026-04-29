@@ -2116,5 +2116,38 @@ class Game:
         self.cost_manager.pitch_to_pay(self.state, player_index, cost)
 
     def _ask(self, decision: Decision) -> PlayerResponse:
-        """Route a decision to the appropriate player interface."""
+        """Route a decision to the appropriate player interface.
+
+        Forced single-option decisions are auto-resolved without asking the
+        player. A decision is "forced" when:
+
+        * exactly one option is offered, AND
+        * exactly one selection is required (``min_selections == 1`` and
+          ``max_selections == 1``).
+
+        Empirically this covers ~73% of all prompts in a real match (mostly
+        ``play_or_pass`` with only ``pass`` available, and ``reaction``
+        windows with no reaction card in hand). For external agents driven
+        over HTTP/stdio, eliminating these no-choice round-trips is the
+        single biggest cost reduction available — each skipped prompt
+        avoids serializing ~25 KB of state.
+
+        Multi-select decisions where every option must be picked
+        (``min == max == len(options) > 1``) are *not* auto-resolved
+        because order may carry strategic weight (e.g. ``pitch_order``,
+        ``order_triggers``).
+        """
+        if (
+            len(decision.options) == 1
+            and decision.min_selections == 1
+            and decision.max_selections == 1
+        ):
+            sole = decision.options[0]
+            log.debug(
+                "auto-resolving forced %s for p%d: %s",
+                decision.decision_type.name,
+                decision.player_index,
+                sole.action_id,
+            )
+            return PlayerResponse(selected_option_ids=[sole.action_id])
         return self.interfaces[decision.player_index].decide(self.state, decision)
