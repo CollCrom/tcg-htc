@@ -106,7 +106,51 @@ Quick smoke check — should return `in_progress` with both heroes:
 
 ---
 
-## Step 2 — spawn the two player agents
+## Step 2 — drive the two seats
+
+Two options. Pick one based on cost vs. strategic depth.
+
+### Option A — Per-decision Anthropic API driver (recommended for cost)
+
+`tools/auto_player.py` makes one Anthropic API call per decision with a
+cached system prompt. **No compounding context** — each call has constant
+input size, so an 80-decision game costs O(N) tokens instead of O(N²).
+Empirically ~5-10× cheaper than option B; trades some implicit
+working-memory across decisions (mitigatable — see "Per-decision driver
+notes" below).
+
+Requires `pip install -e .[llm]` and `ANTHROPIC_API_KEY` in env. Run two
+processes (one per seat) in parallel:
+
+```bash
+.venv/Scripts/python.exe tools/auto_player.py \
+    --port 8089 \
+    --seat A \
+    --hero "Cindra, Dracai of Retribution" \
+    --deck ref/decks/decklist-cindra-blue.md \
+    --match-id cindra-blue-vs-arakni-004 &
+
+.venv/Scripts/python.exe tools/auto_player.py \
+    --port 8089 \
+    --seat B \
+    --hero "Arakni, Marionette" \
+    --deck ref/decks/decklist-arakni.md \
+    --match-id cindra-blue-vs-arakni-004 &
+```
+
+Each process runs until `game_over` (or the engine errors). Final stdout
+includes per-seat token usage so you can verify caching is hitting:
+
+```
+[A] done. decisions=64 input_tokens=1240 output_tokens=2880 cache_read=412800 cache_write=6450
+```
+
+A high `cache_read` relative to `input_tokens` confirms the system-prompt
+cache is being reused. Override the model with `--model claude-sonnet-4-6`
+(or `claude-haiku-4-5`) to cut cost further when strategic depth isn't
+critical.
+
+### Option B — Claude Code sub-agents (legacy / strategic depth)
 
 Use `playbook/player_spawn_prompt.md` as the prompt template. Spawn both
 in **parallel** (a single message with two `Agent` tool calls), so seat
@@ -123,7 +167,11 @@ Substitute these template fields:
   alongside `events.jsonl`.
 
 The spawned agents run autonomously until the game ends or they hit
-their tool budget.
+their tool budget. **Token cost is O(N²)** in the number of decisions
+because each tool call replays the entire prior transcript as context;
+in practice this caps out at ~30-50 decisions before usage limits
+trigger. Use option A unless you specifically need a long-lived agent
+(e.g. for testing whether multi-turn implicit planning improves play).
 
 ---
 
@@ -157,7 +205,28 @@ for line in out.splitlines():
 
 ---
 
-## Budget reality
+## Per-decision driver notes (Option A)
+
+`tools/auto_player.py` makes a fresh API call per decision. **No working
+memory across decisions** by design — each decision is reasoned from the
+current state snapshot + events stream alone. In practice:
+
+- **Tactical reasoning is fully preserved** (current chain math, defender
+  evaluation, lethal detection). All the inputs are local to the decision.
+- **Strategic continuity is partially lost** (mid-game pivots, multi-turn
+  plans). Mitigatable if needed: pass the last N rationale-log lines into
+  the user message, or maintain a per-match scratchpad. Start without
+  these and only add when empirical loss demands it.
+- **Caching pays off after the first decision.** The system prompt
+  (~5K tokens including the deck text) is marked `cache_control:
+  ephemeral`, so the second through Nth decisions read from cache at
+  ~10% of write cost.
+
+Verify caching is working by checking the process's final stdout:
+`cache_read` should grow across decisions while `input_tokens` stays
+small.
+
+## Budget reality (Option B)
 
 A FaB game has 30–80 decisions per seat under focused play, and each
 decision is roughly:
