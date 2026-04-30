@@ -21,6 +21,7 @@ The engine is the largest open implementation question.
 - `agents/orchestrator.md` → Coordinates work, spawns other agents
 - `tools/match_server.py` → HTTP server wrapping the engine; both seats served as `GET /pending?player=A|B` + `POST /action?player=A|B`. Wire payloads mirror the JSONL stdio protocol.
 - `tools/agent_cli.py` → Tiny stdlib CLI (`wait`/`pending`/`act`/`status`) used by sub-agents to drive `match_server.py` from Bash.
+- `tools/auto_player.py` → Per-decision Anthropic API driver for one seat. Cheaper alternative to spawning a Claude Code sub-agent per seat (constant per-decision cost vs. compounding transcript). Requires `pip install -e .[llm]` and `ANTHROPIC_API_KEY`.
 - `playbook/match_protocol.md` → Wire-format briefing read by spawned **player** sub-agents.
 - `playbook/two_agent_match.md` → Operator runbook for "two Claude sub-agents play a game" — start here.
 - `playbook/player_spawn_prompt.md` → Parameterized template for the per-seat `Agent.prompt`.
