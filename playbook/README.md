@@ -36,4 +36,9 @@ proposals/         schema-critic's structural change proposals.
 
 ## Status
 
-Empty at project start. Populated through self-play.
+Populated through self-play. Current contents:
+
+- `heroes/arakni/fundamentals.md` — Marionette transform timing (from `cindra-blue-vs-arakni-002`).
+- `open-questions.md` — three pending items from `cindra-blue-vs-arakni-002` (LC-001/002/003), all single-match INFERRED/HYPOTHESIS awaiting corroboration.
+
+Everything else (`fundamentals/`, `general/`, `heroes/cindra/`, `heroes/*/matchups/`, `proposals/`) is still empty pending more matches.

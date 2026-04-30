@@ -440,6 +440,64 @@ def test_shelter_is_registered_as_instant_discard():
     assert handler is not None
 
 
+def test_shelter_emits_damage_prevented_event():
+    """When Shelter prevents damage, the engine emits a DAMAGE_PREVENTED
+    event carrying the original damage source, the prevented amount, and
+    the prevention source name in ``data['prevention_source']``.
+
+    Regression for replays/cindra-blue-vs-arakni-002 lessons.md (Bug 3):
+    analysts could only infer prevention from a bare ``modified=True``
+    flag on DEAL_DAMAGE. The DAMAGE_PREVENTED event makes the prevention
+    a first-class fact in the events stream.
+    """
+    game = make_game_shell()
+    shelter = _make_shelter(instance_id=60, owner_index=0)
+    game.state.players[0].hand.append(shelter)
+    game.state.players[0].life_total = 20
+
+    game._ask = make_mock_ask({})
+    game._activate_instant_discard(0, shelter)
+
+    # Capture both DEAL_DAMAGE and DAMAGE_PREVENTED events.
+    deal_events: list[GameEvent] = []
+    prevented_events: list[GameEvent] = []
+    game.events.register_handler(EventType.DEAL_DAMAGE, deal_events.append)
+    game.events.register_handler(EventType.DAMAGE_PREVENTED, prevented_events.append)
+
+    # Build a fake source so the event can identify *who* dealt the damage.
+    src = make_card(name="Hunter's Klaive", power=4)
+
+    game.events.emit(GameEvent(
+        event_type=EventType.DEAL_DAMAGE,
+        source=src,
+        target_player=0,
+        amount=4,
+    ))
+
+    # DEAL_DAMAGE was reduced 4 -> 3, modified flag set, in-band prevention data attached.
+    assert len(deal_events) == 1
+    deal = deal_events[0]
+    assert deal.amount == 3
+    assert deal.modified is True
+    assert "prevention" in deal.data
+    assert deal.data["prevention"][0]["source_name"] == "Shelter from the Storm"
+    assert deal.data["prevention"][0]["amount_prevented"] == 1
+
+    # And a separate DAMAGE_PREVENTED event was emitted carrying the
+    # original source and the prevention source name.
+    assert len(prevented_events) == 1
+    prev = prevented_events[0]
+    assert prev.source is src
+    assert prev.target_player == 0
+    assert prev.amount == 1
+    assert prev.data["prevention_source"] == "Shelter from the Storm"
+    assert prev.data["original_amount"] == 4
+    assert prev.data["remaining_amount"] == 3
+
+    # Net life change: 4 - 1 prevented = 3 damage dealt.
+    assert game.state.players[0].life_total == 17
+
+
 # ---------------------------------------------------------------------------
 # 4. Take Up the Mantle — copy effect
 # ---------------------------------------------------------------------------

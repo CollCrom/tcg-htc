@@ -27,6 +27,12 @@ Until the game ends, repeat:
      `card_instance_id`. **You must respond with `action_id`s from this list.**
    - `state` — your view of the board.
 
+   The wrapper response also carries `pending_age_seconds` (sibling of
+   `pending` and `status`): seconds since this seat's current decision was
+   raised, or `null` when no decision is pending. Observability only — the
+   engine never times out a decision; you can ignore this field, but
+   orchestrators use it to spot wedged matches.
+
 3. **Reason.** Look at `state.you.life`, `state.opponent.life`,
    `state.you.hand`, the `combat_chain`, etc. Pick the action that best
    serves your gameplan. Be deliberate; do not auto-pick.

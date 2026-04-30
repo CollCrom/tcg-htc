@@ -24,11 +24,16 @@ Replay artifacts land in ``<replays-dir>/<match-id>/``:
 Endpoints
 ---------
 ``GET  /pending?player=A`` →
-    ``{"pending": {<decision payload>} | null, "status": {<status>}}``
+    ``{"pending": {<decision payload>} | null,
+       "pending_age_seconds": <float> | null,
+       "status": {<status>}}``
     The decision payload mirrors the JSONL stdio ``decision`` message
     (decision_type, prompt, options, redacted ``state``). Pending is
     ``null`` when it is not this player's turn to choose, when the
     engine is mid-resolution between decisions, or after the game ends.
+    ``pending_age_seconds`` is the elapsed time (monotonic) since this
+    seat's current decision was raised, or ``null`` when no decision is
+    pending. Observability only — the server never times out decisions.
 
 ``POST /action?player=A`` (body: ``{"selected_option_ids": ["..."]}``) →
     ``{"ok": true, "status": {<status>}}``
@@ -56,6 +61,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+
+# When this script is launched directly (``python tools/match_server.py``)
+# Python sets ``sys.path[0]`` to ``tools/``, not the repo root, so the
+# ``engine`` package isn't importable. Bootstrap the repo root onto
+# ``sys.path`` before importing engine modules. This mirrors the pattern
+# used by ``tools/scenario_viewer.py``.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from engine.cards.card_db import CardDatabase
 from engine.decks.deck_list import DeckList, parse_markdown_decklist
@@ -89,6 +103,12 @@ class HttpBridgePlayer:
         self._allowed_ids: set[str] = set()
         self._response: PlayerResponse | None = None
         self._closed = False
+        # Monotonic timestamp captured when the current decision was raised.
+        # ``None`` while no decision is pending. Pure observability: the
+        # server never times out a decision, this only powers the
+        # ``pending_age_seconds`` field on /pending so analysts can spot
+        # wedged decisions when an opposing agent has died.
+        self._pending_since: float | None = None
 
     # ----- PlayerInterface -----
 
@@ -98,6 +118,7 @@ class HttpBridgePlayer:
         payload = self._encode(decision, game_state)
         with self._cv:
             self._pending = payload
+            self._pending_since = time.monotonic()
             self._allowed_ids = {opt.action_id for opt in decision.options}
             self._cv.notify_all()
             while self._response is None and not self._closed:
@@ -107,6 +128,7 @@ class HttpBridgePlayer:
             response = self._response
             self._response = None
             self._pending = None
+            self._pending_since = None
             self._allowed_ids = set()
             self._cv.notify_all()
         assert response is not None
@@ -117,6 +139,18 @@ class HttpBridgePlayer:
     def get_pending(self) -> dict | None:
         with self._cv:
             return self._pending
+
+    def pending_age_seconds(self) -> float | None:
+        """Seconds since the current decision was raised, or ``None`` if idle.
+
+        Uses :func:`time.monotonic` so the value is unaffected by wall-clock
+        adjustments. Observability only — the server never times out
+        decisions on its own.
+        """
+        with self._cv:
+            if self._pending_since is None:
+                return None
+            return max(0.0, time.monotonic() - self._pending_since)
 
     def submit(self, ids: list[str]) -> tuple[bool, str]:
         with self._cv:
@@ -358,7 +392,11 @@ def make_handler(match: MatchServer) -> type[BaseHTTPRequestHandler]:
                     return
                 self._json(
                     200,
-                    {"pending": player.get_pending(), "status": match.status()},
+                    {
+                        "pending": player.get_pending(),
+                        "pending_age_seconds": player.pending_age_seconds(),
+                        "status": match.status(),
+                    },
                 )
                 return
             if url.path == "/card":

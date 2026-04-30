@@ -24,6 +24,7 @@ class EventType(Enum):
     """All event types in the game."""
     # Damage
     DEAL_DAMAGE = auto()
+    DAMAGE_PREVENTED = auto()  # emitted when a replacement effect reduces DEAL_DAMAGE
 
     # Card movement
     DRAW_CARD = auto()
