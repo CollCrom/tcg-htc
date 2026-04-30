@@ -76,14 +76,27 @@ for n in ['decklist-cindra-blue.md','decklist-arakni.md','decklist-cindra.md','d
 .venv/Scripts/python.exe tools/match_server.py \
     --port 8089 \
     --seed 23 \
+    --match-id cindra-blue-vs-arakni-001 \
     --deck-a ref/decks/decklist-cindra-blue.md \
     --deck-b ref/decks/decklist-arakni.md \
     -v >replays/server.log 2>&1 &
 ```
 
 Run it as a background command (`run_in_background=true` if you're
-calling this from Claude Code). Log goes to `replays/server.log`. The
-server holds the live game state in memory; no pickling.
+calling this from Claude Code). The server holds the live game state in
+memory; no pickling.
+
+Artifacts produced for this match:
+
+- `replays/server.log` — HTTP request/response log (operator-facing).
+- `replays/<match-id>/events.jsonl` — engine event stream, one JSON
+  object per game event. Written by the server as the engine emits
+  events; line-buffered so a force-kill still leaves usable data.
+- `replays/<match-id>/playerA.log`, `playerB.log` — per-action rationale
+  appended by the player agents themselves (see Step 2).
+
+`--match-id` defaults to `seed-<seed>-<timestamp>` if omitted. Pass
+`--no-event-log` to disable the events.jsonl writer (useful for tests).
 
 Quick smoke check — should return `in_progress` with both heroes:
 
@@ -104,6 +117,10 @@ Substitute these template fields:
 - `$PORT` → server port (e.g. `8089`)
 - `$HERO_NAME` → from the deck file
 - `$DECK_PATH` → e.g. `ref/decks/decklist-cindra-blue.md`
+- `$MATCH_ID` → must match the value passed to `match_server.py`. Each
+  player agent appends its per-action rationale lines to
+  `replays/$MATCH_ID/player$SEAT.log` — that's the analyst's input
+  alongside `events.jsonl`.
 
 The spawned agents run autonomously until the game ends or they hit
 their tool budget.

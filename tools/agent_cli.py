@@ -24,6 +24,11 @@ Subcommands
     Submit one or more action_ids for the seat's current pending
     decision. Use ``--id`` once per id (multi-select decisions take >1).
 
+``card --name "Codex of Frailty"``
+    Look up a card's full ``functional_text`` / ``type_text``. Useful
+    when the snapshot omitted that text for a cold-zone card (graveyard,
+    banished face-up). Case- and diacritic-insensitive.
+
 All commands print one JSON line to stdout. Exit code 0 on success, 1 on
 HTTP error, 2 on local error or timeout.
 
@@ -32,6 +37,7 @@ Examples::
     python tools/agent_cli.py wait --player A
     python tools/agent_cli.py act --player A --id pass
     python tools/agent_cli.py status
+    python tools/agent_cli.py card --name "Codex of Frailty"
 """
 from __future__ import annotations
 
@@ -90,6 +96,13 @@ def cmd_act(args: argparse.Namespace) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_card(args: argparse.Namespace) -> int:
+    from urllib.parse import quote
+    out = _http("GET", f"{_base(args)}/card?name={quote(args.name)}")
+    print(json.dumps(out, ensure_ascii=False))
+    return 0 if "error" not in out else 1
+
+
 def cmd_wait(args: argparse.Namespace) -> int:
     deadline = time.time() + args.timeout
     while time.time() < deadline:
@@ -142,6 +155,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     sw.add_argument("--interval", type=float, default=0.5)
     sw.add_argument("--timeout", type=float, default=120.0)
 
+    sc = sub.add_parser("card")
+    sc.add_argument(
+        "--name", required=True,
+        help="Card name; case- and diacritic-insensitive lookup.",
+    )
+
     return p.parse_args(argv)
 
 
@@ -152,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         "pending": cmd_pending,
         "act": cmd_act,
         "wait": cmd_wait,
+        "card": cmd_card,
     }[args.cmd](args)
 
 

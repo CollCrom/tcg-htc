@@ -659,18 +659,15 @@ def test_enlightened_strike_power_mode():
     hand_card = make_card(instance_id=50, owner_index=0, zone=Zone.HAND)
     game.state.players[0].hand.append(hand_card)
 
-    # Mock ask: first decision = put card on bottom, second = choose power mode
-    call_count = [0]
-
+    # Dispatch by decision content (robust to forced-decision auto-resolution
+    # in Game._ask, which skips bottom_<id> when there's only one option).
     def mock_ask(decision):
-        call_count[0] += 1
-        if call_count[0] == 1:
-            # Additional cost: put card on bottom
+        ids = {opt.action_id for opt in decision.options}
+        if any(a.startswith("bottom_") for a in ids):
             return PlayerResponse(
                 selected_option_ids=[f"bottom_{hand_card.instance_id}"]
             )
-        elif call_count[0] == 2:
-            # Choose power mode
+        if "power" in ids:
             return PlayerResponse(selected_option_ids=["power"])
         return PlayerResponse(selected_option_ids=["pass"])
 
@@ -696,15 +693,15 @@ def test_enlightened_strike_go_again_mode():
     hand_card = make_card(instance_id=50, owner_index=0, zone=Zone.HAND)
     game.state.players[0].hand.append(hand_card)
 
-    call_count = [0]
-
+    # Dispatch by decision content (see test_enlightened_strike_power_mode
+    # for why call-count dispatch is brittle here).
     def mock_ask(decision):
-        call_count[0] += 1
-        if call_count[0] == 1:
+        ids = {opt.action_id for opt in decision.options}
+        if any(a.startswith("bottom_") for a in ids):
             return PlayerResponse(
                 selected_option_ids=[f"bottom_{hand_card.instance_id}"]
             )
-        elif call_count[0] == 2:
+        if "go_again" in ids:
             return PlayerResponse(selected_option_ids=["go_again"])
         return PlayerResponse(selected_option_ids=["pass"])
 

@@ -53,6 +53,7 @@ from engine.state.snapshot import snapshot_for
 
 if TYPE_CHECKING:
     from engine.rules.effects import EffectEngine
+    from engine.rules.events import EventBus
 
 
 class StdioPlayer:
@@ -80,11 +81,17 @@ class StdioPlayer:
         player_index: int,
         *,
         effect_engine: EffectEngine | None = None,
+        events: EventBus | None = None,
         stdin: IO[str] | None = None,
         stdout: IO[str] | None = None,
     ) -> None:
         self.player_index = player_index
         self.effect_engine: EffectEngine | None = effect_engine
+        # Optional EventBus reference so snapshots can include
+        # ``active_effects[]`` (e.g. damage prevention from Shelter from
+        # the Storm). Wire after Game construction:
+        # ``player.events = game.events``.
+        self.events: EventBus | None = events
         self._stdin = stdin if stdin is not None else sys.stdin
         self._stdout = stdout if stdout is not None else sys.stdout
 
@@ -123,7 +130,9 @@ class StdioPlayer:
     def _encode_decision(self, decision: Decision, game_state: GameState) -> dict:
         # effect_engine is asserted non-None at the top of decide().
         assert self.effect_engine is not None
-        state_snapshot = snapshot_for(game_state, self.player_index, self.effect_engine)
+        state_snapshot = snapshot_for(
+            game_state, self.player_index, self.effect_engine, self.events,
+        )
         return {
             "type": "decision",
             "player_index": decision.player_index,

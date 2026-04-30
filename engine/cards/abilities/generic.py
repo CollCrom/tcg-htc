@@ -311,10 +311,38 @@ def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
                 and self.uses_remaining > 0
             )
 
+        def describe(self) -> dict:
+            # Public — the activation (Shelter discarded from hand) was
+            # visible to all players, so the ongoing prevention should be
+            # too. Surfaced via snapshot ``active_effects[]``.
+            return {
+                "source_name": "Shelter from the Storm",
+                "controller": self.target_player,
+                "target_player": self.target_player,
+                "kind": "damage_prevention",
+                "remaining_uses": self.uses_remaining,
+                "summary": (
+                    f"Prevents 1 damage from each of the next "
+                    f"{self.uses_remaining} damage instance(s) dealt "
+                    f"to player {self.target_player} this turn"
+                ),
+            }
+
         def replace(self, event: GameEvent) -> GameEvent:
             source_name = event.source.name if event.source else "unknown"
-            event.amount = max(0, event.amount - 1)
+            original_amount = event.amount
+            prevented = min(1, original_amount)  # Shelter prevents up to 1 per instance
+            event.amount = max(0, original_amount - 1)
             event.modified = True
+            # Annotate the DEAL_DAMAGE event in-band so analysts reading the
+            # events stream can identify the prevention source / amount
+            # without inferring from the bare ``modified`` flag.
+            event.data.setdefault("prevention", []).append({
+                "source_name": "Shelter from the Storm",
+                "controller": self.target_player,
+                "amount_prevented": prevented,
+                "original_amount": original_amount,
+            })
             self.uses_remaining -= 1
             pname = ctx.player_name(self.target_player)
             if self.uses_remaining > 0:
@@ -328,6 +356,22 @@ def _shelter_from_the_storm_instant(ctx: AbilityContext) -> None:
                     f"(expired for {pname})"
                 )
                 ctx.events.unregister_replacement(self)
+            # Emit an explicit DAMAGE_PREVENTED event so replays surface
+            # prevention as a first-class fact, not just a "modified" flag
+            # on DEAL_DAMAGE.  Carries the *original* damage source as
+            # ``source`` (so listeners know who was dealing the damage)
+            # and the prevention source name in ``data['prevention_source']``.
+            ctx.events.emit(GameEvent(
+                event_type=EventType.DAMAGE_PREVENTED,
+                source=event.source,
+                target_player=self.target_player,
+                amount=prevented,
+                data={
+                    "prevention_source": "Shelter from the Storm",
+                    "original_amount": original_amount,
+                    "remaining_amount": event.amount,
+                },
+            ))
             return event
 
     prevention = ShelterPrevention(controller, ctx.source_card)

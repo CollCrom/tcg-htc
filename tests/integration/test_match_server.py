@@ -173,6 +173,7 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
             "--seed", "7",
             "--deck-a", str(DECK_A),
             "--deck-b", str(DECK_B),
+            "--no-event-log",
         ],
         stdout=log_path.open("w", encoding="utf-8"),
         stderr=subprocess.STDOUT,
@@ -196,10 +197,19 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
 
             progressed = False
             for player in ("A", "B"):
-                # Fetch + pick + submit, retrying once on a 409 "unknown
-                # action_ids" response. That 409 means the engine has moved
-                # on to a different decision for this player between our
-                # GET and POST — re-fetching gives us the current options.
+                # Fetch + pick + submit, retrying once on a 409 indicating
+                # the engine state moved between our GET and POST. Two
+                # benign races we tolerate:
+                #   * "unknown action_ids" — a new decision was raised for
+                #     this player; the action_ids we picked belong to the
+                #     previous decision.
+                #   * "no pending decision" — the player's pending was
+                #     cleared between our GET and POST (e.g. engine thread
+                #     advanced after another seat acted, briefly leaving
+                #     this seat idle). Re-fetching either returns the next
+                #     decision or null (in which case the inner loop
+                #     breaks). Manifests on slower runners where the GET
+                #     reads stale pending state momentarily.
                 # If two consecutive submissions both 409, that's a real
                 # bridge bug and the test should fail.
                 for attempt in range(2):
@@ -219,9 +229,14 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
                         decisions_seen += 1
                         progressed = True
                         break
-                    if code == 409 and "unknown action_ids" in str(ack.get("error", "")):
-                        # Decision raced; loop and re-fetch.
-                        continue
+                    if code == 409:
+                        err_msg = str(ack.get("error", ""))
+                        if (
+                            "unknown action_ids" in err_msg
+                            or "no pending decision" in err_msg
+                        ):
+                            # Decision raced; loop and re-fetch.
+                            continue
                     raise AssertionError(
                         f"act rejected for player {player} (code={code}): {ack}"
                     )
@@ -261,6 +276,143 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
             proc.wait(timeout=5)
 
 
+def test_match_server_reports_pending_age_seconds(tmp_path):
+    """``/pending`` exposes an increasing age while a decision is pending.
+
+    Observability hook for analysts/orchestrators: when an opposing agent
+    dies, the surviving seat's polls would otherwise look healthy
+    (200 OK forever). ``pending_age_seconds`` lets a watchdog spot a
+    wedged decision without requiring server-side enforcement.
+    """
+    port = _free_port()
+    log_path = tmp_path / "server.log"
+    proc = subprocess.Popen(
+        [
+            sys.executable, str(MATCH_SERVER),
+            "--port", str(port),
+            "--seed", "7",
+            "--deck-a", str(DECK_A),
+            "--deck-b", str(DECK_B),
+            "--no-event-log",
+        ],
+        stdout=log_path.open("w", encoding="utf-8"),
+        stderr=subprocess.STDOUT,
+        cwd=REPO_ROOT,
+    )
+    try:
+        _wait_until_listening(port, SERVER_BOOT_TIMEOUT_S)
+        base = f"http://127.0.0.1:{port}"
+
+        # 1) Find a seat with a pending decision (whichever fires first
+        # during pre-game equipment selection or the opening turn).
+        active_seat: str | None = None
+        first_age: float | None = None
+        deadline = time.time() + 15.0
+        while time.time() < deadline and active_seat is None:
+            for seat in ("A", "B"):
+                resp = _http_get(f"{base}/pending?player={seat}")
+                if resp.get("pending") is not None:
+                    active_seat = seat
+                    age = resp.get("pending_age_seconds")
+                    assert isinstance(age, (int, float)) and age >= 0.0, (
+                        f"expected pending_age_seconds to be a non-negative number "
+                        f"while a decision is pending; got {age!r}"
+                    )
+                    first_age = float(age)
+                    break
+            if active_seat is None:
+                time.sleep(0.05)
+        assert active_seat is not None, "no pending decision appeared within 15s"
+        assert first_age is not None
+
+        # Capture the decision payload for later submission.
+        first_resp = _http_get(f"{base}/pending?player={active_seat}")
+        decision = first_resp["pending"]
+        assert decision is not None, "decision vanished between polls"
+
+        # 2) Sleep, then re-poll: age should have increased.
+        time.sleep(0.2)
+        second = _http_get(f"{base}/pending?player={active_seat}")
+        # If the decision is still pending, age must have grown.
+        if second.get("pending") is not None:
+            second_age = second.get("pending_age_seconds")
+            assert isinstance(second_age, (int, float))
+            assert second_age > first_age, (
+                f"pending_age_seconds did not increase across polls: "
+                f"first={first_age} second={second_age}"
+            )
+            prior_age = float(second_age)
+        else:
+            # Decision raced to completion before we could re-poll. Fine —
+            # the age must be null in that case.
+            assert second.get("pending_age_seconds") is None
+            prior_age = first_age
+
+        # 3) The seat with no pending decision (if any) must report
+        # pending_age_seconds == null.
+        idle_seat = "B" if active_seat == "A" else "A"
+        idle_resp = _http_get(f"{base}/pending?player={idle_seat}")
+        if idle_resp.get("pending") is None:
+            assert idle_resp.get("pending_age_seconds") is None, (
+                f"idle seat {idle_seat} reported non-null pending_age_seconds"
+            )
+
+        # 4) Submit an action for the active seat. Use the original
+        # decision payload (re-fetch if the engine raced past it).
+        cur = _http_get(f"{base}/pending?player={active_seat}")
+        if cur.get("pending") is None:
+            # Engine moved on; nothing more to verify on the post-submit
+            # path beyond confirming the age really cleared.
+            assert cur.get("pending_age_seconds") is None
+            return
+        decision = cur["pending"]
+        rng = random.Random(31)
+        ids = _pick(rng, decision)
+        code, ack = _http_post(
+            f"{base}/action?player={active_seat}",
+            {"selected_option_ids": ids},
+        )
+        # Allow one retry on the documented 409 race.
+        if code == 409 and "unknown action_ids" in str(ack.get("error", "")):
+            cur = _http_get(f"{base}/pending?player={active_seat}")
+            if cur.get("pending") is None:
+                assert cur.get("pending_age_seconds") is None
+                return
+            ids = _pick(rng, cur["pending"])
+            code, ack = _http_post(
+                f"{base}/action?player={active_seat}",
+                {"selected_option_ids": ids},
+            )
+        assert code == 200 and ack.get("ok") is True, (
+            f"submission failed: code={code} ack={ack}"
+        )
+
+        # 5) Post-submit: the next /pending for this seat must NOT
+        # carry the stale age. Either pending is null
+        # (pending_age_seconds null) or a brand-new decision was raised
+        # with a fresh, smaller age.
+        post = _http_get(f"{base}/pending?player={active_seat}")
+        post_age = post.get("pending_age_seconds")
+        if post.get("pending") is None:
+            assert post_age is None, (
+                f"expected null pending_age_seconds after submission with no "
+                f"pending decision; got {post_age!r}"
+            )
+        else:
+            assert isinstance(post_age, (int, float))
+            assert post_age < prior_age, (
+                f"post-submission decision reported stale age "
+                f"{post_age} >= prior {prior_age}"
+            )
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
 def test_match_server_rejects_unknown_player():
     """Sanity: invalid ?player= values get a 400."""
     port = _free_port()
@@ -271,6 +423,7 @@ def test_match_server_rejects_unknown_player():
             "--seed", "1",
             "--deck-a", str(DECK_A),
             "--deck-b", str(DECK_B),
+            "--no-event-log",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
