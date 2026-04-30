@@ -197,10 +197,19 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
 
             progressed = False
             for player in ("A", "B"):
-                # Fetch + pick + submit, retrying once on a 409 "unknown
-                # action_ids" response. That 409 means the engine has moved
-                # on to a different decision for this player between our
-                # GET and POST — re-fetching gives us the current options.
+                # Fetch + pick + submit, retrying once on a 409 indicating
+                # the engine state moved between our GET and POST. Two
+                # benign races we tolerate:
+                #   * "unknown action_ids" — a new decision was raised for
+                #     this player; the action_ids we picked belong to the
+                #     previous decision.
+                #   * "no pending decision" — the player's pending was
+                #     cleared between our GET and POST (e.g. engine thread
+                #     advanced after another seat acted, briefly leaving
+                #     this seat idle). Re-fetching either returns the next
+                #     decision or null (in which case the inner loop
+                #     breaks). Manifests on slower runners where the GET
+                #     reads stale pending state momentarily.
                 # If two consecutive submissions both 409, that's a real
                 # bridge bug and the test should fail.
                 for attempt in range(2):
@@ -220,9 +229,14 @@ def test_match_server_drives_full_game_to_completion(tmp_path):
                         decisions_seen += 1
                         progressed = True
                         break
-                    if code == 409 and "unknown action_ids" in str(ack.get("error", "")):
-                        # Decision raced; loop and re-fetch.
-                        continue
+                    if code == 409:
+                        err_msg = str(ack.get("error", ""))
+                        if (
+                            "unknown action_ids" in err_msg
+                            or "no pending decision" in err_msg
+                        ):
+                            # Decision raced; loop and re-fetch.
+                            continue
                     raise AssertionError(
                         f"act rejected for player {player} (code={code}): {ack}"
                     )
