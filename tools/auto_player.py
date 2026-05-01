@@ -41,11 +41,51 @@ if __package__ is None:
 import argparse
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.request
 
-import anthropic
+
+def _load_dotenv() -> None:
+    """Load `KEY=VALUE` lines from a repo-root ``.env`` file into ``os.environ``.
+
+    Existing environment variables win — `.env` only fills in keys that are
+    not already set. Lines starting with ``#`` and blank lines are ignored.
+    Surrounding single or double quotes on the value are stripped.
+
+    Used so the operator can drop ``ANTHROPIC_API_KEY=sk-ant-...`` into a
+    repo-local ``.env`` (gitignored) without restarting their shell or
+    Claude Code session. No dependency on python-dotenv.
+    """
+    dotenv_path = Path(__file__).resolve().parent.parent / ".env"
+    if not dotenv_path.exists():
+        return
+    try:
+        for raw in dotenv_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # Strip a single matched pair of surrounding quotes.
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                value = value[1:-1]
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except OSError:
+        # Silently ignore — operator can pass the env var directly instead.
+        pass
+
+
+_load_dotenv()
+
+
+import anthropic  # noqa: E402 — must come after _load_dotenv() so the SDK sees the key
+
+from engine.cards.card_db import CardDatabase  # noqa: E402 — sys.path bootstrap above
+from engine.decks.deck_list import parse_markdown_decklist  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -56,6 +96,26 @@ POLL_BACKOFF_S = 0.2
 MAX_409_RETRIES = 3
 DEFAULT_MODEL = "claude-opus-4-7"
 DEFAULT_MAX_TOKENS = 512  # plenty for a tool call with a one-sentence rationale
+
+# Default paths (resolved relative to repo root, set by sys.path bootstrap above).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CARDS_TSV = REPO_ROOT / "data" / "cards.tsv"
+DEFAULT_RULES_PATH = REPO_ROOT / "ref" / "rules" / "comprehensive-rules.md"
+
+# Sections of the comprehensive rules to embed in the system prompt. Loaded by
+# header text so the rules doc can grow without breaking us. The combination
+# pads the system prompt above Opus 4.7's 4096-token cache minimum AND gives
+# the model rules grounding for the most decision-relevant areas (combat,
+# priority, costs, mark, ability keywords).
+RULES_SECTIONS_TO_INCLUDE = (
+    "### 1.11 Priority",
+    "### 1.14 Costs",
+    "### 4.3 Action Phase",
+    "### 4.4 End Phase",
+    "## 7 Combat",  # whole combat chapter — the densest decision-relevant rules
+    "### 8.3 Ability Keywords",
+    "### 9.3 Marked",
+)
 
 log = logging.getLogger("auto_player")
 
@@ -135,7 +195,97 @@ JSON with:
 {deck_text}
 ```
 
+# Card reference (your deck — type line + functional text per unique card)
+
+The deck list above gives names and counts; this section gives you the actual
+text on every card you might draw. Cited verbatim from the project's card
+database. Same deck = same reference, sorted alphabetically — kept stable so
+the system prompt prefix caches across decisions.
+
+{card_reference}
+
+# Rules excerpts
+
+Decision-relevant sections of the official Comprehensive Rules. Use these to
+ground rule-edge calls (priority order, mark removal timing, chain-link
+mechanics). Match-static — same on every decision.
+
+{rules_excerpt}
+
 End of system context. The user message is one decision payload — respond with `submit_action`."""
+
+
+# ---------------------------------------------------------------------------
+# System-prompt builders (cache-stable: deterministic ordering, no per-call data)
+# ---------------------------------------------------------------------------
+
+
+def _build_card_reference(deck_text: str, db: CardDatabase) -> str:
+    """Return a markdown reference of every unique card in the deck.
+
+    Includes hero, weapons, equipment, demi-heroes, and main-deck cards. One
+    block per unique name (variants — Red/Yellow/Blue — share the same text;
+    color is implicit from the deck list above). Sorted alphabetically so the
+    output is byte-identical across calls with the same deck — required for
+    prompt caching to hit.
+
+    Cards not found in the database are silently skipped (the engine warns
+    separately at deck-load time, no need to duplicate).
+    """
+    deck = parse_markdown_decklist(deck_text)
+    names: set[str] = {deck.hero_name}
+    names.update(deck.weapons)
+    names.update(deck.equipment)
+    names.update(deck.demi_heroes)
+    names.update(entry.name for entry in deck.cards)
+
+    blocks: list[str] = []
+    for name in sorted(names):
+        card = db.get_by_name(name)
+        if card is None:
+            continue
+        type_text = (card.type_text or "").strip()
+        functional = (card.functional_text or "").strip() or "_(no rules text)_"
+        blocks.append(f"### {card.name}\n_{type_text}_\n{functional}")
+    return "\n\n".join(blocks)
+
+
+def _load_rules_excerpt(rules_path: Path) -> str:
+    """Slice the comprehensive-rules.md doc to ``RULES_SECTIONS_TO_INCLUDE``.
+
+    For each header in the include list, copy from that header through to the
+    next sibling-level header (or higher). Skips quietly if the file or any
+    individual header is missing — used as padding, not load-bearing.
+    """
+    if not rules_path.exists():
+        return "_(rules file not found at "
+        f"{rules_path} — proceeding without rules excerpt)_"
+    text = rules_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    def section(start_header: str) -> str:
+        start_idx: int | None = None
+        start_depth = start_header.count("#", 0, start_header.index(" "))
+        for i, ln in enumerate(lines):
+            if ln.strip().startswith(start_header):
+                start_idx = i
+                break
+        if start_idx is None:
+            return ""
+        # Find next header at the same or shallower depth.
+        end_idx = len(lines)
+        for j in range(start_idx + 1, len(lines)):
+            stripped = lines[j].lstrip()
+            if not stripped.startswith("#"):
+                continue
+            hashes = len(stripped) - len(stripped.lstrip("#"))
+            if hashes <= start_depth:
+                end_idx = j
+                break
+        return "\n".join(lines[start_idx:end_idx]).rstrip()
+
+    chunks = [section(h) for h in RULES_SECTIONS_TO_INCLUDE]
+    return "\n\n".join(c for c in chunks if c)
 
 
 # ---------------------------------------------------------------------------
@@ -210,12 +360,28 @@ def run(args: argparse.Namespace) -> int:
         return 2
     deck_text = deck_path.read_text(encoding="utf-8")
 
+    cards_path = Path(args.cards)
+    if not cards_path.exists():
+        print(f"cards database not found: {cards_path}", file=sys.stderr)
+        return 2
+    db = CardDatabase.load(cards_path)
+    card_reference = _build_card_reference(deck_text, db)
+
+    rules_path = Path(args.rules)
+    rules_excerpt = _load_rules_excerpt(rules_path)
+
     blurb_suffix = f" ({args.blurb})" if args.blurb else ""
     system_text = SYSTEM_PROMPT_TEMPLATE.format(
         seat=seat,
         hero=args.hero,
         blurb_suffix=blurb_suffix,
         deck_text=deck_text,
+        card_reference=card_reference,
+        rules_excerpt=rules_excerpt,
+    )
+    log.info(
+        "system_prompt built: %d chars (target ≥16K for Opus 4.7 cache to engage)",
+        len(system_text),
     )
 
     log_path = Path("replays") / args.match_id / f"player{seat}.log"
@@ -367,6 +533,20 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--blurb", default=None,
         help="Optional one-line deck characterization (e.g. 'Blue Cindra').",
+    )
+    p.add_argument(
+        "--cards", default=str(DEFAULT_CARDS_TSV),
+        help=(
+            f"Path to the card database TSV (default: {DEFAULT_CARDS_TSV}). "
+            "Cited verbatim into the cached system prompt as a card-text reference."
+        ),
+    )
+    p.add_argument(
+        "--rules", default=str(DEFAULT_RULES_PATH),
+        help=(
+            f"Path to comprehensive-rules.md (default: {DEFAULT_RULES_PATH}). "
+            "Decision-relevant excerpts are embedded in the cached system prompt."
+        ),
     )
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
