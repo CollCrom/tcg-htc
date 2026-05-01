@@ -116,7 +116,7 @@ def test_log_line_joins_multi_select_action_ids():
     assert "defend_12,defend_15" in line
 
 
-def test_system_prompt_includes_seat_hero_and_deck_text(tmp_path: Path):
+def test_system_prompt_includes_seat_hero_and_deck_text():
     """System prompt must surface seat, hero, and the full deck text (cached)."""
     ap = _load_auto_player()
 
@@ -126,6 +126,8 @@ def test_system_prompt_includes_seat_hero_and_deck_text(tmp_path: Path):
         hero="Cindra, Dracai of Retribution",
         blurb_suffix=" (Blue Cindra)",
         deck_text=deck_text,
+        card_reference="(test stub)",
+        rules_excerpt="(test stub)",
     )
 
     assert "Player A" in formatted
@@ -136,6 +138,82 @@ def test_system_prompt_includes_seat_hero_and_deck_text(tmp_path: Path):
     # these for play quality (no working memory across calls).
     assert "Don't over-pass" in formatted
     assert "Defenders" in formatted
+
+
+def test_card_reference_includes_every_unique_deck_card():
+    """Card reference must cover hero + weapons + equipment + main deck cards.
+
+    Match-static section is what makes the system prompt cacheable, so it
+    must be deterministic in content and ordering.
+    """
+    ap = _load_auto_player()
+    from engine.cards.card_db import CardDatabase
+
+    deck_path = REPO_ROOT / "ref" / "decks" / "decklist-cindra-blue.md"
+    deck_text = deck_path.read_text(encoding="utf-8")
+    db = CardDatabase.load(REPO_ROOT / "data" / "cards.tsv")
+
+    ref = ap._build_card_reference(deck_text, db)
+
+    # Hero is in there.
+    assert "Cindra, Dracai of Retribution" in ref
+    # Sorted alphabetically — same input must always produce the same bytes,
+    # otherwise the cache prefix invalidates between calls.
+    assert ref == ap._build_card_reference(deck_text, db)
+    # Each entry has a markdown header + italics for type line.
+    assert ref.startswith("### "), ref[:80]
+    # Reasonable size — at least a few KB given Cindra Blue has 30+ unique cards.
+    assert len(ref) > 4000, f"card reference too short: {len(ref)} chars"
+
+
+def test_rules_excerpt_loads_decision_relevant_sections():
+    """Rules excerpt must include §7 Combat (the densest decision-relevant rules)."""
+    ap = _load_auto_player()
+    rules_path = REPO_ROOT / "ref" / "rules" / "comprehensive-rules.md"
+
+    excerpt = ap._load_rules_excerpt(rules_path)
+
+    # Each section in the include list should appear in the excerpt.
+    assert "## 7 Combat" in excerpt
+    assert "### 9.3 Marked" in excerpt
+    assert "### 1.11 Priority" in excerpt
+    # Determinism: same input → same output (cache prefix stability).
+    assert excerpt == ap._load_rules_excerpt(rules_path)
+
+
+def test_full_system_prompt_exceeds_opus_47_cache_minimum():
+    """The cached prefix must clear Opus 4.7's ~4096-token minimum.
+
+    If this regresses we silently fall back to no caching and pay full input
+    price on every decision (the bug the card reference + rules excerpt fix).
+    Heuristic: 4 chars/token is conservative — real Anthropic tokens are
+    typically 4-5 chars each. Targeting >= 16K characters gives ~4K tokens
+    minimum even at the worst-case 4 chars/token, with margin for the rules
+    doc shrinking by ~20%.
+    """
+    ap = _load_auto_player()
+    from engine.cards.card_db import CardDatabase
+
+    deck_text = (REPO_ROOT / "ref" / "decks" / "decklist-cindra-blue.md").read_text(
+        encoding="utf-8"
+    )
+    db = CardDatabase.load(REPO_ROOT / "data" / "cards.tsv")
+    card_ref = ap._build_card_reference(deck_text, db)
+    rules = ap._load_rules_excerpt(REPO_ROOT / "ref" / "rules" / "comprehensive-rules.md")
+
+    full = ap.SYSTEM_PROMPT_TEMPLATE.format(
+        seat="A",
+        hero="Cindra, Dracai of Retribution",
+        blurb_suffix=" (Blue Cindra)",
+        deck_text=deck_text,
+        card_reference=card_ref,
+        rules_excerpt=rules,
+    )
+    assert len(full) >= 16000, (
+        f"system prompt too short ({len(full)} chars) to engage Opus 4.7 cache "
+        f"(need ~4096 tokens, ~16K chars at 4 chars/token). Caching will "
+        f"silently no-op and every decision will pay full input price."
+    )
 
 
 def test_main_rejects_invalid_seat(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
