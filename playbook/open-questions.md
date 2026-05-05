@@ -15,23 +15,34 @@ Format:
 
 ---
 
-## Cindra Blue vs Arakni: each opposing Mark application accelerates Marionette → Agent of Chaos
-
-- First seen: match `cindra-blue-vs-arakni-002` (LC-001, INFERRED)
-- Plausible mechanism: Cindra Blue's listed deck (`ref/decks/decklist-cindra-blue.md`) has no Mark-removal cards, so once an Arakni source applies Mark on hit, Cindra stays marked through end of turn and Marionette's transform check fires. Arakni's deck has multiple Mark-on-hit sources (Hunter's Klaive, Mark of the Black Widow), so the transform clock is short.
-- What would settle it: a second Cindra Blue vs Arakni match where (a) the first Mark hit lands at a different turn and the transform fires the same end of turn, and (b) re-application of Mark on a later turn is observed in the event stream (the L60–L66 segment of the original match shows `target_was_marked=true` at T5 but the re-application source between T3 and T5 was not surfaced). Bonus: a match where Cindra Blue defends the first Mark-applier off and the transform is delayed.
-- Status: open
-
 ## Pitch discipline: don't pitch 3-pitch Blues for 1R weapon activations
 
 - First seen: match `cindra-blue-vs-arakni-002` (LC-002, INFERRED)
-- Plausible mechanism: Player A pitched a 3-pitch Blue twice (Exposed T2, Dragon Power T4) to pay a 1R Kunai activation, leaking 2R of pitched value each time. Pitched value does not carry to the next turn. Decision rule candidate: when the only resource sink this turn is a 1R weapon activation, pitch the lowest-value card and bank the 3-pitch for a turn that spends ≥2R.
-- What would settle it: matches where the pitch order is varied. Confirm if low-pitch-first is a generally better heuristic, or if there are matchup-specific cases where dumping a high-pitch Blue early (e.g. to thin for arsenal quality next turn) is correct. Likely a `playbook/general/pitch-discipline.md` claim once corroborated.
-- Status: open
+- Corroboration attempt: match `cindra-blue-vs-arakni-004` — mixed evidence. One pilot violation (T7 Throw Dagger 3-pitch for Command & Conquer's 2-cost) and one explicit pilot adherence (T15 Cindra deferred Exposed: "save Exposed for a bigger attack to mark"). Pattern is present but not pilot-consistent across the data we have.
+- Plausible mechanism: Pitched value does not carry to the next turn. Pitching a 3-pitch Blue for a 1R activation leaks 2R of pitched value. Decision rule candidate: when the only resource sink this turn is a 1R weapon activation, pitch the lowest-value card and bank the 3-pitch for a turn that spends ≥2R.
+- What would settle it: a third match where the pitch order is varied AND the cost of a violation is traceable to a lost game (e.g. a turn where the saved 3-pitch would have enabled a kill or critical defense). Likely a `playbook/general/pitch-discipline.md` claim once corroborated. Alternative: matches where dumping a high-pitch Blue early (e.g. to thin for arsenal quality next turn) is correct, which would refine rather than confirm the rule.
+- Status: open after 2 matches (002 violated, 004 mixed)
 
-## Cindra's Fealty plan is gated on Cindra applying Mark, not opponent's mark status on Cindra
+## vs Arakni Marionette: lead a high-power chain link early — their Blade-Break equipment trades itself away
 
-- First seen: match `cindra-blue-vs-arakni-002` (LC-003, HYPOTHESIS)
-- Plausible mechanism: Cindra's hero text triggers Fealty creation when Cindra hits a *marked hero* — the marked hero must be the target of Cindra's hit (i.e. the opponent), not Cindra herself. Against Arakni, Arakni's gameplan marks Cindra, so Cindra-side mark application is the bottleneck. Cindra Blue lists with few "I mark the opponent" tools (Mark with Magma, Exposed) may struggle to build Fealty cascades vs Mark-aggressive opponents who can survive long enough to flip the mark direction.
-- What would settle it: another Cindra Blue match (any opponent) where Cindra successfully creates ≥1 Fealty token via the hero trigger; trace which mark-applying card enabled it, and whether the deck's mark-applier count is the limiting factor. Or: a match where Cindra arsenals a mark-applier and successfully activates Fealty — confirming the plan is workable but deck-list-sensitive.
-- Status: open
+- First seen: match `cindra-blue-vs-arakni-004` (LC-004, INFERRED; revised after correction pass 2026-04-29)
+- Plausible mechanism: Arakni Marionette's defensive equipment (Mask of Deceit, Flick Knives, Fyendal's Spring Tunic) all carry **Blade Break**. Per rule 8.3.3 (`engine/rules/keyword_engine.py:237`), a Blade Break piece is destroyed when the combat chain it defended closes. Stacking three pieces against a single high-power chain link (e.g. AotD: Scale 5p, AotD: Blood 4p) trades all three permanent equipment slots in one swing — including the Mask that gates Marionette-form transforms and the Flick Knives that channels Klaive activations. T5 of match 004 lost all three pieces this way, and Arakni's offense never recovered (passed action phases on 8 of 17 subsequent turns).
+- Corollary (Arakni side): defend with at most one Blade-Break piece per chain link, or take the damage on hero. The face-damage cost is recoverable; losing the Mask + Flick Knives bundle is not.
+- What would settle it: a second Cindra-vs-Arakni match where Cindra leads with a high-power chain link AND Arakni defends with multiple Blade-Break pieces — does the same equipment-collapse-then-pass-out pattern emerge? Bonus: a match where Arakni declines to defend with Mask/Flick Knives and instead takes face damage, to see if their offense survives.
+- Suggested home on promotion: `playbook/matchups/cindra-blue-vs-arakni.md` (new file — first matchup-specific entry).
+- Status: open after 1 match. Mechanism is rules-grounded (not pattern-luck), so a second corroboration should suffice for promotion.
+
+## Cindra-first vs Arakni is significantly better than Cindra-second
+
+- First seen: match `cindra-blue-vs-arakni-004` (LC-005, HYPOTHESIS)
+- Plausible mechanism: matches 002 (Arakni first) and 003 (Arakni first) both ended with Arakni ahead before stalling. Match 004 (Cindra first, seed 91) ended in a Cindra win with a 30-life margin. The proposed mechanism is that Cindra-first lets her land an opening Draconic chain or arsenal a Mark-applier before Arakni can equip-flick into the first Mark hit; Cindra-second means Arakni gets the first Mark on T1 and the Marionette transform clock starts at T1-end instead of T3-end.
+- What would settle it: deliberately seed a Cindra-vs-Arakni match where Arakni goes first (e.g. seed search until first-player flips), holding the deck pair constant. Compare game shape (turns to lethal, life totals at fixed turn counts, count of Marionette transforms). N=1 vs N=1 isn't statistically meaningful, but the magnitude of the swing in match 004 vs 002/003 is suggestive — worth a controlled comparison.
+- Status: open. Single complete match per seat order; matches 002 and 003 stalled before reaching terminal state, so this is genuinely speculative.
+
+---
+
+## Promoted out of this file
+
+- **LC-001** (Mark→Marionette transform timing) — promoted to `playbook/heroes/arakni/fundamentals.md` after match-004 corroboration. The Agent form is RNG-selected (`heroes.py:392`) — this refinement is in the promoted entry.
+- **LC-003** (Cindra Fealty triggers on Cindra's own attack hitting a marked opponent) — promoted to `playbook/heroes/cindra/fundamentals.md` after match-004 corroboration.
+- **LC-006** (Arakni without Flick Knives or in-hand Mark-applier has no recovery) — promoted to `playbook/heroes/arakni/fundamentals.md` after match-004 single-match data, with a flag that it may consolidate with LC-004 on the next analysis.
