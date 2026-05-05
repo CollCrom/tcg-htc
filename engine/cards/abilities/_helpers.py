@@ -219,11 +219,18 @@ def create_token(
     event_bus: object = None,
     effect_engine: object = None,
     ask: object = None,
+    source_name: str | None = None,
 ) -> CardInstance:
     """Create a token permanent for the given player.
 
     If *event_bus* and *effect_engine* are provided, token abilities (triggers
-    and continuous effects) are registered automatically.
+    and continuous effects) are registered automatically. When *event_bus* is
+    provided, a :class:`~engine.rules.events.EventType.CREATE_TOKEN` event is
+    emitted so analysts can ground token-creation claims in the event stream.
+
+    ``source_name`` is a free-form label for the rule/effect that created the
+    token (e.g. ``"Cindra hero ability"``, ``"Frailty Trap"``). Surfaced on
+    the ``CREATE_TOKEN`` event payload.
     """
     from engine.cards.card import CardDefinition
     from engine.cards.instance import CardInstance
@@ -264,6 +271,20 @@ def create_token(
         register_token_triggers(
             event_bus, effect_engine, state, controller_index, token, ask=ask,
         )
+
+    # Emit CREATE_TOKEN event so analysts can see token creation in the
+    # event stream (not just card-text log spam).
+    if event_bus is not None:
+        event_bus.emit(GameEvent(
+            event_type=EventType.CREATE_TOKEN,
+            source=token,
+            target_player=controller_index,
+            card=token,
+            data={
+                "token_name": name,
+                "source_name": source_name,
+            },
+        ))
 
     return token
 

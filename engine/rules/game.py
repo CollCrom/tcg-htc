@@ -497,33 +497,62 @@ class Game:
             zone=zone,
         )
 
-    def _create_fealty_token(self, controller_index: int) -> CardInstance:
+    def _create_fealty_token(
+        self,
+        controller_index: int,
+        *,
+        source_name: str | None = None,
+    ) -> CardInstance:
         """Create a Fealty token as a permanent for the given player.
 
-        Emits a CREATE_TOKEN event. The token is a Draconic Aura that
-        can be destroyed for an effect (Cindra's hero ability).
+        Emits a CREATE_TOKEN event via the shared ``create_token`` helper.
+        The token is a Draconic Aura that can be destroyed for an effect
+        (Cindra's hero ability).
+
+        ``source_name`` is the human-readable label for the rule that created
+        the token (e.g. ``"Cindra hero ability"``); surfaced on the event.
         """
-        from engine.cards.abilities.heroes import _create_fealty_token_simple
-        _create_fealty_token_simple(self.state, controller_index)
-        token = self.state.players[controller_index].permanents[-1]
-        self.events.emit(GameEvent(
-            event_type=EventType.CREATE_TOKEN,
-            source=None,
-            target_player=controller_index,
-            card=token,
-            data={"token_name": "Fealty"},
-        ))
+        from engine.cards.abilities._helpers import create_token
+        from engine.enums import SubType, SuperType
+
+        token = create_token(
+            self.state, controller_index, "Fealty", SubType.AURA,
+            functional_text=(
+                "Instant - Destroy this: The next card you play this turn "
+                "is Draconic. At the beginning of your end phase, if you "
+                "haven't created a Fealty token or played a Draconic card "
+                "this turn, destroy this."
+            ),
+            type_text="Draconic Token - Aura",
+            supertypes=frozenset({SuperType.DRACONIC}),
+            event_bus=self.events,
+            effect_engine=self.effect_engine,
+            source_name=source_name,
+        )
         self._process_pending_triggers()
-        # Track for Fealty end-phase condition
+        # Track for Fealty end-phase condition (create_token sets this for
+        # Fealty, but we set again defensively in case the helper changes).
         self.state.players[controller_index].turn_counters.fealty_created_this_turn = True
         return token
 
-    def _become_agent_of_chaos(self, player_index: int, agent_card: CardInstance) -> None:
+    def _become_agent_of_chaos(
+        self,
+        player_index: int,
+        agent_card: CardInstance,
+        *,
+        trigger_source: str | None = None,
+    ) -> None:
         """Transform a player's hero into an Agent of Chaos Demi-Hero.
 
         Saves the current hero as original_hero (only on first transformation),
         sets the player's hero to the agent card, and emits a BECOME_AGENT event.
         Life total is unchanged — Demi-Hero health is '*' (keep current).
+
+        ``trigger_source`` is a free-form label naming the rule/effect that
+        caused the transform (e.g. ``"Mask of Deceit"``,
+        ``"Arakni end-phase ability"``). Surfaced in the event payload so
+        analysts can disambiguate end-phase transforms (which fire during
+        END phase) from defend-triggered transforms (which fire mid-combat).
         """
         player = self.state.players[player_index]
 
@@ -538,7 +567,11 @@ class Game:
             event_type=EventType.BECOME_AGENT,
             source=agent_card,
             target_player=player_index,
-            data={"previous_hero": old_hero_name, "new_hero": agent_card.name},
+            data={
+                "previous_hero": old_hero_name,
+                "new_hero": agent_card.name,
+                "trigger_source": trigger_source,
+            },
         ))
         self._process_pending_triggers()
 
@@ -566,13 +599,25 @@ class Game:
             p = self.state.players[player_index]
             if p.original_hero is not None and p.hero != p.original_hero:
                 old_name = p.hero.name if p.hero else "unknown"
-                p.hero = p.original_hero
+                brood_hero = p.original_hero
+                p.hero = brood_hero
                 p.original_hero = None
                 p.turn_counters.returned_to_brood_this_turn = True
                 log.info(
                     f"  {self._pname(player_index)} returns to the brood "
                     f"(was {old_name})"
                 )
+                # Emit RETURN_TO_BROOD event so analysts can trace the
+                # Agent-of-Chaos lifecycle (the inverse of BECOME_AGENT).
+                self.events.emit(GameEvent(
+                    event_type=EventType.RETURN_TO_BROOD,
+                    source=brood_hero,
+                    target_player=player_index,
+                    data={
+                        "previous_hero": old_name,
+                        "new_hero": brood_hero.name if brood_hero else "unknown",
+                    },
+                ))
 
         self.events.register_handler(EventType.END_OF_TURN, _return_to_brood)
 

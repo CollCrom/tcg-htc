@@ -750,7 +750,10 @@ class MaskOfDeceitTrigger(TriggeredEffect):
                 f"{chosen.name}"
             )
 
-        self._game._become_agent_of_chaos(self.controller_index, chosen)
+        self._game._become_agent_of_chaos(
+            self.controller_index, chosen,
+            trigger_source="Mask of Deceit",
+        )
         return None
 
     def _get_state(self):

@@ -64,16 +64,25 @@ def _count_weapon_hand_slots(player, *, effect_engine=None, state=None) -> int:
 MAX_WEAPON_HAND_SLOTS = 2  # Two 1H weapons or one 2H weapon
 
 
-def _create_graphene_chelicera(state, controller_index: int, *, effect_engine=None) -> bool:
+def _create_graphene_chelicera(
+    state, controller_index: int, *,
+    effect_engine=None, event_bus=None, source_name: str | None = None,
+) -> bool:
     """Create a Graphene Chelicera token as a weapon.
 
     "Once per Turn Action - {r}: Attack with this for 1, with go again."
     Created as a weapon (not a permanent) so the weapon activation system handles it.
 
+    When *event_bus* is provided, emits a CREATE_TOKEN event so analysts
+    can ground Graphene Chelicera creation in the event stream (the shared
+    ``create_token`` helper isn't used here because the token lives in a
+    weapon slot, not the permanents zone).
+
     Returns True if the token was created, False if no weapon slot available.
     """
     from engine.cards.card import CardDefinition
     from engine.cards.instance import CardInstance
+    from engine.rules.events import EventType, GameEvent
 
     player = state.players[controller_index]
     pname = get_player_name(state, controller_index)
@@ -109,6 +118,17 @@ def _create_graphene_chelicera(state, controller_index: int, *, effect_engine=No
     )
     player.weapons.append(token)
     log.info(f"  Equipped Graphene Chelicera token for {pname}")
+    if event_bus is not None:
+        event_bus.emit(GameEvent(
+            event_type=EventType.CREATE_TOKEN,
+            source=token,
+            target_player=controller_index,
+            card=token,
+            data={
+                "token_name": "Graphene Chelicera",
+                "source_name": source_name,
+            },
+        ))
     return True
 
 
@@ -764,7 +784,11 @@ def _orb_weaver_spinneret(ctx: AbilityContext) -> None:
     weapon activation system (activated_this_turn flag).
     """
     # Create Graphene Chelicera as a weapon token
-    _create_graphene_chelicera(ctx.state, ctx.controller_index, effect_engine=ctx.effect_engine)
+    _create_graphene_chelicera(
+        ctx.state, ctx.controller_index,
+        effect_engine=ctx.effect_engine, event_bus=ctx.events,
+        source_name="Orb-Weaver Spinneret",
+    )
 
     # Next stealth attack bonus — use make_once_filter so the bonus only
     # applies to the first matching stealth attack (not all of them).
@@ -899,7 +923,11 @@ def _whittle_from_bone_on_attack(ctx: AbilityContext) -> None:
 
     defender = ctx.state.players[link.attack_target_index]
     if defender.is_marked:
-        _create_graphene_chelicera(ctx.state, ctx.controller_index, effect_engine=ctx.effect_engine)
+        _create_graphene_chelicera(
+            ctx.state, ctx.controller_index,
+            effect_engine=ctx.effect_engine, event_bus=ctx.events,
+            source_name="Whittle from Bone",
+        )
         log.info(f"  Whittle from Bone: Equipped Graphene Chelicera (attacking marked hero)")
     else:
         log.info(f"  Whittle from Bone: no effect (target not marked)")

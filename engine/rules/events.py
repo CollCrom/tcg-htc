@@ -55,6 +55,7 @@ class EventType(Enum):
 
     # Transformation
     BECOME_AGENT = auto()  # Demi-Hero transformation (Agent of Chaos)
+    RETURN_TO_BROOD = auto()  # Demi-Hero reverts to brood/base hero
 
     # Misc
     CREATE_TOKEN = auto()

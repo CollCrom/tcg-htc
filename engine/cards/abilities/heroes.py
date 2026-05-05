@@ -206,20 +206,16 @@ class ArakniGoAgainOnHit(TriggeredEffect):
 # Stage 1 (ATTACK_DECLARED): record whether target is marked.
 # Stage 2 (HIT): if the target was marked at attack time, create token.
 #
-# Even simpler: mark removal and Cindra trigger both fire on HIT.
-# Per rules 6.6, triggered effects are checked AFTER handlers execute.
-# So is_marked is already False by the time we check. But Cindra's
-# ability says "whenever you hit a marked hero" — the marked condition
-# should be evaluated at the time the hit occurs, which is effectively
-# when damage is dealt. The mark removal is also on hit, but Cindra's
-# trigger should see the state as it was.
-#
-# Per FaB rules, the trigger condition is checked when the event occurs.
-# The event bus processes: handlers first (state changes), then checks
-# triggers. So by the time triggers are checked, mark is gone.
-#
-# Correct solution: check mark state at ATTACK_DECLARED time and store
-# it, then create token on HIT. We'll use a compound approach.
+# Mark removal and Cindra trigger both fire on HIT.
+# Per rules 6.6, triggered effects are checked AFTER handlers execute,
+# so ``is_marked`` is already False by the time the trigger sees it.
+# Game._resolve_combat_chain captures the pre-hit mark state into
+# ``event.data['target_was_marked']`` precisely so triggers like this can
+# see the state as it was at hit-time. We read that field rather than
+# checking is_marked or recording state at ATTACK_DECLARED — the latter
+# misses mid-attack mark applications (e.g. Exposed plays AFTER
+# ATTACK_DECLARED but BEFORE HIT, marking the defender for the same
+# combat).
 
 
 @dataclass
@@ -227,41 +223,29 @@ class CindraRetributionTrigger(TriggeredEffect):
     """Cindra, Dracai of Retribution — whenever you hit a marked hero,
     create a Fealty token.
 
-    Uses a two-phase approach:
-    - On ATTACK_DECLARED, record if target is marked
-    - On HIT, if target was marked, create the token
+    Reads ``event.data["target_was_marked"]`` from HIT (set by
+    Game._resolve_combat_chain immediately before the HIT event is
+    emitted) so mid-attack mark applications (Exposed, on-hit-marks
+    chained into the same swing, etc.) are honored.
     """
 
     controller_index: int = 0
     one_shot: bool = False
-    _target_was_marked: bool = False
 
     _effect_engine: EffectEngine | None = None
     _event_bus: EventBus | None = None
     _state_getter: object = None
-    _game: object = None  # reference to Game for _make_fealty_token
+    _game: object = None  # reference to Game for _create_fealty_token
 
     def condition(self, event: GameEvent) -> bool:
-        if event.event_type == EventType.ATTACK_DECLARED:
-            attacker_index = event.data.get("attacker_index")
-            if attacker_index == self.controller_index:
-                # Record marked state for HIT check
-                target_index = event.target_player
-                state = self._get_state()
-                if state is not None and target_index is not None:
-                    self._target_was_marked = state.players[target_index].is_marked
-            return False  # don't fire a triggered event for this
-
-        if event.event_type == EventType.HIT:
-            if event.source is None:
-                return False
-            # Check the hit was by our attack
-            source_owner = event.source.owner_index
-            if source_owner != self.controller_index:
-                return False
-            return self._target_was_marked
-
-        return False
+        if event.event_type != EventType.HIT:
+            return False
+        if event.source is None:
+            return False
+        # Check the hit was by our attack
+        if event.source.owner_index != self.controller_index:
+            return False
+        return bool(event.data.get("target_was_marked"))
 
     def create_triggered_event(self, triggering_event: GameEvent) -> GameEvent | None:
         """Create a Fealty token for the controller."""
@@ -269,14 +253,12 @@ class CindraRetributionTrigger(TriggeredEffect):
         if state is None:
             return None
 
-        # Reset the flag
-        self._target_was_marked = False
-
         # Create Fealty token as a permanent for the controller
-        player = state.players[self.controller_index]
         game = self._game
         if game is not None and hasattr(game, '_create_fealty_token'):
-            game._create_fealty_token(self.controller_index)
+            game._create_fealty_token(
+                self.controller_index, source_name="Cindra hero ability",
+            )
         else:
             # Fallback: create a simple token representation
             _create_fealty_token_simple(state, self.controller_index)
@@ -394,7 +376,10 @@ class ArakniEndPhaseTranformTrigger(TriggeredEffect):
             f"  Arakni end phase: {get_player_name(state, self.controller_index)} becomes {chosen.name} "
             f"(opponent is marked)"
         )
-        self._game._become_agent_of_chaos(self.controller_index, chosen)
+        self._game._become_agent_of_chaos(
+            self.controller_index, chosen,
+            trigger_source="Arakni end-phase ability",
+        )
         return None
 
     def _get_state(self) -> GameState | None:
