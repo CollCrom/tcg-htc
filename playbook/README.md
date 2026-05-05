@@ -38,7 +38,9 @@ proposals/         schema-critic's structural change proposals.
 
 Populated through self-play. Current contents:
 
-- `heroes/arakni/fundamentals.md` — Marionette transform timing (from `cindra-blue-vs-arakni-002`).
-- `open-questions.md` — three pending items from `cindra-blue-vs-arakni-002` (LC-001/002/003), all single-match INFERRED/HYPOTHESIS awaiting corroboration.
+- `heroes/arakni/fundamentals.md` — Marionette transform timing (from `cindra-blue-vs-arakni-002`, refined by `cindra-blue-vs-arakni-004` to add the RNG-selected Agent form). Also: Flick Knives loss / re-engagement decision rule (from `cindra-blue-vs-arakni-004`).
+- `heroes/cindra/fundamentals.md` — Fealty trigger fires on Cindra's *own* attack hitting a marked opponent, not on Cindra being marked (from `cindra-blue-vs-arakni-002` + `cindra-blue-vs-arakni-004`).
+- `open-questions.md` — pending: pitch discipline (LC-002, mixed evidence across 2 matches), Blade-Break trade pattern (LC-004, single-match), Cindra-first-vs-second hypothesis (LC-005, single-match).
+- `proposals/notes-for-schema-critic.md` — drift signals worth structural review.
 
-Everything else (`fundamentals/`, `general/`, `heroes/cindra/`, `heroes/*/matchups/`, `proposals/`) is still empty pending more matches.
+Empty pending more matches: `fundamentals/`, `general/`, `heroes/*/matchups/`, `heroes/*/overview.md`, `heroes/*/lines.md`.
