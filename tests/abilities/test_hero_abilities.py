@@ -139,7 +139,8 @@ def test_cindra_creates_fealty_token_on_hitting_marked_hero():
     game.combat_mgr.open_chain(game.state)
     link = game.combat_mgr.add_chain_link(game.state, attack, 1)
 
-    # Emit attack declared — Cindra records that target is marked
+    # Emit attack declared (no longer affects Cindra trigger; Game emits
+    # this in real combat for other triggers to observe).
     game.events.emit(GameEvent(
         event_type=EventType.ATTACK_DECLARED,
         source=attack,
@@ -151,13 +152,14 @@ def test_cindra_creates_fealty_token_on_hitting_marked_hero():
     # No token yet
     assert len(game.state.players[0].permanents) == 0
 
-    # Emit hit event — Cindra should create a Fealty token
+    # Emit hit event with target_was_marked in data — mirrors what
+    # Game._resolve_combat_chain produces. Cindra reads this field.
     game.events.emit(GameEvent(
         event_type=EventType.HIT,
         source=attack,
         target_player=1,
         amount=4,
-        data={"chain_link": link},
+        data={"chain_link": link, "target_was_marked": True},
     ))
     game._process_pending_triggers()
 
@@ -197,7 +199,7 @@ def test_cindra_no_token_when_hitting_unmarked_hero():
         source=attack,
         target_player=1,
         amount=4,
-        data={"chain_link": link},
+        data={"chain_link": link, "target_was_marked": False},
     ))
     game._process_pending_triggers()
 
@@ -231,7 +233,7 @@ def test_cindra_multiple_hits_create_multiple_tokens():
     game.events.emit(GameEvent(
         event_type=EventType.HIT,
         source=attack1, target_player=1, amount=4,
-        data={"chain_link": link1},
+        data={"chain_link": link1, "target_was_marked": True},
     ))
     game._process_pending_triggers()
 
@@ -252,7 +254,7 @@ def test_cindra_multiple_hits_create_multiple_tokens():
     game.events.emit(GameEvent(
         event_type=EventType.HIT,
         source=attack2, target_player=1, amount=3,
-        data={"chain_link": link2},
+        data={"chain_link": link2, "target_was_marked": True},
     ))
     game._process_pending_triggers()
 
@@ -261,3 +263,129 @@ def test_cindra_multiple_hits_create_multiple_tokens():
         p for p in game.state.players[0].permanents if p.name == "Fealty"
     ]
     assert len(fealty_tokens) == 2
+
+
+def test_cindra_creates_fealty_token_when_mark_applied_mid_attack():
+    """Regression for cindra-blue-vs-arakni-004 T17: Cindra played
+    Demonstrate Devotion (ATTACK_DECLARED with target unmarked), then
+    Exposed (marks the defender), then HIT landed with target_was_marked.
+
+    Old trigger recorded mark-state at ATTACK_DECLARED so it missed the
+    Exposed mark. New trigger reads ``target_was_marked`` from the HIT
+    event payload, which Game._resolve_combat_chain captures at hit-time.
+    """
+    game = make_game_shell()
+    attack = make_card(instance_id=1, power=4, zone=Zone.COMBAT_CHAIN, owner_index=0)
+
+    # Opponent is NOT marked at attack-declared time
+    game.state.players[1].is_marked = False
+
+    register_hero_abilities(
+        "Cindra, Dracai of Retribution", 0, game.events, game.effect_engine,
+        lambda: game.state, game=game,
+    )
+
+    game.combat_mgr.open_chain(game.state)
+    link = game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+    game.events.emit(GameEvent(
+        event_type=EventType.ATTACK_DECLARED,
+        source=attack, target_player=1,
+        data={"chain_link": link, "attacker_index": 0},
+    ))
+    game._process_pending_triggers()
+
+    # Mark applied between ATTACK_DECLARED and HIT (e.g. via Exposed
+    # attack reaction). HIT event carries target_was_marked=True.
+    game.state.players[1].is_marked = True
+
+    game.events.emit(GameEvent(
+        event_type=EventType.HIT,
+        source=attack, target_player=1, amount=4,
+        data={"chain_link": link, "target_was_marked": True},
+    ))
+    game._process_pending_triggers()
+
+    fealty_tokens = [
+        p for p in game.state.players[0].permanents if p.name == "Fealty"
+    ]
+    assert len(fealty_tokens) == 1, (
+        "Cindra trigger should fire when target was marked at hit-time, "
+        "even if the mark was applied after ATTACK_DECLARED"
+    )
+
+
+def test_cindra_fealty_creation_emits_create_token_event():
+    """Regression for cindra-blue-vs-arakni-004 Bug 3: Fealty creation
+    must surface in events.jsonl as a CREATE_TOKEN event so the analyst
+    can ground Fealty claims in the event stream.
+    """
+    game = make_game_shell()
+    attack = make_card(instance_id=1, power=4, zone=Zone.COMBAT_CHAIN, owner_index=0)
+    game.state.players[1].is_marked = True
+
+    captured: list = []
+    game.events.register_handler(
+        EventType.CREATE_TOKEN, lambda e: captured.append(e),
+    )
+
+    register_hero_abilities(
+        "Cindra, Dracai of Retribution", 0, game.events, game.effect_engine,
+        lambda: game.state, game=game,
+    )
+
+    game.combat_mgr.open_chain(game.state)
+    link = game.combat_mgr.add_chain_link(game.state, attack, 1)
+
+    game.events.emit(GameEvent(
+        event_type=EventType.ATTACK_DECLARED,
+        source=attack, target_player=1,
+        data={"chain_link": link, "attacker_index": 0},
+    ))
+    game._process_pending_triggers()
+
+    game.events.emit(GameEvent(
+        event_type=EventType.HIT,
+        source=attack, target_player=1, amount=4,
+        data={"chain_link": link, "target_was_marked": True},
+    ))
+    game._process_pending_triggers()
+
+    assert len(captured) == 1
+    event = captured[0]
+    assert event.target_player == 0
+    assert event.data["token_name"] == "Fealty"
+    assert event.data.get("source_name") == "Cindra hero ability"
+    # source/card should reference the actual token instance
+    assert event.card is not None
+    assert event.card.name == "Fealty"
+
+
+def test_create_token_helper_emits_create_token_event():
+    """Other token-creating sites (Frailty Trap, Inertia Trap, Death Touch,
+    Codex of Ponder, etc.) all route through the shared ``create_token``
+    helper. The helper itself emits CREATE_TOKEN so analysts get the
+    event for free regardless of which card triggered it.
+    """
+    from engine.cards.abilities._helpers import create_token
+    from engine.enums import SubType
+
+    game = make_game_shell()
+    captured: list = []
+    game.events.register_handler(
+        EventType.CREATE_TOKEN, lambda e: captured.append(e),
+    )
+
+    create_token(
+        game.state, 0, "Frailty", SubType.AURA,
+        functional_text="...",
+        type_text="Token - Aura",
+        event_bus=game.events,
+        effect_engine=game.effect_engine,
+        source_name="Frailty Trap",
+    )
+
+    assert len(captured) == 1
+    assert captured[0].data["token_name"] == "Frailty"
+    assert captured[0].data["source_name"] == "Frailty Trap"
+    assert captured[0].target_player == 0

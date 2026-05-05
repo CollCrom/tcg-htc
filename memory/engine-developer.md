@@ -118,3 +118,72 @@ HTTP timeout is masking a process crash, not a port race.
 - `pending_age_seconds` is observability only. If we want a
   watchdog/auto-fail behavior for stalled agents, add it as a separate
   `--decide-timeout` flag rather than overloading this signal.
+
+## Cindra-blue-vs-arakni-004 triage (2026-04-29)
+
+Three observability bugs flagged by analyst, all addressed:
+
+- **Bug 1 — `_return_to_brood` emits no event — FIXED.** Added
+  `EventType.RETURN_TO_BROOD`. Emitted from the closure handler
+  registered in `Game._become_agent_of_chaos` when the Demi-Hero
+  reverts to the brood at the controller's next end phase. Event
+  carries `source = brood_hero` and `data = {previous_hero, new_hero}`.
+  Locked in by `tests/abilities/test_mask_of_deceit.py::TestReturnToBroodEvent`.
+
+- **Bug 2 — `BECOME_AGENT` second transform looked mistagged —
+  RECLASSIFIED, payload enriched.** The T5 ACTION transform in match
+  004 was *correctly* stamped: Trap-Door returned to brood silently at
+  T4 END, then on T5 Cindra attacked, Arakni defended with Mask of
+  Deceit which fires `MaskOfDeceitTrigger` on `DEFEND_DECLARED` →
+  re-transform mid-combat. This is exactly when Mask should fire (rule
+  text "When this defends"). The fix is event-payload only: added
+  `BECOME_AGENT.data['trigger_source']` carrying a free-form label
+  identifying *why* the transform fired (`"Mask of Deceit"` vs
+  `"Arakni end-phase ability"`). Locked in by
+  `tests/abilities/test_mask_of_deceit.py::TestBecomeAgentTriggerSource`.
+  **Lesson:** before assuming an event is mistagged, trace the trigger
+  registry — multiple cards can emit the same event, and the
+  apparent-bug may be a payload-disambiguation gap, not a state-machine
+  hole. The `_return_to_brood` closure is the silent step that hides
+  the cycle from the analyst.
+
+- **Bug 3 — `CindraRetributionTrigger` Fealty creation emits no event
+  — FIXED + scope expanded.** Two real bugs found here:
+  1. The trigger recorded `target_was_marked` at ATTACK_DECLARED time
+     and missed mid-attack mark applications (Exposed-as-attack-reaction
+     in match 004 T17 marks the defender between ATTACK_DECLARED and
+     HIT). Refactored to read `event.data["target_was_marked"]` from
+     the HIT event directly — `Game._resolve_combat_chain` already
+     captures the pre-hit mark state (game.py:1704) precisely so triggers
+     can see it. Removed the `_target_was_marked` instance field and the
+     ATTACK_DECLARED branch.
+  2. The shared `create_token` helper (`engine/cards/abilities/_helpers.py`)
+     did not emit `CREATE_TOKEN`. All token-creation sites
+     (Frailty Trap, Inertia Trap, Death Touch, Codex of Ponder/Fealty,
+     Bloodrot Pox, Silver, etc.) flowed through it without surfacing
+     anything to events.jsonl. Helper now emits `CREATE_TOKEN` with
+     `source_name` field. The lone non-helper site
+     (`_create_graphene_chelicera` — weapon-slot token, can't use the
+     permanent-zone helper) was updated to emit too. `_create_fealty_token`
+     in `Game` now routes through the helper to avoid double-emit.
+  Locked in by:
+  - `tests/abilities/test_hero_abilities.py::test_cindra_creates_fealty_token_when_mark_applied_mid_attack`
+  - `tests/abilities/test_hero_abilities.py::test_cindra_fealty_creation_emits_create_token_event`
+  - `tests/abilities/test_hero_abilities.py::test_create_token_helper_emits_create_token_event`
+
+## New event types added (2026-04-29)
+
+- `EventType.RETURN_TO_BROOD` — inverse of `BECOME_AGENT`. Emitted
+  when a Demi-Hero (Agent of Chaos) reverts to the brood/base hero
+  at the controller's next end phase.
+
+## Patterns observed about event-emission gaps
+
+The recurring failure mode: **a trigger calls a state-mutation helper
+that doesn't emit an event**, leaving only `log.info` to surface the
+fact something happened. This was true for return-to-brood,
+Fealty creation, AND the Graphene Chelicera weapon-token. Audit rule
+for new triggers/helpers: if it mutates state that the analyst could
+care about, emit an event with a `source_name` (or `trigger_source`)
+field naming the rule that fired it. Tokens, transformations,
+and revert/reset-style state changes are the high-risk surface.
