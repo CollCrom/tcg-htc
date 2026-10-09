@@ -128,6 +128,7 @@ def test_system_prompt_includes_seat_hero_and_deck_text():
         deck_text=deck_text,
         card_reference="(test stub)",
         rules_excerpt="(test stub)",
+        playbook_excerpt="(test stub playbook)",
     )
 
     assert "Player A" in formatted
@@ -138,6 +139,10 @@ def test_system_prompt_includes_seat_hero_and_deck_text():
     # these for play quality (no working memory across calls).
     assert "Don't over-pass" in formatted
     assert "Defenders" in formatted
+    # Playbook excerpt must be wired through — this is the per-decision consumer
+    # the schema-critic flagged as missing in 2026-04-29-no-change-too-early.md.
+    assert "(test stub playbook)" in formatted
+    assert "Hero playbook" in formatted
 
 
 def test_card_reference_includes_every_unique_deck_card():
@@ -181,6 +186,32 @@ def test_rules_excerpt_loads_decision_relevant_sections():
     assert excerpt == ap._load_rules_excerpt(rules_path)
 
 
+def test_playbook_excerpt_loads_hero_fundamentals():
+    """Hero fundamentals.md must reach the cached system prompt when the slug matches.
+
+    This is the per-decision consumer of the playbook — the schema-critic flagged
+    in 2026-04-29-no-change-too-early.md that the playbook had no decision-time
+    reader. This test pins that the wiring stays alive.
+    """
+    ap = _load_auto_player()
+    playbook_dir = REPO_ROOT / "playbook"
+
+    # Cindra has a fundamentals.md today.
+    excerpt = ap._load_playbook_excerpt(playbook_dir, "cindra")
+    assert "Cindra" in excerpt
+    assert "Fealty" in excerpt  # known content from cindra/fundamentals.md
+    # Determinism — same input must produce same bytes (cache prefix stability).
+    assert excerpt == ap._load_playbook_excerpt(playbook_dir, "cindra")
+
+    # Hero with no playbook entry yet returns a placeholder (not a crash, not empty).
+    missing = ap._load_playbook_excerpt(playbook_dir, "bravo")
+    assert "no playbook entry yet" in missing
+
+    # No slug at all also returns a placeholder.
+    no_slug = ap._load_playbook_excerpt(playbook_dir, None)
+    assert "no hero slug" in no_slug
+
+
 def test_full_system_prompt_exceeds_opus_47_cache_minimum():
     """The cached prefix must clear Opus 4.7's ~4096-token minimum.
 
@@ -200,6 +231,7 @@ def test_full_system_prompt_exceeds_opus_47_cache_minimum():
     db = CardDatabase.load(REPO_ROOT / "data" / "cards.tsv")
     card_ref = ap._build_card_reference(deck_text, db)
     rules = ap._load_rules_excerpt(REPO_ROOT / "ref" / "rules" / "comprehensive-rules.md")
+    playbook = ap._load_playbook_excerpt(REPO_ROOT / "playbook", "cindra")
 
     full = ap.SYSTEM_PROMPT_TEMPLATE.format(
         seat="A",
@@ -208,6 +240,7 @@ def test_full_system_prompt_exceeds_opus_47_cache_minimum():
         deck_text=deck_text,
         card_reference=card_ref,
         rules_excerpt=rules,
+        playbook_excerpt=playbook,
     )
     assert len(full) >= 16000, (
         f"system prompt too short ({len(full)} chars) to engage Opus 4.7 cache "

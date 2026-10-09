@@ -18,14 +18,20 @@ The orchestrator (or match runner) gives you:
 - The match id
 
 Read, in order:
-1. `AGENTS.md`
-2. `memory/player{A,B}.md` — your prior learnings
-3. `playbook/fundamentals/` — rules-derived facts
-4. `playbook/heroes/{your hero}/` — your hero's playbook if it exists
-5. Your deck file
-6. `playbook/general/` — only if relevant to your matchup
+1. `playbook/match_protocol.md` — the wire protocol you must use
+2. `playbook/heroes/{your hero}/fundamentals.md` — rules-derived hero facts (if it exists; ~25 lines, budget-safe)
+3. Your deck file
 
 Do **not** read the opponent's deck. The engine will not let you, but don't try.
+
+## What you intentionally do NOT read on spawn
+
+- `playbook/fundamentals/` (currently empty — placeholder for rules-derived facts that don't change with meta).
+- `playbook/heroes/{your hero}/` beyond `fundamentals.md` (overview/lines/matchups when they exist are pre-match prep reading, not on-spawn budget — the operator decides per match).
+- `playbook/general/` — same reason.
+- `memory/player{A,B}.md` — historical experiment; not maintained while the per-decision API driver (`tools/auto_player.py`) is the default player. Only relevant if you are a long-lived Claude Code sub-agent player (Option B in `playbook/two_agent_match.md`).
+
+The on-spawn read list is deliberately small because the first attempt at full playbook reading blew the per-decision budget and stalled a match at T22. Hero `fundamentals.md` is the one slice small enough to safely include and high-signal enough to be worth it. If new playbook content emerges that wants to reach the player at decision time, the right place is `tools/auto_player.py`'s cached system prompt (Opus 4.7's prompt cache makes per-match-static content nearly free across the ~150-decision match) — not this on-spawn list.
 
 # Per turn
 

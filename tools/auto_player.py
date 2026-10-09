@@ -101,6 +101,7 @@ DEFAULT_MAX_TOKENS = 512  # plenty for a tool call with a one-sentence rationale
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CARDS_TSV = REPO_ROOT / "data" / "cards.tsv"
 DEFAULT_RULES_PATH = REPO_ROOT / "ref" / "rules" / "comprehensive-rules.md"
+DEFAULT_PLAYBOOK_DIR = REPO_ROOT / "playbook"
 
 # Sections of the comprehensive rules to embed in the system prompt. Loaded by
 # header text so the rules doc can grow without breaking us. The combination
@@ -212,6 +213,15 @@ mechanics). Match-static — same on every decision.
 
 {rules_excerpt}
 
+# Hero playbook (curated lessons from prior matches)
+
+Self-generated knowledge from prior matches with this hero. Rules-grounded
+facts and decision rules — apply these unless the current state contradicts
+them. Cited match ids let you trace the evidence. Empty section = no playbook
+entry exists for this hero yet.
+
+{playbook_excerpt}
+
 End of system context. The user message is one decision payload — respond with `submit_action`."""
 
 
@@ -286,6 +296,29 @@ def _load_rules_excerpt(rules_path: Path) -> str:
 
     chunks = [section(h) for h in RULES_SECTIONS_TO_INCLUDE]
     return "\n\n".join(c for c in chunks if c)
+
+
+def _load_playbook_excerpt(playbook_dir: Path, hero_slug: str | None) -> str:
+    """Load the hero's playbook fundamentals into the cached system prompt.
+
+    The playbook is the project's curated, self-generated knowledge layer
+    (analyst → librarian → ``playbook/``). Until this hook existed, no decision-
+    time consumer ever read the playbook — see
+    ``playbook/proposals/2026-04-29-no-change-too-early.md`` (anti-case #1:
+    "A consumer appears."). This is that consumer. Match-static content only:
+    ``playbook/heroes/{slug}/fundamentals.md``. Cache-stable across the whole
+    match because it's deterministic from ``--hero-slug`` and the file on disk.
+
+    Returns a placeholder marker if the file is missing — the section header
+    in the system prompt should still appear so the model knows the lookup was
+    attempted but came back empty (vs. silently absent).
+    """
+    if not hero_slug:
+        return "_(no hero slug provided — playbook excerpt skipped)_"
+    fundamentals = playbook_dir / "heroes" / hero_slug / "fundamentals.md"
+    if not fundamentals.exists():
+        return f"_(no playbook entry yet for hero `{hero_slug}` — file `{fundamentals.relative_to(REPO_ROOT)}` does not exist)_"
+    return fundamentals.read_text(encoding="utf-8").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +403,9 @@ def run(args: argparse.Namespace) -> int:
     rules_path = Path(args.rules)
     rules_excerpt = _load_rules_excerpt(rules_path)
 
+    playbook_dir = Path(args.playbook)
+    playbook_excerpt = _load_playbook_excerpt(playbook_dir, args.hero_slug)
+
     blurb_suffix = f" ({args.blurb})" if args.blurb else ""
     system_text = SYSTEM_PROMPT_TEMPLATE.format(
         seat=seat,
@@ -378,6 +414,7 @@ def run(args: argparse.Namespace) -> int:
         deck_text=deck_text,
         card_reference=card_reference,
         rules_excerpt=rules_excerpt,
+        playbook_excerpt=playbook_excerpt,
     )
     log.info(
         "system_prompt built: %d chars (target ≥16K for Opus 4.7 cache to engage)",
@@ -546,6 +583,22 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             f"Path to comprehensive-rules.md (default: {DEFAULT_RULES_PATH}). "
             "Decision-relevant excerpts are embedded in the cached system prompt."
+        ),
+    )
+    p.add_argument(
+        "--playbook", default=str(DEFAULT_PLAYBOOK_DIR),
+        help=(
+            f"Path to the playbook directory (default: {DEFAULT_PLAYBOOK_DIR}). "
+            "Hero-specific fundamentals.md is embedded in the cached system prompt."
+        ),
+    )
+    p.add_argument(
+        "--hero-slug", default=None,
+        help=(
+            "Folder name under playbook/heroes/ for this hero (e.g. 'cindra', "
+            "'arakni'). When set, playbook/heroes/{slug}/fundamentals.md is "
+            "loaded into the cached system prompt. Skip if no playbook entry "
+            "exists for this hero yet."
         ),
     )
     p.add_argument("-v", "--verbose", action="store_true")
