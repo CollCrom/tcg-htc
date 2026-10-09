@@ -44,3 +44,7 @@ scenario_combined.html
 # Match-server runtime logs (the replays/ dir is tracked via .gitkeep)
 replays/*
 !replays/.gitkeep
+
+# Claude Code session artifacts
+.claude/scheduled_tasks.lock
+.claude/worktrees/

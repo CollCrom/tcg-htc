@@ -137,7 +137,11 @@ def _orb_weaver_instant(ctx: AbilityContext) -> None:
     player = ctx.state.players[ctx.controller_index]
 
     # Create Graphene Chelicera as a weapon token
-    created = _create_graphene_chelicera(ctx.state, ctx.controller_index, effect_engine=ctx.effect_engine)
+    created = _create_graphene_chelicera(
+        ctx.state, ctx.controller_index,
+        effect_engine=ctx.effect_engine, event_bus=ctx.events,
+        source_name="Orb-Weaver instant",
+    )
     if not created:
         log.info("  Orb-Weaver: No weapon slot available for Graphene Chelicera")
         return

@@ -542,3 +542,172 @@ class TestMaskOfDeceitDefendStepIntegration:
         assert state.players[0].hero.name in [dh.name for dh in dh_list]
         assert state.players[0].original_hero is not None
         assert state.players[0].original_hero.name == "Arakni, Marionette"
+
+
+# ---------------------------------------------------------------------------
+# Bug 1: RETURN_TO_BROOD event
+# ---------------------------------------------------------------------------
+
+
+class TestReturnToBroodEvent:
+    """Regression for cindra-blue-vs-arakni-004 Bug 1: the inverse of
+    BECOME_AGENT (the Demi-Hero reverting to the brood at end of the
+    controller's next end phase) emitted no event, leaving a gap in
+    events.jsonl that broke replay reconstruction.
+    """
+
+    def test_return_to_brood_emits_event(self):
+        """End-of-controller's-turn revert emits RETURN_TO_BROOD."""
+        game, _, dh_list, _ = _setup_mask_test()
+        agent = dh_list[0]  # Arakni, Black Widow
+        game._become_agent_of_chaos(0, agent)
+
+        captured: list = []
+        game.events.register_handler(
+            EventType.RETURN_TO_BROOD, lambda e: captured.append(e),
+        )
+
+        # First END_OF_TURN belongs to the OPPONENT (target_player=1) and
+        # is filtered out by the handler.
+        game.events.emit(GameEvent(
+            event_type=EventType.END_OF_TURN, target_player=1,
+        ))
+        assert captured == [], "Opponent end-of-turn must not revert"
+        assert game.state.players[0].hero.name == "Arakni, Black Widow"
+
+        # Second END_OF_TURN is the controller's — this is when the
+        # revert (and the event) should fire.
+        game.events.emit(GameEvent(
+            event_type=EventType.END_OF_TURN, target_player=0,
+        ))
+
+        assert len(captured) == 1
+        event = captured[0]
+        assert event.event_type == EventType.RETURN_TO_BROOD
+        assert event.target_player == 0
+        assert event.data["previous_hero"] == "Arakni, Black Widow"
+        assert event.data["new_hero"] == "Arakni, Marionette"
+        # Source carries the brood-hero card so analysts can identify it.
+        assert event.source is not None
+        assert event.source.name == "Arakni, Marionette"
+        # State is actually reverted.
+        assert game.state.players[0].hero.name == "Arakni, Marionette"
+        assert game.state.players[0].turn_counters.returned_to_brood_this_turn
+
+    def test_return_to_brood_only_emits_once(self):
+        """The handler is one-shot per transformation; subsequent
+        end-of-turns for the same controller don't re-emit."""
+        game, _, dh_list, _ = _setup_mask_test()
+        game._become_agent_of_chaos(0, dh_list[0])
+
+        captured: list = []
+        game.events.register_handler(
+            EventType.RETURN_TO_BROOD, lambda e: captured.append(e),
+        )
+
+        # Controller's end-of-turn fires once.
+        game.events.emit(GameEvent(
+            event_type=EventType.END_OF_TURN, target_player=0,
+        ))
+        assert len(captured) == 1
+
+        # A second end-of-turn for the same controller (next turn) must
+        # not double-fire.
+        game.events.emit(GameEvent(
+            event_type=EventType.END_OF_TURN, target_player=0,
+        ))
+        assert len(captured) == 1
+
+
+# ---------------------------------------------------------------------------
+# Bug 2: BECOME_AGENT event payload includes trigger_source
+# ---------------------------------------------------------------------------
+
+
+class TestBecomeAgentTriggerSource:
+    """Regression for cindra-blue-vs-arakni-004 Bug 2: the second
+    BECOME_AGENT in a transform-cycle (Mask of Deceit on defend) lands
+    mid-combat in ACTION phase, sandwiched between DEFEND_DECLARED
+    events. The timing IS correct — Mask defends, becomes agent — but
+    the event payload didn't say WHY the transform fired. Now the
+    ``trigger_source`` field disambiguates Mask defends vs end-phase
+    Marionette transforms.
+    """
+
+    def test_mask_of_deceit_become_agent_carries_trigger_source(self):
+        """Mask-defend transform reports trigger_source='Mask of Deceit'."""
+        game, mask, dh_list, link = _setup_mask_test(attacker_marked=False)
+        game.state.rng = Random(42)
+
+        captured: list = []
+        game.events.register_handler(
+            EventType.BECOME_AGENT, lambda e: captured.append(e),
+        )
+
+        register_equipment_triggers(
+            event_bus=game.events,
+            effect_engine=game.effect_engine,
+            state_getter=lambda: game.state,
+            player_index=0,
+            player_state=game.state.players[0],
+            game=game,
+        )
+
+        game.events.emit(GameEvent(
+            event_type=EventType.DEFEND_DECLARED,
+            source=mask,
+            target_player=0,
+            data={"chain_link": link},
+        ))
+        game._process_pending_triggers()
+
+        assert len(captured) == 1
+        assert captured[0].data["trigger_source"] == "Mask of Deceit"
+        # Sanity: legacy fields still present.
+        assert captured[0].data["previous_hero"] == "Arakni, Marionette"
+        assert captured[0].data["new_hero"] in [dh.name for dh in dh_list]
+
+    def test_direct_become_agent_call_has_null_trigger_source(self):
+        """Test scaffolding (and any future caller that doesn't pass
+        a label) gets trigger_source=None — explicit absence, not a
+        crash. Keeps the API backward compatible."""
+        game, _, dh_list, _ = _setup_mask_test()
+        captured: list = []
+        game.events.register_handler(
+            EventType.BECOME_AGENT, lambda e: captured.append(e),
+        )
+
+        game._become_agent_of_chaos(0, dh_list[0])
+
+        assert len(captured) == 1
+        assert captured[0].data["trigger_source"] is None
+
+    def test_arakni_end_phase_transform_carries_trigger_source(self):
+        """End-phase Marionette transform reports the end-phase ability
+        as the trigger_source so it's distinguishable from Mask-defends."""
+        from engine.cards.abilities.heroes import register_hero_abilities
+
+        game, _, dh_list, _ = _setup_mask_test()
+        game.state.rng = Random(7)
+        # Mark the OPPONENT so the end-phase trigger fires.
+        game.state.players[1].is_marked = True
+
+        register_hero_abilities(
+            "Arakni, Marionette", 0,
+            game.events, game.effect_engine,
+            lambda: game.state, game=game,
+        )
+
+        captured: list = []
+        game.events.register_handler(
+            EventType.BECOME_AGENT, lambda e: captured.append(e),
+        )
+
+        # Arakni's end-of-turn fires the transform.
+        game.events.emit(GameEvent(
+            event_type=EventType.END_OF_TURN, target_player=0,
+        ))
+        game._process_pending_triggers()
+
+        assert len(captured) == 1
+        assert captured[0].data["trigger_source"] == "Arakni end-phase ability"

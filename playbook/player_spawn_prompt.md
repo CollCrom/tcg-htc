@@ -15,6 +15,7 @@ Substitute the fields wrapped in `$...` before passing to `Agent.prompt`.
 | `$SEAT` | `A` or `B` | Seat in the match. A = player_index 0; B = 1. |
 | `$PORT` | `8089` | The match server's port. |
 | `$HERO_NAME` | `Cindra, Dracai of Retribution` | Pulled from the deck file's `## Hero` section. |
+| `$HERO_SLUG` | `cindra` | Folder name under `playbook/heroes/` for this hero (lowercase first name, no comma/title). Used for the on-spawn `fundamentals.md` read. |
 | `$DECK_PATH` | `ref/decks/decklist-cindra-blue.md` | Path the agent reads as "their deck." |
 | `$DECK_BLURB` | `"Blue Cindra — what-if-Redline-was-good variant"` | One-line characterization, optional but useful. |
 | `$MATCH_ID` | `calling-rerun-001` | Match identifier; must match what `match_server.py` was started with. The agent appends per-action rationale to `replays/$MATCH_ID/player$SEAT.log`. |
@@ -32,6 +33,7 @@ You are Player $SEAT in a Flesh and Blood match. You play **$HERO_NAME** ($DECK_
 
 1. `playbook/match_protocol.md` — the wire protocol you'll use. **Required**. It explains `agent_cli.py` (wait/pending/act/status), the decision payload, the redacted state schema, and `action_id` shapes.
 2. `$DECK_PATH` — your decklist. Skim — know what your wincon is.
+3. `playbook/heroes/$HERO_SLUG/fundamentals.md` — your hero's rules-grounded facts, IF it exists (skim, ~25 lines). This is the only playbook file you read on spawn; it's small and high-signal. If the file does not exist, skip — do not search elsewhere in `playbook/`.
 
 Do not read your opponent's deck. The engine redacts opponent hidden zones; play with what you can observe.
 
@@ -101,9 +103,14 @@ Start now.
 - **Spawn in parallel.** Single Agent-tool message with two blocks (one
   per seat), `run_in_background=true` for both. The match runs
   concurrently from your perspective.
-- **Don't add strategy-doc reads to the on-spawn list.** It blew the
-  budget on the first run and the game stalled at turn 22. Keep entry
-  reading to `match_protocol.md` + their deck.
+- **Don't add broad strategy-doc reads to the on-spawn list.** A full
+  `playbook/` read blew the budget on the first run and the game stalled
+  at turn 22. The current safe slice is `playbook/heroes/$HERO_SLUG/fundamentals.md`
+  only (~25 lines). Do not add `playbook/fundamentals/`, `playbook/general/`,
+  `overview.md`, `lines.md`, or matchups files here — if those start mattering
+  at decision time, the right injection point is `tools/auto_player.py`'s
+  cached system prompt (Opus 4.7's prompt cache amortizes them across the
+  whole match), not this on-spawn list.
 - **Subagent type**: `general-purpose` is fine. Specialized agents
   aren't a fit — these are general reasoning + Bash + file reads.
 - **Seat asymmetry**: in FaB the engine randomly picks who goes first
