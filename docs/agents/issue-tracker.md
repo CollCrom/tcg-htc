@@ -44,3 +44,10 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+
+## Rules issue labels
+
+- **`engine-rules`**: the engine contradicts the Comprehensive Rules (https://rules.fabtcg.com/en/cr/). Include the seed, step and rule number. File upstream on Fyendal/fyendal.net once confirmed.
+- **`rules-question`**: the Comprehensive Rules are ambiguous for this situation. Include the seed, step and the competing readings, and leave it for the owner to rule on.
+
+The Comprehensive Rules are the authority. Talishar shows how a situation plays out in practice but does not decide it.
