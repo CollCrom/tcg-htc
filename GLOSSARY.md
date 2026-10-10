@@ -1,17 +1,17 @@
 # tcg-htc
 
-A Flesh and Blood simulator in which two AI agents play complete games using tournament-style Pools, so the games can be analysed for matchup and play insights.
+A Flesh and Blood simulator in which two AI agents play complete games using tournament-style Lists, so the games can be analysed for matchup and play insights.
 
 ## Language
 
 ### Play
 
 **Game**:
-One game of Flesh and Blood between two decklists, from setup until a winner or a draw.
+One game of Flesh and Blood between two Decklists, from setup until a winner or a draw.
 _Avoid_: Match (for a single game)
 
 **Match**:
-A best-of-N series of Games between the same two decklists. Rarely needed, because Flesh and Blood is usually played best-of-one.
+A best-of-N series of Games between the same two Lists. Rarely needed, because Flesh and Blood is usually played best-of-one.
 
 **Seat**:
 One of the two sides in a Game, numbered 0 and 1.
@@ -40,9 +40,13 @@ _Avoid_: Action, move
 
 ### Decks
 
-**Pool**:
-Every card a player brings to an event: hero, weapons, equipment and deck cards. In Silver Age it holds at most 55 cards. It's what a Fabrary export describes.
-_Avoid_: Deck (for the whole 55)
+**List**:
+Every card a player brings: hero, weapons, equipment and main-deck cards. It holds up to 80 cards in Classic Constructed or 55 in Silver Age. A Fabrary export describes one.
+_Avoid_: Pool, deck (for the whole list)
 
 **Decklist**:
-The cards a Seat starts a Game with, chosen from a Pool: a hero, weapons and off-hands, one equipment piece per slot, and a deck of exactly 40 cards in Silver Age.
+What a Seat presents for one Game, chosen from its List: a hero, weapons and off-hands, one equipment piece per slot, and the cards that form its Deck (exactly 40 in Silver Age).
+_Avoid_: Loadout
+
+**Deck**:
+The zone a player draws cards from during a Game.
