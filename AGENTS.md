@@ -18,7 +18,9 @@ Checks:
 
 - `pnpm test:upstream` runs `pnpm test` in upstream's engine, cards and bot packages; bot's runs upstream's `generate:bot-runtime` first. They must pass before blaming our code.
 - `pnpm typecheck` typechecks our packages.
+- `pnpm test` runs our packages' vitest suites.
 - `pnpm smoke` creates a Game from an upstream precon and prints Seat 0's legal Intents.
+- `pnpm suite` runs the Phase 1 suite: 100 Ira vs Bravo Games between random Agents (seeds 1 to 50, both seat orders), checks every replay reproduces, and prints outcomes, measurements and exit-criteria verdicts. It takes about a minute and exits non-zero if a criterion fails. Results: `docs/phase1-report.md`.
 
 ## Agent skills
 

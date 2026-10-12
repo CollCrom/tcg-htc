@@ -6,6 +6,8 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "smoke": "tsx src/smoke.ts",
+    "suite": "tsx src/suite.ts",
+    "test": "vitest run src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -16,6 +18,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.10"
   }
 }

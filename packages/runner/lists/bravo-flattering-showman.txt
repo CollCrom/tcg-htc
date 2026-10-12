@@ -1,0 +1,46 @@
+Name: Sunday Showdown: Atlanta 2nd 🇺🇸
+Hero: Bravo, Flattering Showman
+Format: Silver Age
+
+Arena cards
+1x Bastion of Duty
+1x Civic Duty
+1x Civic Guide
+1x Civic Peak
+1x Civic Steps
+1x Gauntlet of Boulderhold
+1x Nullrune Boots
+1x Nullrune Gloves
+1x Nullrune Robe
+1x Titan's Fist
+
+Deck cards
+2x Arcane Polarity (red)
+2x Boulder Drop (red)
+2x Cartilage Crush (red)
+2x Chokeslam (red)
+1x Crash and Bash (red)
+2x Crush Confidence (red)
+2x Debilitate (red)
+2x Disenchantment of the Old Ones (red)
+2x Fault Line (red)
+1x Pummel (red)
+1x Staunch Response (red)
+1x Test of Might (red)
+1x Unmovable (red)
+2x Boulder Drop (blue)
+2x Buckling Blow (blue)
+2x Chokeslam (blue)
+1x Clash of Might (blue)
+2x Clash of Mountains (blue)
+2x Clash of Vigor (blue)
+1x Crush the Weak (blue)
+2x Debilitate (blue)
+2x Disable (blue)
+2x Flatten the Field (blue)
+2x Macho Grande (blue)
+2x Thunder Quake (blue)
+2x Thunk (blue)
+
+Made with love at the FaBrary
+See the full deck @ https://fabrary.net/decks/01M442CA8T3DDZ3KBKV9A2RMSV
