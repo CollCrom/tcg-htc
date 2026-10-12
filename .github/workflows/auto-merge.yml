@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     steps:
       - name: Get PR number
         id: pr
@@ -32,3 +33,15 @@ jobs:
             --repo "${{ github.repository }}" \
             --squash \
             --delete-branch
+
+      - name: Close linked issues
+        if: steps.pr.outputs.number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # GitHub doesn't apply closing keywords to merges made by github-actions, so close them here
+          PR="${{ steps.pr.outputs.number }}"
+          gh pr view "$PR" --repo "${{ github.repository }}" --json closingIssuesReferences --jq '.closingIssuesReferences[].url' |
+            while read -r ISSUE; do
+              gh issue close "$ISSUE" --comment "Closed by ${{ github.repository }}#$PR."
+            done
