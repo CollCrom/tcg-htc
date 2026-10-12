@@ -5,6 +5,11 @@ on:
     workflows: ["Tests"]
     types: [completed]
 
+# Explicit bash runs steps with -eo pipefail; the implicit default is bash -e.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
@@ -38,8 +43,6 @@ jobs:
         if: steps.pr.outputs.number
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # bash, not the default bash -e, so a failed lookup fails the step via pipefail
-        shell: bash
         run: |
           # GitHub doesn't apply closing keywords to merges made by github-actions, so close them here.
           # GITHUB_TOKEN can't close issues in other repos, so only this repo's are closed.

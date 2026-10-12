@@ -5,7 +5,37 @@ on:
   pull_request:
     branches: [main]
 
+# Explicit bash runs steps with -eo pipefail; the implicit default is bash -e.
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  # Workflow changes can't run on their own PR (auto-merge.yml runs from main), so lint them here.
+  workflows:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+      - name: Every workflow sets defaults.run.shell to bash
+        run: |
+          status=0
+          for f in .github/workflows/*.yml; do
+            if [ "$(yq '.defaults.run.shell' "$f")" != bash ]; then
+              echo "::error file=$f::set top-level defaults.run.shell: bash so run steps get pipefail"
+              status=1
+            fi
+          done
+          exit "$status"
+
+
   tests:
     runs-on: ubuntu-latest
     permissions:
