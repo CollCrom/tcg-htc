@@ -38,10 +38,14 @@ jobs:
         if: steps.pr.outputs.number
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # bash, not the default bash -e, so a failed lookup fails the step via pipefail
+        shell: bash
         run: |
-          # GitHub doesn't apply closing keywords to merges made by github-actions, so close them here
+          # GitHub doesn't apply closing keywords to merges made by github-actions, so close them here.
+          # GITHUB_TOKEN can't close issues in other repos, so only this repo's are closed.
           PR="${{ steps.pr.outputs.number }}"
-          gh pr view "$PR" --repo "${{ github.repository }}" --json closingIssuesReferences --jq '.closingIssuesReferences[].url' |
+          gh pr view "$PR" --repo "${{ github.repository }}" --json closingIssuesReferences \
+            --jq '.closingIssuesReferences[] | select(.repository.owner.login + "/" + .repository.name == "${{ github.repository }}") | .url' |
             while read -r ISSUE; do
               gh issue close "$ISSUE" --comment "Closed by ${{ github.repository }}#$PR."
             done
