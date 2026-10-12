@@ -65,3 +65,6 @@ jobs:
 
       - name: Upstream tests
         run: pnpm test:upstream
+
+      - name: Tests
+        run: pnpm test
