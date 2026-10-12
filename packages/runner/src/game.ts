@@ -11,6 +11,9 @@ import {
 } from "@fyendal/engine";
 import type { Decklist, GameView } from "@fyendal/shared";
 import type { Agent, Intent, Rng, Seat } from "./agent.js";
+import { measureDecision, summarise, type DecisionMeasurement, type GameMeasurements } from "./measure.js";
+
+export type { DecisionMeasurement, GameMeasurements } from "./measure.js";
 
 /** Steps after which a Game is abandoned. */
 export const MAX_STEPS = 5_000;
@@ -24,6 +27,9 @@ export interface GameSetup {
 
 export interface RunGameOptions extends GameSetup {
   agents: readonly [Agent, Agent];
+  /** Milliseconds from an arbitrary origin, for timing the Game. Defaults to
+   * `performance.now`; inject a fixed clock to compare results exactly. */
+  clock?: () => number;
 }
 
 export type GameOutcome = { outcome: "win"; winner: Seat } | { outcome: "draw" };
@@ -43,19 +49,24 @@ export type GameResult = GameOutcome & {
   replay: Replay;
   /** The replay projection of the final state; `replayGame(replay)` reproduces it. */
   finalProjection: ReplayProjection;
+  measurements: GameMeasurements;
 };
 
-export function runGame({ decklists, seed, startPlayer, agents }: RunGameOptions): GameResult {
+export function runGame({ decklists, seed, startPlayer, agents, clock = () => performance.now() }: RunGameOptions): GameResult {
+  const started = clock();
   let state = newGame({ decklists, seed, startPlayer });
   const rngs = [seatRng(seed, 0), seatRng(seed, 1)] as const;
   const intents: Intent[] = [];
+  const decisions: DecisionMeasurement[] = [];
   let steps = 0;
   for (; state.phase !== "game-over"; steps++) {
     if (steps >= MAX_STEPS) throw new Error(`seed ${seed}: Game exceeded ${MAX_STEPS} steps`);
     const seat = actingSeat(state);
     const legal = legalIntents(state, seat);
     if (legal.length === 0) throw new Error(`seed ${seed}, step ${steps}: Seat ${seat} has no legal Intent`);
-    const intent = agents[seat](projectStateFor(state, seat), legal, rngs[seat]);
+    const view = projectStateFor(state, seat);
+    decisions.push(measureDecision(view, seat, legal));
+    const intent = agents[seat](view, legal, rngs[seat]);
     const applied = applyIntent(state, seat, intent);
     if (!applied.ok) throw new Error(`seed ${seed}, step ${steps}: engine rejected ${intent.kind}: ${applied.error}`);
     state = applied.state;
@@ -67,6 +78,7 @@ export function runGame({ decklists, seed, startPlayer, agents }: RunGameOptions
     steps,
     replay: { decklists, seed, startPlayer, intents },
     finalProjection: projectStateForReplay(state),
+    measurements: summarise(decisions, clock() - started),
   };
 }
 
