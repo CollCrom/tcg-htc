@@ -1,0 +1,8 @@
+# Upstream's packages only; its apps (client, server) stay out of the workspace.
+packages:
+  - "vendor/fyendal.net/packages/shared"
+  - "vendor/fyendal.net/packages/protocol"
+  - "vendor/fyendal.net/packages/engine"
+  - "vendor/fyendal.net/packages/cards"
+  - "vendor/fyendal.net/packages/bot"
+  - "packages/*"
