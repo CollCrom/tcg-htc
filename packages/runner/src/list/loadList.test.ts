@@ -1,10 +1,9 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { BRAVO_LIST_FILE, fixtureListText, IRA_LIST_FILE } from "./fixtureLists.js";
 import { loadList } from "./loadList.js";
 
-const fixture = (file: string) => readFileSync(new URL(`../../lists/${file}`, import.meta.url), "utf8");
-const IRA = fixture("ira-crimson-haze.txt");
-const BRAVO = fixture("bravo-flattering-showman.txt");
+const IRA = fixtureListText(IRA_LIST_FILE);
+const BRAVO = fixtureListText(BRAVO_LIST_FILE);
 
 describe("loadList", () => {
   it("loads Ira's List with its hero, arena cards and main-deck cards", () => {
@@ -96,7 +95,19 @@ describe("loadList", () => {
     });
   });
 
+  it("fails naming a line with a heading it doesn't recognise, such as a card written without a count", () => {
+    const text = IRA.replace("2x Aspect of Tiger: Body (red)", "Aspect of Tiger: Body (red)");
+
+    expect(() => loadList(text)).toThrow(/line 16[^\n]*Aspect of Tiger: Body \(red\)/);
+  });
+
   it("fails when the List doesn't state a format", () => {
     expect(() => loadList(IRA.replace("Format: Silver Age\n", ""))).toThrow(/no format/);
+  });
+
+  it("fails naming a format other than Silver Age", () => {
+    expect(() => loadList(IRA.replace("Format: Silver Age", "Format: Classic Constructed"))).toThrow(
+      /Classic Constructed/,
+    );
   });
 });

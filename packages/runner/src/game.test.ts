@@ -1,7 +1,7 @@
 import { cardData } from "@fyendal/cards";
 import type { CardView } from "@fyendal/shared";
 import { describe, expect, it } from "vitest";
-import { randomAgent, type Agent, type Intent, type Seat, type View } from "./agent.js";
+import { opponentOf, randomAgent, type Agent, type Intent, type Seat, type View } from "./agent.js";
 import { MAX_STEPS, replayGame, runGame } from "./game.js";
 import { preconDecklist } from "./precons.js";
 import { renderDecision } from "./render.js";
@@ -15,7 +15,7 @@ describe("runGame", () => {
   it(
     "plays two random Agents on precon Decklists to a win or a draw",
     () => {
-      const result = runGame({ decklists, seed: 1, startPlayer: 0, agents: [randomAgent, randomAgent] });
+      const result = runGame({ decklists, seed: 1, startingSeat: 0, agents: [randomAgent, randomAgent] });
 
       expect(["win", "draw"]).toContain(result.outcome);
       if (result.outcome === "win") expect([0, 1]).toContain(result.winner);
@@ -36,7 +36,7 @@ describe("runGame", () => {
           return randomAgent(...args);
         };
 
-      runGame({ decklists, seed: 2, startPlayer: 1, agents: [recording(0), recording(1)] });
+      runGame({ decklists, seed: 2, startingSeat: 1, agents: [recording(0), recording(1)] });
 
       expect(offers.map(({ seat }) => seat)).toEqual(expect.arrayContaining([0, 1]));
       for (const { seat, args } of offers) {
@@ -44,13 +44,13 @@ describe("runGame", () => {
         const [view, legal] = args as Parameters<Agent>;
         expect(view).not.toHaveProperty("rngState");
         expect(view.players[seat].deck).toBeUndefined();
-        const opponent = view.players[seat === 0 ? 1 : 0];
+        const opponent = view.players[opponentOf(seat)];
         expect(opponent.hand).toEqual([]);
         expect(opponent.deck).toBeUndefined();
         expect(legal.length).toBeGreaterThan(0);
         for (const intent of legal) expect(intent.kind).not.toMatch(/^concede$|-draw$/);
       }
-      expect(offers.some(({ seat, args }) => (args as Parameters<Agent>)[0].players[seat === 0 ? 1 : 0].handCount > 0)).toBe(true);
+      expect(offers.some(({ seat, args }) => (args as Parameters<Agent>)[0].players[opponentOf(seat)].handCount > 0)).toBe(true);
     },
     GAME_TIMEOUT,
   );
@@ -58,7 +58,7 @@ describe("runGame", () => {
   it(
     "plays the same Game from the same seed",
     () => {
-      const options = { decklists, seed: 3, startPlayer: 0, agents: [randomAgent, randomAgent], clock: () => 0 } as const;
+      const options = { decklists, seed: 3, startingSeat: 0, agents: [randomAgent, randomAgent], clock: () => 0 } as const;
 
       expect(runGame(options)).toEqual(runGame(options));
       expect(runGame({ ...options, seed: 4 }).replay.intents).not.toEqual(runGame(options).replay.intents);
@@ -69,9 +69,9 @@ describe("runGame", () => {
   it(
     "records a replay that replayGame reproduces exactly",
     () => {
-      const result = runGame({ decklists, seed: 5, startPlayer: 1, agents: [randomAgent, randomAgent] });
+      const result = runGame({ decklists, seed: 5, startingSeat: 1, agents: [randomAgent, randomAgent] });
 
-      expect(result.replay).toMatchObject({ decklists, seed: 5, startPlayer: 1 });
+      expect(result.replay).toMatchObject({ decklists, seed: 5, startingSeat: 1 });
       expect(result.replay.intents).toHaveLength(result.steps);
       expect(result.finalProjection.phase).toBe("game-over");
       expect(replayGame(result.replay)).toEqual(result.finalProjection);
@@ -87,7 +87,7 @@ describe("runGame", () => {
         offered.push(legal.length);
         return randomAgent(view, legal, rng);
       };
-      const { measurements, steps } = runGame({ decklists, seed: 7, startPlayer: 0, agents: [counting, counting] });
+      const { measurements, steps } = runGame({ decklists, seed: 7, startingSeat: 0, agents: [counting, counting] });
 
       expect(measurements.decisionsPerSeat[0]).toBeGreaterThan(0);
       expect(measurements.decisionsPerSeat[1]).toBeGreaterThan(0);
@@ -108,7 +108,7 @@ describe("runGame", () => {
   it(
     "counts Intents that differ only in pitch order once",
     () => {
-      const { measurements } = runGame({ decklists, seed: 8, startPlayer: 1, agents: [randomAgent, randomAgent] });
+      const { measurements } = runGame({ decklists, seed: 8, startingSeat: 1, agents: [randomAgent, randomAgent] });
 
       expect(measurements.decisions.some((d) => d.reorderFreeIntents < d.intents)).toBe(true);
     },
@@ -123,7 +123,7 @@ describe("runGame", () => {
         sizes.push(JSON.stringify({ view, legal }).length / 4);
         return randomAgent(view, legal, rng);
       };
-      const { measurements } = runGame({ decklists, seed: 9, startPlayer: 0, agents: [sizing, sizing] });
+      const { measurements } = runGame({ decklists, seed: 9, startingSeat: 0, agents: [sizing, sizing] });
 
       measurements.decisions.forEach(({ tokens }, i) => expect(tokens).toBeLessThan(sizes[i]!));
     },
@@ -133,6 +133,7 @@ describe("runGame", () => {
   it(
     "renders a decision without the opponent's hidden cards",
     () => {
+      // Reaches the renderer directly: runGame exposes only token counts, and the Agent-honesty standard needs the text checked.
       const offers: { step: number; seat: Seat; view: View; legal: readonly Intent[] }[] = [];
       const recording =
         (seat: Seat): Agent =>
@@ -140,12 +141,12 @@ describe("runGame", () => {
           offers.push({ step: offers.length, seat, view, legal });
           return randomAgent(view, legal, rng);
         };
-      const { replay } = runGame({ decklists, seed: 10, startPlayer: 0, agents: [recording(0), recording(1)] });
+      const { replay } = runGame({ decklists, seed: 10, startingSeat: 0, agents: [recording(0), recording(1)] });
 
       let secretsChecked = 0;
-      for (const { step, seat, view, legal } of offers.filter((_, i) => i % 25 === 0)) {
+      for (const { step, seat, view, legal } of offers) {
         // Every card revealed, at the moment of this decision.
-        const full = replayGame({ ...replay, intents: replay.intents.slice(0, step) }).players[seat === 0 ? 1 : 0];
+        const full = replayGame({ ...replay, intents: replay.intents.slice(0, step) }).players[opponentOf(seat)];
         const hidden = [
           ...full.hand,
           ...(full.deck ?? []),
@@ -162,13 +163,14 @@ describe("runGame", () => {
       }
       expect(secretsChecked).toBeGreaterThan(0);
     },
-    GAME_TIMEOUT,
+    /** Replays the Game up to every decision: about 7 s locally. */
+    2 * GAME_TIMEOUT,
   );
 
   it(
     "tells a replay with different Intents apart",
     () => {
-      const result = runGame({ decklists, seed: 6, startPlayer: 0, agents: [randomAgent, randomAgent] });
+      const result = runGame({ decklists, seed: 6, startingSeat: 0, agents: [randomAgent, randomAgent] });
       const shortened = { ...result.replay, intents: result.replay.intents.slice(0, -1) };
 
       expect(replayGame(shortened)).not.toEqual(result.finalProjection);
@@ -181,7 +183,7 @@ describe("runGame", () => {
     () => {
       const passing: Agent = (view, legal, rng) => legal.find((intent) => intent.kind === "pass") ?? randomAgent(view, legal, rng);
 
-      const result = runGame({ decklists, seed: 7, startPlayer: 0, agents: [passing, passing] });
+      const result = runGame({ decklists, seed: 7, startingSeat: 0, agents: [passing, passing] });
 
       expect(result).toMatchObject({ outcome: "stall", seed: 7, step: MAX_STEPS, steps: MAX_STEPS });
       if (result.outcome !== "stall") return;
@@ -200,7 +202,7 @@ describe("runGame", () => {
       const illegalOnFourth: Agent = (view, legal, rng) =>
         ++decisions === 4 ? { kind: "play-card", instanceId: -1, pitchInstanceIds: [] } : randomAgent(view, legal, rng);
 
-      const result = runGame({ decklists, seed: 8, startPlayer: 1, agents: [illegalOnFourth, illegalOnFourth] });
+      const result = runGame({ decklists, seed: 8, startingSeat: 1, agents: [illegalOnFourth, illegalOnFourth] });
 
       expect(result).toMatchObject({ outcome: "error", seed: 8, step: 3, steps: 3 });
       if (result.outcome !== "error") return;

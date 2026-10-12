@@ -1,22 +1,20 @@
-import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { randomAgent } from "./agent.js";
 import { runGame } from "./game.js";
-import { loadList } from "./list/loadList.js";
+import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE } from "./list/fixtureLists.js";
 import { pickDecklist } from "./list/pickDecklist.js";
 
-const list = (file: string) => loadList(readFileSync(new URL(`../lists/${file}`, import.meta.url), "utf8"));
 const SEED = 120;
 
 it(
   "plays one Game of Ira vs Bravo, from Decklists picked from the fixture Lists, to an outcome",
   () => {
     const decklists = [
-      pickDecklist(list("ira-crimson-haze.txt"), SEED),
-      pickDecklist(list("bravo-flattering-showman.txt"), SEED),
+      pickDecklist(fixtureList(IRA_LIST_FILE), SEED),
+      pickDecklist(fixtureList(BRAVO_LIST_FILE), SEED),
     ] as const;
 
-    const result = runGame({ decklists, seed: SEED, startPlayer: 0, agents: [randomAgent, randomAgent] });
+    const result = runGame({ decklists, seed: SEED, startingSeat: 0, agents: [randomAgent, randomAgent] });
 
     const { replay: _replay, finalProjection: _final, ...outcome } = result;
     console.info(`Ira vs Bravo, seed ${SEED}:`, JSON.stringify(outcome));

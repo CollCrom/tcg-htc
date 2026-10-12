@@ -13,8 +13,6 @@ import type { Decklist, GameView } from "@fyendal/shared";
 import type { Agent, Intent, Rng, Seat } from "./agent.js";
 import { measureDecision, summarise, type DecisionMeasurement, type GameMeasurements } from "./measure.js";
 
-export type { DecisionMeasurement, GameMeasurements } from "./measure.js";
-
 /** Steps after which a Game is abandoned. */
 export const MAX_STEPS = 5_000;
 
@@ -22,7 +20,8 @@ export interface GameSetup {
   decklists: readonly [Decklist, Decklist];
   /** A 32-bit integer. */
   seed: number;
-  startPlayer: Seat;
+  /** The Seat that takes the first turn. */
+  startingSeat: Seat;
 }
 
 export interface RunGameOptions extends GameSetup {
@@ -39,6 +38,11 @@ export type GameOutcome =
   | { outcome: "draw" }
   | GameFailure<"stall">
   | GameFailure<"error">;
+
+/** Whether a Game went wrong: a stall or an error rather than a win or a draw. */
+export function isFailure(outcome: GameOutcome): outcome is GameFailure<"stall"> | GameFailure<"error"> {
+  return outcome.outcome === "stall" || outcome.outcome === "error";
+}
 
 /** A Game that went wrong at `step` (the number of Intents applied before it).
  * A stall exceeded the step cap or left the acting Seat without a legal Intent;
@@ -68,9 +72,9 @@ export type GameResult = GameOutcome & {
   measurements: GameMeasurements;
 };
 
-export function runGame({ decklists, seed, startPlayer, agents, clock = () => performance.now() }: RunGameOptions): GameResult {
+export function runGame({ decklists, seed, startingSeat, agents, clock = () => performance.now() }: RunGameOptions): GameResult {
   const started = clock();
-  let state = newGame({ decklists, seed, startPlayer });
+  let state = newGame({ decklists, seed, startingSeat });
   const rngs = [seatRng(seed, 0), seatRng(seed, 1)] as const;
   const intents: Intent[] = [];
   const decisions: DecisionMeasurement[] = [];
@@ -102,7 +106,7 @@ export function runGame({ decklists, seed, startPlayer, agents, clock = () => pe
     ...(failure ?? outcomeOf(state)),
     turns: state.turn,
     steps,
-    replay: { decklists, seed, startPlayer, intents },
+    replay: { decklists, seed, startingSeat, intents },
     finalProjection: projectStateForReplay(state),
     measurements: summarise(decisions, clock() - started),
   };
@@ -121,8 +125,8 @@ export function replayGame(replay: Replay): ReplayProjection {
   return projectStateForReplay(state);
 }
 
-function newGame({ decklists, seed, startPlayer }: GameSetup): GameState {
-  return createGame({ decklists: [decklists[0], decklists[1]], cards: cardData, scripts, seed, startPlayer });
+function newGame({ decklists, seed, startingSeat }: GameSetup): GameState {
+  return createGame({ decklists: [decklists[0], decklists[1]], cards: cardData, scripts, seed, startPlayer: startingSeat });
 }
 
 /** The pending decision's Seat if there is one, otherwise the Seat with priority. */
@@ -132,6 +136,8 @@ function actingSeat(state: GameState): Seat {
 
 /** The engine's legal Intents for a Seat, without concede and draw offers. */
 function legalIntents(state: GameState, seat: Seat): Intent[] {
+  // Upstream has no View-based legal-Intents API, so these come from the full
+  // state; they cover only this Seat's own choices, so they reveal nothing hidden.
   return engineLegalIntents(state, seat).filter(
     (intent) => intent.kind !== "concede" && !intent.kind.endsWith("-draw"),
   );
@@ -139,8 +145,8 @@ function legalIntents(state: GameState, seat: Seat): Intent[] {
 
 /** An rng seeded from the Game seed and the Seat. */
 function seatRng(seed: number, seat: Seat): Rng {
-  const carrier = { rngState: (seed ^ Math.imul(seat + 1, 0x9e3779b9)) | 0 };
-  return () => rngNext(carrier);
+  const rng = { rngState: (seed ^ Math.imul(seat + 1, 0x9e3779b9)) | 0 };
+  return () => rngNext(rng);
 }
 
 function outcomeOf(state: GameState): GameOutcome {

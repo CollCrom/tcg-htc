@@ -4,6 +4,11 @@ import type { GameIntent, GameView } from "@fyendal/shared";
 /** A Seat, numbered 0 and 1 as in the engine. */
 export type Seat = 0 | 1;
 
+/** The other Seat. */
+export function opponentOf(seat: Seat): Seat {
+  return seat === 0 ? 1 : 0;
+}
+
 /** A single choice an Agent makes. Upstream calls it a `GameIntent`. */
 export type Intent = GameIntent;
 

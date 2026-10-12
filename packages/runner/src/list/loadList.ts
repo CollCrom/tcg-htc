@@ -4,15 +4,14 @@ import {
   cardData,
   equipmentFitsSlot,
   findPrinting,
-  formatLegalityIssues, 
+  formatLegalityIssues,
   isImplemented,
   isWeaponZoneCard,
   MIN_DECK_SIZE,
   normalizeCardName,
 } from "@fyendal/cards";
 import type { CardData, DeckPool, EquipmentSlot, Format } from "@fyendal/shared";
-
-export type Colour = "red" | "yellow" | "blue" | "purple";
+import { colourOf, EQUIPMENT_SLOTS, nameWithColour, type Colour } from "../cards.js";
 
 /** One line of a List: a card (a printing id) and how many copies. */
 export interface ListCard {
@@ -39,10 +38,7 @@ export interface List {
   deck: ListCard[];
 }
 
-const EQUIPMENT_SLOTS: EquipmentSlot[] = ["head", "chest", "arms", "legs"];
-
 const PITCH_WORDS: Record<string, number> = { red: 1, yellow: 2, yel: 2, blue: 3, blu: 3, purple: 4, pur: 4 };
-const COLOURS: Record<number, Colour> = { 1: "red", 2: "yellow", 3: "blue", 4: "purple" };
 
 interface ParsedLine {
   /** 1-based line number and the text as written, for error messages. */
@@ -57,6 +53,9 @@ interface ParsedText {
   name: string | null;
   format: string | null;
   lines: ParsedLine[];
+  /** Lines that read as a heading the parser doesn't know, such as a card
+   * written without a count ("Aspect of Tiger: Body (red)"). */
+  unrecognised: { lineNumber: number; text: string }[];
 }
 
 /** Largest count one line may claim; anything near it fails the size check. */
@@ -68,7 +67,7 @@ const MAX_LINE_COUNT = 99;
  * sideboard cards count as main-deck cards.
  */
 function parseFabraryText(text: string): ParsedText {
-  const parsed: ParsedText = { name: null, format: null, lines: [] };
+  const parsed: ParsedText = { name: null, format: null, lines: [], unrecognised: [] };
   text.split(/\r?\n/).forEach((raw, index) => {
     const line = raw.trim();
     const at = { lineNumber: index + 1, text: line };
@@ -90,7 +89,10 @@ function parseFabraryText(text: string): ParsedText {
         parsed.format = rest;
         return;
       }
-      if (!/^(hero|heroes|sideboard|side|deck|main|weapon|equipment|arena)/.test(heading)) return;
+      if (!/^(hero|heroes|sideboard|side|deck|main|weapon|equipment|arena)/.test(heading)) {
+        parsed.unrecognised.push(at);
+        return;
+      }
       if (rest) parsed.lines.push({ ...at, count: 1, name: rest });
       return;
     }
@@ -111,17 +113,18 @@ function parseFabraryText(text: string): ParsedText {
   return parsed;
 }
 
-/** Formats a List can state, with upstream's limits (validateDeck's MAX_POOL_SIZE and MAX_COPIES). */
+/** The formats a List can state, with upstream's limits (validateDeck's
+ * MAX_POOL_SIZE and MAX_COPIES). Only Silver Age is in scope. */
 const FORMATS: Record<string, { format: Format; maxCards: number; maxCopies: number }> = {
   "silver age": { format: "silver-age", maxCards: 55, maxCopies: 2 },
-  "classic constructed": { format: "cc", maxCards: 80, maxCopies: 3 },
 };
 
 const copiesOf = (cards: ListCard[]) => cards.flatMap((card) => Array<string>(card.count).fill(card.cardId));
+const countOf = (cards: ListCard[]) => cards.reduce((total, card) => total + card.count, 0);
 
-/** The List in upstream's DeckPool shape (printing ids, one entry per copy), as
- * upstream's legality and presentation checks take it. */
-export function deckPoolOf(list: List): DeckPool {
+/** The List as upstream's legality and presentation checks take it (upstream
+ * calls it a DeckPool): printing ids, one entry per copy. */
+export function toUpstreamDeckPool(list: List): DeckPool {
   return {
     heroId: list.hero.cardId,
     weaponIds: copiesOf(list.weapons),
@@ -143,13 +146,10 @@ export interface LoadListOptions {
   isImplemented?: (card: CardData) => boolean;
 }
 
-function describeCard(card: CardData): string {
-  const colour = card.pitch ? COLOURS[card.pitch] : undefined;
-  return colour ? `${card.name} (${colour})` : card.name;
-}
+const describeCard = (card: CardData) => nameWithColour(card.name, card.pitch);
 
 function listCard(card: CardData, count: number): ListCard {
-  return { cardId: card.id, name: card.name, colour: card.pitch ? (COLOURS[card.pitch] ?? null) : null, count };
+  return { cardId: card.id, name: card.name, colour: colourOf(card.pitch), count };
 }
 
 /**
@@ -160,11 +160,15 @@ function listCard(card: CardData, count: number): ListCard {
 export function loadList(fabraryExportText: string, options: LoadListOptions = {}): List {
   const implemented = options.isImplemented ?? isImplemented;
   const parsed = parseFabraryText(fabraryExportText);
-  const problems: string[] = [];
+  const problems = parsed.unrecognised.map(
+    ({ lineNumber, text }) => `line ${lineNumber} has a heading that isn't recognised (a card needs a count): ${text}`,
+  );
   const rules = FORMATS[(parsed.format ?? "").toLowerCase()];
   if (!rules) {
     const known = Object.keys(FORMATS).map((name) => `"Format: ${name}"`).join(" or ");
-    problems.push(parsed.format ? `unknown format: ${parsed.format}` : `no format stated (expected ${known})`);
+    problems.push(
+      parsed.format ? `format not supported: ${parsed.format} (expected ${known})` : `no format stated (expected ${known})`,
+    );
   }
   const heroes: List["hero"][] = [];
   const weapons: ListCard[] = [];
@@ -211,15 +215,15 @@ export function loadList(fabraryExportText: string, options: LoadListOptions = {
   if (!rules || !hero) throw new ListError(problems);
 
   const list: List = { name: parsed.name ?? "", format: rules.format, hero, weapons, equipment, deck };
-  const size = [...weapons, ...equipment, ...deck].reduce((total, card) => total + card.count, 0);
+  const size = countOf([...weapons, ...equipment, ...deck]);
   if (size > rules.maxCards) problems.push(`List too large (${size} cards, at most ${rules.maxCards})`);
-  const deckSize = deck.reduce((total, card) => total + card.count, 0);
+  const deckSize = countOf(deck);
   const minDeck = MIN_DECK_SIZE[rules.format];
   if (deckSize < minDeck) problems.push(`too few main-deck cards (${deckSize}, at least ${minDeck})`);
   for (const { card, count } of copies.values()) {
     if (count > rules.maxCopies) problems.push(`too many copies of ${describeCard(card)} (${count}, max ${rules.maxCopies})`);
   }
-  for (const issue of formatLegalityIssues(cardData, deckPoolOf(list), rules.format)) problems.push(issue.message);
+  for (const issue of formatLegalityIssues(cardData, toUpstreamDeckPool(list), rules.format)) problems.push(issue.message);
 
   if (problems.length > 0) throw new ListError(problems);
   return list;

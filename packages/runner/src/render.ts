@@ -3,19 +3,18 @@
 // exact text is not a contract yet. It reads only the View, never the state.
 import { cardData } from "@fyendal/cards";
 import type { CardView, PlayerView } from "@fyendal/shared";
-import type { Intent, Seat, View } from "./agent.js";
+import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
+import { nameWithColour } from "./cards.js";
 
 const LOG_LINES = 5;
-const COLOURS: Record<number, string> = { 1: "red", 2: "yellow", 3: "blue" };
 
 /** Renders a Seat's View and its legal Intents as text. */
 export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): string {
-  const opponent: Seat = seat === 0 ? 1 : 0;
   const names = cardNames(view);
   return [
     `Turn ${view.turn}, ${view.phase} phase. Seat ${view.activePlayer}'s turn; Seat ${view.priorityPlayer} has priority. You are Seat ${seat}.`,
-    ...renderPlayer(view.players[seat], "You"),
-    ...renderPlayer(view.players[opponent], "Opponent"),
+    ...renderSeat(view.players[seat], "You"),
+    ...renderSeat(view.players[opponentOf(seat)], "Opponent"),
     ...renderCombat(view),
     ...renderDecisionPrompt(view, seat),
     ...section("Recent log", view.log.slice(-LOG_LINES)),
@@ -29,7 +28,8 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function renderPlayer(player: PlayerView, who: string): string[] {
+/** One Seat's part of the View (upstream calls it a PlayerView). */
+function renderSeat(player: PlayerView, who: string): string[] {
   const hero = [
     `${player.heroName}`,
     `life ${player.life}`,
@@ -166,8 +166,7 @@ function describeCard(card: CardView): string {
 function cardName(card: CardView): string {
   const data = cardData[card.cardId];
   const name = card.name ?? data?.name ?? card.cardId;
-  const colour = data?.pitch !== undefined ? COLOURS[data.pitch] : undefined;
-  return colour ? `${name} (${colour})` : name;
+  return nameWithColour(name, data?.pitch);
 }
 
 function counters(record: Record<string, number> | undefined): string[] {
