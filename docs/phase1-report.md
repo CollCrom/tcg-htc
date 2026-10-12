@@ -45,6 +45,12 @@ Replays: 100 of 100 reproduce exactly. Two full runs gave identical outcomes and
 
 None. No Game stalled or errored, and no replay diverged, so no `engine-rules`, `rules-question` or bug issues came out of this run.
 
+## Decisions
+
+- **Weapon setups need a real weapon.** `pickDecklist` only picks weapon setups that hold at least one weapon. Upstream would also accept a lone off-hand, but a hero with no weapon isn't a setup anyone would bring.
+- **Seat orders aren't mirror Games.** The suite's `startingSeat` is always Seat 0, and the two seat orders swap which List sits in Seat 0. Each seed's two Games use the same two Decklists, but the engine's shuffles and each random Agent's choices are seeded by Seat, not by List, so the two Games aren't mirrors of each other.
+- **The hidden-information test reaches the renderer directly.** `runGame` exposes only token counts, but the Agent-honesty standard needs the rendered text checked for the opponent's hidden cards, so that test calls `renderDecision` itself. This is a recorded deviation from testing through the seams.
+
 ## Notes for the Claude-player phase
 
 - At about 250 decisions per Game and about 490 tokens per decision, one Game rendered for Claude Agents costs roughly 120,000 tokens of View plus Intents across both Seats, before any Plan notes or reasoning. Random play is a rough proxy: it makes many more cheap passes than a real player would, and Games may run longer or shorter.

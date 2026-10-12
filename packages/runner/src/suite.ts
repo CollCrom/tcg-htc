@@ -1,17 +1,16 @@
 // The Phase 1 suite: Ira vs Bravo for 50 seeds in both seat orders, 100 Games
 // between random Agents, each replayed to check it reproduces exactly.
-import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { randomAgent } from "./agent.js";
-import { replayGame, runGame, type GameResult } from "./game.js";
-import { loadList, type List } from "./list/loadList.js";
+import { isFailure, replayGame, runGame, type GameResult } from "./game.js";
+import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE } from "./list/fixtureLists.js";
+import type { List } from "./list/loadList.js";
 import { pickDecklist } from "./list/pickDecklist.js";
 
 const SEEDS = Array.from({ length: 50 }, (_, index) => index + 1);
 
-const list = (file: string) => loadList(readFileSync(new URL(`../lists/${file}`, import.meta.url), "utf8"));
-const ira = list("ira-crimson-haze.txt");
-const bravo = list("bravo-flattering-showman.txt");
+const ira = fixtureList(IRA_LIST_FILE);
+const bravo = fixtureList(BRAVO_LIST_FILE);
 
 /** Which List sits in Seat 0. Seat 0 starts every Game, so it also goes first. */
 const SEAT_ORDERS: readonly (readonly [List, List])[] = [
@@ -19,9 +18,9 @@ const SEAT_ORDERS: readonly (readonly [List, List])[] = [
   [bravo, ira],
 ];
 
-interface Played {
+/** One Game of the suite and whether its replay reproduces it. */
+interface SuiteGame {
   seed: number;
-  seatOrder: string;
   /** The List in each Seat. */
   lists: readonly [List, List];
   result: GameResult;
@@ -30,21 +29,21 @@ interface Played {
 }
 
 const heroOf = (list: List) => list.hero.name.split(",")[0];
+const seatOrderOf = ({ lists }: SuiteGame) => `${heroOf(lists[0])} (Seat 0) vs ${heroOf(lists[1])} (Seat 1)`;
 
-const played: Played[] = [];
+const played: SuiteGame[] = [];
 let playMs = 0;
 for (const seed of SEEDS) {
   for (const lists of SEAT_ORDERS) {
     const decklists = [pickDecklist(lists[0], seed), pickDecklist(lists[1], seed)] as const;
     const started = performance.now();
-    const result = runGame({ decklists, seed, startPlayer: 0, agents: [randomAgent, randomAgent] });
+    const result = runGame({ decklists, seed, startingSeat: 0, agents: [randomAgent, randomAgent] });
     playMs += performance.now() - started;
-    const seatOrder = `${heroOf(lists[0])} (Seat 0) vs ${heroOf(lists[1])} (Seat 1)`;
     try {
       const reproduces = isDeepStrictEqual(replayGame(result.replay), result.finalProjection);
-      played.push({ seed, seatOrder, lists, result, reproduces });
+      played.push({ seed, lists, result, reproduces });
     } catch (error) {
-      played.push({ seed, seatOrder, lists, result, reproduces: false, replayError: String(error) });
+      played.push({ seed, lists, result, reproduces: false, replayError: String(error) });
     }
   }
 }
@@ -57,7 +56,7 @@ const decisions = played.flatMap(({ result }) => result.measurements.decisions);
 const count = (outcome: GameResult["outcome"]) => played.filter(({ result }) => result.outcome === outcome).length;
 const winsFor = (list: List) =>
   played.filter(({ result, lists }) => result.outcome === "win" && lists[result.winner] === list).length;
-const failing = played.filter(({ result }) => result.outcome === "stall" || result.outcome === "error");
+const failing = played.flatMap((game) => (isFailure(game.result) ? [{ ...game, failure: game.result }] : []));
 const diverging = played.filter(({ reproduces }) => !reproduces);
 
 console.log(`Phase 1 suite: ${played.length} Games, seeds ${SEEDS[0]}-${SEEDS.at(-1)}, both seat orders`);
@@ -78,13 +77,12 @@ console.log(`  Intents per decision (reorder-free): ${stats(decisions.map(({ reo
 console.log(`  tokens per decision:                 ${stats(decisions.map(({ tokens }) => tokens))}`);
 console.log();
 console.log(`Replays: ${played.length - diverging.length} of ${played.length} reproduce exactly`);
-for (const { seed, seatOrder, replayError } of diverging)
-  console.log(`  seed ${seed}, ${seatOrder}: ${replayError ?? "final replay projection differs"}`);
+for (const game of diverging)
+  console.log(`  seed ${game.seed}, ${seatOrderOf(game)}: ${game.replayError ?? "final replay projection differs"}`);
 console.log();
 console.log(`Failing Games: ${failing.length}`);
-for (const { seed, seatOrder, result } of failing)
-  if (result.outcome === "stall" || result.outcome === "error")
-    console.log(`  seed ${seed}, ${seatOrder}, step ${result.step}: ${result.outcome}: ${result.detail}`);
+for (const { failure, ...game } of failing)
+  console.log(`  seed ${game.seed}, ${seatOrderOf(game)}, step ${failure.step}: ${failure.outcome}: ${failure.detail}`);
 console.log();
 const passed = failing.length === 0 && diverging.length === 0;
 console.log(`Exit criteria: ${passed ? "PASS" : "FAIL"}`);

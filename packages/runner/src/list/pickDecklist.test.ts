@@ -1,11 +1,10 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { BRAVO_LIST_FILE, fixtureList, fixtureListText, IRA_LIST_FILE } from "./fixtureLists.js";
 import { loadList } from "./loadList.js";
 import { pickDecklist } from "./pickDecklist.js";
 
-const fixture = (file: string) => readFileSync(new URL(`../../lists/${file}`, import.meta.url), "utf8");
-const IRA = loadList(fixture("ira-crimson-haze.txt"));
-const BRAVO = loadList(fixture("bravo-flattering-showman.txt"));
+const IRA = fixtureList(IRA_LIST_FILE);
+const BRAVO = fixtureList(BRAVO_LIST_FILE);
 const EDGE_OF_AUTUMN = "CRU050";
 const TITANS_FIST = "ELE202B";
 const BASTION_OF_DUTY = "TCC029";
@@ -31,7 +30,7 @@ describe("pickDecklist", () => {
   });
 
   it("refuses a List whose only weapon-zone card is an off-hand", () => {
-    const offHandOnly = loadList(fixture("bravo-flattering-showman.txt").replace("1x Titan's Fist\n", ""));
+    const offHandOnly = loadList(fixtureListText(BRAVO_LIST_FILE).replace("1x Titan's Fist\n", ""));
 
     expect(() => pickDecklist(offHandOnly, 1)).toThrow(/weapon/);
   });

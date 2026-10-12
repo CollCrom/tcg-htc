@@ -1,16 +1,14 @@
-// Upstream precons presented as Decklists, for the smoke check and tests until
-// List loading arrives.
+// Upstream precons presented as Decklists, for the smoke check and the runGame
+// tests, which need Decklists but not Lists.
 import { cardData, precon, validatePresentation, type Precon } from "@fyendal/cards";
-import type { Decklist, EquipmentSlot } from "@fyendal/shared";
-
-// Upstream keeps its own list private (cards/src/presentation.ts).
-const SLOTS: EquipmentSlot[] = ["head", "chest", "arms", "legs"];
+import type { Decklist } from "@fyendal/shared";
+import { EQUIPMENT_SLOTS } from "./cards.js";
 
 /** Present a precon the simple way: its first 40 deck cards, its first weapon
  * and the first equipment piece for each slot, validated by upstream. */
 export function presentPrecon({ id, pool, format }: Precon): Decklist {
   const equipment: Decklist["equipment"] = {};
-  for (const slot of SLOTS) {
+  for (const slot of EQUIPMENT_SLOTS) {
     const piece = pool.equipmentPool.find((cardId) => cardData[cardId]?.subtypes?.includes(slot));
     if (piece) equipment[slot] = piece;
   }
