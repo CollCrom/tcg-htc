@@ -24,7 +24,7 @@ Checks:
 
 ### Issue tracker
 
-Issues live in GitHub Issues on CollCrom/tcg-htc, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues on CollCrom/tcg-htc. Read, create and close them with the `gh` commands in `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
