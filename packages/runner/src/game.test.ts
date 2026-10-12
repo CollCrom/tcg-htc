@@ -2,12 +2,14 @@ import { cardData } from "@fyendal/cards";
 import type { CardView } from "@fyendal/shared";
 import { describe, expect, it } from "vitest";
 import { randomAgent, type Agent, type Intent, type Seat, type View } from "./agent.js";
-import { replayGame, runGame } from "./game.js";
+import { MAX_STEPS, replayGame, runGame } from "./game.js";
 import { preconDecklist } from "./precons.js";
 import { renderDecision } from "./render.js";
 
 const decklists = [preconDecklist("precon-sbr"), preconDecklist("precon-sly")] as const;
 const GAME_TIMEOUT = 15_000;
+/** A stalled Game plays all MAX_STEPS steps, then replays them. */
+const STALL_TIMEOUT = 60_000;
 
 describe("runGame", () => {
   it(
@@ -170,6 +172,41 @@ describe("runGame", () => {
       const shortened = { ...result.replay, intents: result.replay.intents.slice(0, -1) };
 
       expect(replayGame(shortened)).not.toEqual(result.finalProjection);
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "reports a Game that runs past the step cap as a stall with its seed",
+    () => {
+      const passing: Agent = (view, legal, rng) => legal.find((intent) => intent.kind === "pass") ?? randomAgent(view, legal, rng);
+
+      const result = runGame({ decklists, seed: 7, startPlayer: 0, agents: [passing, passing] });
+
+      expect(result).toMatchObject({ outcome: "stall", seed: 7, step: MAX_STEPS, steps: MAX_STEPS });
+      if (result.outcome !== "stall") return;
+      expect(result.detail).toMatch(/steps/);
+      expect(result.replay.intents).toHaveLength(MAX_STEPS);
+      expect(result.finalProjection.phase).not.toBe("game-over");
+      expect(replayGame(result.replay)).toEqual(result.finalProjection);
+    },
+    STALL_TIMEOUT,
+  );
+
+  it(
+    "reports an Intent the engine rejects as an error with its seed, step and the engine's message",
+    () => {
+      let decisions = 0;
+      const illegalOnFourth: Agent = (view, legal, rng) =>
+        ++decisions === 4 ? { kind: "play-card", instanceId: -1, pitchInstanceIds: [] } : randomAgent(view, legal, rng);
+
+      const result = runGame({ decklists, seed: 8, startPlayer: 1, agents: [illegalOnFourth, illegalOnFourth] });
+
+      expect(result).toMatchObject({ outcome: "error", seed: 8, step: 3, steps: 3 });
+      if (result.outcome !== "error") return;
+      expect(result.detail).toContain("card not found");
+      expect(result.replay.intents).toHaveLength(3);
+      expect(replayGame(result.replay)).toEqual(result.finalProjection);
     },
     GAME_TIMEOUT,
   );

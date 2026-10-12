@@ -32,7 +32,23 @@ export interface RunGameOptions extends GameSetup {
   clock?: () => number;
 }
 
-export type GameOutcome = { outcome: "win"; winner: Seat } | { outcome: "draw" };
+/** How a Game ended. A stall or an error is returned rather than thrown, with
+ * what's needed to reproduce it: the seed, and the step at which it happened. */
+export type GameOutcome =
+  | { outcome: "win"; winner: Seat }
+  | { outcome: "draw" }
+  | GameFailure<"stall">
+  | GameFailure<"error">;
+
+/** A Game that went wrong at `step` (the number of Intents applied before it).
+ * A stall exceeded the step cap or left the acting Seat without a legal Intent;
+ * an error is an Intent the engine rejected, with the engine's message. */
+export interface GameFailure<Kind extends "stall" | "error"> {
+  outcome: Kind;
+  seed: number;
+  step: number;
+  detail: string;
+}
 
 /** Everything needed to play a Game again: its setup and the Intents applied,
  * in order. Each Intent was applied by the Seat acting at that step. */
@@ -59,21 +75,31 @@ export function runGame({ decklists, seed, startPlayer, agents, clock = () => pe
   const intents: Intent[] = [];
   const decisions: DecisionMeasurement[] = [];
   let steps = 0;
+  let failure: GameOutcome | undefined;
   for (; state.phase !== "game-over"; steps++) {
-    if (steps >= MAX_STEPS) throw new Error(`seed ${seed}: Game exceeded ${MAX_STEPS} steps`);
+    if (steps >= MAX_STEPS) {
+      failure = { outcome: "stall", seed, step: steps, detail: `Game exceeded ${MAX_STEPS} steps` };
+      break;
+    }
     const seat = actingSeat(state);
     const legal = legalIntents(state, seat);
-    if (legal.length === 0) throw new Error(`seed ${seed}, step ${steps}: Seat ${seat} has no legal Intent`);
+    if (legal.length === 0) {
+      failure = { outcome: "stall", seed, step: steps, detail: `Seat ${seat} has no legal Intent` };
+      break;
+    }
     const view = projectStateFor(state, seat);
     decisions.push(measureDecision(view, seat, legal));
     const intent = agents[seat](view, legal, rngs[seat]);
     const applied = applyIntent(state, seat, intent);
-    if (!applied.ok) throw new Error(`seed ${seed}, step ${steps}: engine rejected ${intent.kind}: ${applied.error}`);
+    if (!applied.ok) {
+      failure = { outcome: "error", seed, step: steps, detail: `engine rejected ${intent.kind}: ${applied.error}` };
+      break;
+    }
     state = applied.state;
     intents.push(intent);
   }
   return {
-    ...outcomeOf(state),
+    ...(failure ?? outcomeOf(state)),
     turns: state.turn,
     steps,
     replay: { decklists, seed, startPlayer, intents },
