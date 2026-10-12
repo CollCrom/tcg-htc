@@ -6,8 +6,8 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "smoke": "tsx src/smoke.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run src"
+    "test": "vitest run src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@fyendal/cards": "workspace:*",
