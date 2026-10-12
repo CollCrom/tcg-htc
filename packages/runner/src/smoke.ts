@@ -1,27 +1,11 @@
 // Proves the workspace wiring: create a Game from an upstream precon and print
 // Seat 0's legal Intents.
-import { cardData, preconsForFormat, scripts, validatePresentation, type Precon } from "@fyendal/cards";
+import { cardData, preconsForFormat, scripts } from "@fyendal/cards";
 import { createGame, legalIntents } from "@fyendal/engine";
-import type { Decklist, EquipmentSlot } from "@fyendal/shared";
+import { presentPrecon } from "./precons.js";
 
 const SEED = 1;
 const SEAT = 0;
-// Upstream keeps its own list private (cards/src/presentation.ts).
-const SLOTS: EquipmentSlot[] = ["head", "chest", "arms", "legs"];
-
-/** Present a precon the simple way: its first 40 deck cards, its first weapon
- * and the first equipment piece for each slot, validated by upstream. */
-function presentPrecon({ id, pool, format }: Precon): Decklist {
-  const equipment: Decklist["equipment"] = {};
-  for (const slot of SLOTS) {
-    const piece = pool.equipmentPool.find((cardId) => cardData[cardId]?.subtypes?.includes(slot));
-    if (piece) equipment[slot] = piece;
-  }
-  const presented = { weaponIds: pool.weaponIds.slice(0, 1), equipment, deck: pool.deck.slice(0, 40) };
-  const result = validatePresentation(pool, presented, format);
-  if (!result.ok) throw new Error(`${id} presentation is invalid: ${result.error}`);
-  return result.decklist;
-}
 
 const chosen = preconsForFormat("silver-age")[0];
 if (!chosen) throw new Error("upstream has no legal Silver Age precon");
