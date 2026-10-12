@@ -6,6 +6,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "smoke": "tsx src/smoke.ts",
+    "suite": "tsx src/suite.ts",
     "test": "vitest run src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
