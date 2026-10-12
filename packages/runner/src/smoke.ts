@@ -4,6 +4,9 @@ import { cardData, preconsForFormat, scripts, validatePresentation, type Precon 
 import { createGame, legalIntents } from "@fyendal/engine";
 import type { Decklist, EquipmentSlot } from "@fyendal/shared";
 
+const SEED = 1;
+const SEAT = 0;
+// Upstream keeps its own list private (cards/src/presentation.ts).
 const SLOTS: EquipmentSlot[] = ["head", "chest", "arms", "legs"];
 
 /** Present a precon the simple way: its first 40 deck cards, its first weapon
@@ -27,11 +30,11 @@ const state = createGame({
   decklists: [decklist, decklist],
   cards: cardData,
   scripts,
-  seed: 1,
-  startPlayer: 0,
+  seed: SEED,
+  startPlayer: SEAT,
 });
 
-const intents = legalIntents(state, 0);
-console.log(`${chosen.id} (${chosen.name}) mirror, seed 1, phase ${state.phase}`);
-console.log(`Seat 0 has ${intents.length} legal Intents:`);
+const intents = legalIntents(state, SEAT);
+console.log(`${chosen.id} (${chosen.name}) mirror, seed ${SEED}, phase ${state.phase}`);
+console.log(`Seat ${SEAT} has ${intents.length} legal Intents:`);
 for (const intent of intents) console.log(`  ${JSON.stringify(intent)}`);

@@ -9,12 +9,15 @@ Setup, for a fresh clone or a new worktree:
 ```bash
 git submodule update --init   # a fresh clone can use `git clone --recurse-submodules` instead
 corepack enable pnpm
-pnpm install
+pnpm install --frozen-lockfile
 ```
+
+Run pnpm from the repo root. Inside `vendor/fyendal.net`, pnpm treats upstream's own workspace (apps included) as the root.
 
 Checks:
 
-- `pnpm test:upstream` runs upstream's engine, cards and bot tests (the bot tests generate their runtime id first). They must pass before blaming our code.
+- `pnpm test:upstream` runs `pnpm test` in upstream's engine, cards and bot packages; bot's runs upstream's `generate:bot-runtime` first. They must pass before blaming our code.
+- `pnpm typecheck` typechecks our packages.
 - `pnpm smoke` creates a Game from an upstream precon and prints Seat 0's legal Intents.
 
 ## Agent skills
