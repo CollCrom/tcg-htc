@@ -1,3 +1,4 @@
+# auto-merge.yml triggers on this workflow by name; keep it "Tests".
 name: Tests
 
 on:
@@ -7,21 +8,30 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out with submodules
+        uses: actions/checkout@v4
         with:
           submodules: true
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
 
-      - run: corepack enable pnpm
+      - name: Enable pnpm
+        run: corepack enable pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install
+        run: pnpm install --frozen-lockfile
 
-      - run: pnpm typecheck
+      - name: Typecheck
+        run: pnpm typecheck
 
-      - run: pnpm smoke
+      - name: Smoke
+        run: pnpm smoke
 
-      - run: pnpm test:upstream
+      - name: Upstream tests
+        run: pnpm test:upstream
