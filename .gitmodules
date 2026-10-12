@@ -1,0 +1,3 @@
+[submodule "vendor/fyendal.net"]
+	path = vendor/fyendal.net
+	url = https://github.com/Fyendal/fyendal.net.git
