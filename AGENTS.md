@@ -37,3 +37,5 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 ### Ticket workflow
 
 Every ticket gets its own worktree and branch off the latest main: use the `ticket-worktree` skill before writing any code. PRs merge automatically once tests pass (`.github/workflows/auto-merge.yml`).
+
+The exception is `/implement-spec`: a whole spec lands on one integration branch, and goes to main as one PR that closes the spec and all its tickets.
