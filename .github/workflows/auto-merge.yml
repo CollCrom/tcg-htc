@@ -24,9 +24,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # workflow_run doesn't directly give us the PR number, so look it up from the head branch
+          # workflow_run doesn't directly give us the PR number, so look it up from the head branch.
+          # Drafts are skipped; marking one ready re-runs Tests, which merges it then.
           HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
-          PR=$(gh pr list --repo "${{ github.repository }}" --head "$HEAD_BRANCH" --base main --json number --jq '.[0].number')
+          PR=$(gh pr list --repo "${{ github.repository }}" --head "$HEAD_BRANCH" --base main --json number,isDraft --jq '[.[] | select(.isDraft | not)][0].number // empty')
           echo "number=$PR" >> "$GITHUB_OUTPUT"
 
       - name: Squash merge PR
