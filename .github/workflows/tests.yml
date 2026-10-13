@@ -4,6 +4,8 @@ name: Tests
 on:
   pull_request:
     branches: [main]
+    # ready_for_review lets auto-merge.yml merge a draft once it's marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # Explicit bash runs steps with -eo pipefail; the implicit default is bash -e.
 defaults:
