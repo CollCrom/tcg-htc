@@ -62,6 +62,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Names avoid the glossary's Avoid words
+        run: pnpm check:glossary
+
       - name: Smoke
         run: pnpm smoke
 

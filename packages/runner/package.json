@@ -8,7 +8,8 @@
     "smoke": "tsx src/smoke.ts",
     "suite": "tsx src/suite.ts",
     "test": "vitest run src",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:glossary": "tsx src/checkGlossary.ts"
   },
   "dependencies": {
     "@fyendal/cards": "workspace:*",

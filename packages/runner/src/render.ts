@@ -29,38 +29,38 @@ export function estimateTokens(text: string): number {
 }
 
 /** One Seat's part of the View (upstream calls it a PlayerView). */
-function renderSeat(player: PlayerView, who: string): string[] {
+function renderSeat(seatView: PlayerView, who: string): string[] {
   const hero = [
-    `${player.heroName}`,
-    `life ${player.life}`,
-    `action points ${player.actionPoints}`,
-    `resources ${player.resources}`,
-    ...(player.chi ? [`chi ${player.chi}`] : []),
-    ...(player.heroTapped ? ["tapped"] : []),
-    ...counters(player.heroCounters),
+    `${seatView.heroName}`,
+    `life ${seatView.life}`,
+    `action points ${seatView.actionPoints}`,
+    `resources ${seatView.resources}`,
+    ...(seatView.chi ? [`chi ${seatView.chi}`] : []),
+    ...(seatView.heroTapped ? ["tapped"] : []),
+    ...counters(seatView.heroCounters),
   ].join(", ");
-  const faceDownArsenal = player.arsenalCount - player.arsenal.length;
-  const equipment = Object.entries(player.equipment).map(([slot, card]) => `${slot}: ${card ? describeCard(card) : "none"}`);
+  const faceDownArsenal = seatView.arsenalCount - seatView.arsenal.length;
+  const equipment = Object.entries(seatView.equipment).map(([slot, card]) => `${slot}: ${card ? describeCard(card) : "none"}`);
   return [
-    `== ${who} (Seat ${player.seat}): ${hero}`,
-    player.hand.length > 0
-      ? `Hand: ${player.hand.map(describeCard).join("; ")}`
-      : `Hand: ${player.handCount} card${player.handCount === 1 ? "" : "s"}`,
-    `Deck: ${player.deckCount} cards${player.visibleDeckTop ? `, top ${describeCard(player.visibleDeckTop)}` : ""}`,
+    `== ${who} (Seat ${seatView.seat}): ${hero}`,
+    seatView.hand.length > 0
+      ? `Hand: ${seatView.hand.map(describeCard).join("; ")}`
+      : `Hand: ${seatView.handCount} card${seatView.handCount === 1 ? "" : "s"}`,
+    `Deck: ${seatView.deckCount} cards${seatView.visibleDeckTop ? `, top ${describeCard(seatView.visibleDeckTop)}` : ""}`,
     ...line(
       "Arsenal",
       [
-        ...[...player.arsenal].sort((a, b) => (a.arsenalSlot ?? 0) - (b.arsenalSlot ?? 0)).map(describeCard),
+        ...[...seatView.arsenal].sort((a, b) => (a.arsenalSlot ?? 0) - (b.arsenalSlot ?? 0)).map(describeCard),
         ...(faceDownArsenal > 0 ? [`${faceDownArsenal} face-down`] : []),
       ],
     ),
-    ...line("Pitch, in order", player.pitch.map(describeCard)),
-    ...line("Soul, in order", player.soul.map(describeCard)),
+    ...line("Pitch, in order", seatView.pitch.map(describeCard)),
+    ...line("Soul, in order", seatView.soul.map(describeCard)),
     ...line("Equipment", equipment),
-    ...line("Weapons", player.weapons.map(describeCard)),
-    ...line("In play", player.board.map(describeCard)),
-    ...line("Graveyard", grouped(player.graveyard)),
-    ...line("Banish", grouped(player.banish)),
+    ...line("Weapons", seatView.weapons.map(describeCard)),
+    ...line("In play", seatView.board.map(describeCard)),
+    ...line("Graveyard", grouped(seatView.graveyard)),
+    ...line("Banish", grouped(seatView.banish)),
   ];
 }
 
@@ -119,12 +119,12 @@ function cardNames(view: View): Map<number, string> {
   const add = (card: CardView | null | undefined) => {
     if (card && !card.hidden) names.set(card.instanceId, describeCard(card));
   };
-  for (const player of view.players) {
-    names.set(player.heroInstanceId, player.heroName);
-    for (const zone of [player.hand, player.arsenal, player.pitch, player.graveyard, player.banish, player.soul, player.weapons, player.board])
+  for (const seatView of view.players) {
+    names.set(seatView.heroInstanceId, seatView.heroName);
+    for (const zone of [seatView.hand, seatView.arsenal, seatView.pitch, seatView.graveyard, seatView.banish, seatView.soul, seatView.weapons, seatView.board])
       zone.forEach(add);
-    Object.values(player.equipment).forEach(add);
-    add(player.visibleDeckTop);
+    Object.values(seatView.equipment).forEach(add);
+    add(seatView.visibleDeckTop);
   }
   for (const link of view.chain) [link.attackingCard, ...link.defendingCards, ...link.reactions].forEach(add);
   for (const layer of view.stack) add(layer.card);

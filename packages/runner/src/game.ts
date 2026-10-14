@@ -126,7 +126,7 @@ export function replayGame(replay: Replay): ReplayProjection {
 }
 
 function newGame({ decklists, seed, startingSeat }: GameSetup): GameState {
-  return createGame({ decklists: [decklists[0], decklists[1]], cards: cardData, scripts, seed, startPlayer: startingSeat });
+  return createGame({ decklists: [decklists[0], decklists[1]], cards: cardData, scripts, seed, startPlayer: startingSeat }); // glossary: upstream
 }
 
 /** The pending decision's Seat if there is one, otherwise the Seat with priority. */

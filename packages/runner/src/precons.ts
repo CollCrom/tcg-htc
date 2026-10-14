@@ -6,14 +6,14 @@ import { EQUIPMENT_SLOTS } from "./cards.js";
 
 /** Present a precon the simple way: its first 40 deck cards, its first weapon
  * and the first equipment piece for each slot, validated by upstream. */
-export function presentPrecon({ id, pool, format }: Precon): Decklist {
+export function presentPrecon({ id, pool: upstreamList, format }: Precon): Decklist {
   const equipment: Decklist["equipment"] = {};
   for (const slot of EQUIPMENT_SLOTS) {
-    const piece = pool.equipmentPool.find((cardId) => cardData[cardId]?.subtypes?.includes(slot));
+    const piece = upstreamList.equipmentPool.find((cardId) => cardData[cardId]?.subtypes?.includes(slot));
     if (piece) equipment[slot] = piece;
   }
-  const presented = { weaponIds: pool.weaponIds.slice(0, 1), equipment, deck: pool.deck.slice(0, 40) };
-  const result = validatePresentation(pool, presented, format);
+  const presented = { weaponIds: upstreamList.weaponIds.slice(0, 1), equipment, deck: upstreamList.deck.slice(0, 40) };
+  const result = validatePresentation(upstreamList, presented, format);
   if (!result.ok) throw new Error(`${id} presentation is invalid: ${result.error}`);
   return result.decklist;
 }
