@@ -12,6 +12,7 @@ What a coding agent can't learn quickly by reading fyendal's engine. Upstream pa
 - **Pitch order multiplies Intents.** The same card paid with the same cards appears once for each legal pitch order. Sort `pitchInstanceIds` to compare Intents without order (`packages/runner/src/measure.ts`).
 - **There's no fatigue.** Random Games can stalemate with empty decks (`packages/cards/src/__tests__/fullmatch.test.ts`). Cap the number of steps.
 - **The seed is a 32-bit int.** `createGame` stores `seed | 0` as the rng state.
+- **Put probe scripts inside a workspace package.** A throwaway tsx script that imports `@fyendal/*` resolves from `packages/runner/src`, run with `pnpm --dir packages/runner exec tsx src/probe.ts` (tsx isn't installed at the root). Elsewhere in the repo, such as `docs/`, it fails with `ERR_MODULE_NOT_FOUND`. In the scratchpad, a `.ts` file loads as CommonJS and happens to resolve, but an ESM probe (`.mts`, or top-level `await`) fails. To reach a module outside `@fyendal/cards`' exports, such as `functional.ts`, import it relatively (`../../../vendor/fyendal.net/packages/cards/src/functional.ts` from `packages/runner/src`); a subpath import fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
 
 ## Entry points
 
