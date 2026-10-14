@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { glossaryBreaches } from "./glossaryCheck.js";
+import { glossaryBreaches } from "./glossaryNames.js";
 
 const GLOSSARY = `# Glossary
 

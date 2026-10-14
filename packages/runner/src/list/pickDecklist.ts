@@ -3,7 +3,7 @@ import { cardData, EXACT_DECK_SIZE, MIN_DECK_SIZE, validateArena, validatePresen
 import { rngNext } from "@fyendal/engine";
 import type { Decklist, PresentedArena } from "@fyendal/shared";
 import { EQUIPMENT_SLOTS } from "../cards.js";
-import { toUpstreamDeckPool, type List } from "./loadList.js";
+import { toUpstreamList, type List } from "./loadList.js";
 
 /**
  * Pick a Decklist from a List, seeded and pure: the same List and seed always
@@ -15,7 +15,7 @@ import { toUpstreamDeckPool, type List } from "./loadList.js";
 export function pickDecklist(list: List, seed: number): Decklist {
   const rng = { rngState: seed | 0 };
   const random = (below: number) => Math.floor(rngNext(rng) * below);
-  const upstreamList = toUpstreamDeckPool(list);
+  const upstreamList = toUpstreamList(list);
 
   const setups = weaponSetups(upstreamList.weaponIds).filter(
     (weaponIds) => validateArena(upstreamList, { weaponIds, equipment: {} }, list.format).ok,

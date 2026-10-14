@@ -3,7 +3,7 @@
 
 import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { glossaryBreaches, UPSTREAM_MARKER } from "./glossaryCheck.js";
+import { glossaryBreaches, UPSTREAM_MARKER } from "./glossaryNames.js";
 
 const repoRoot = join(import.meta.dirname, "../../..");
 const glossary = readFileSync(join(repoRoot, "GLOSSARY.md"), "utf8");

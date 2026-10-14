@@ -124,7 +124,7 @@ const countOf = (cards: ListCard[]) => cards.reduce((total, card) => total + car
 
 /** The List as upstream's legality and presentation checks take it (upstream
  * calls it a DeckPool): printing ids, one entry per copy. */
-export function toUpstreamDeckPool(list: List): DeckPool { // glossary: upstream
+export function toUpstreamList(list: List): DeckPool {
   return {
     heroId: list.hero.cardId,
     weaponIds: copiesOf(list.weapons),
@@ -223,7 +223,7 @@ export function loadList(fabraryExportText: string, options: LoadListOptions = {
   for (const { card, count } of copies.values()) {
     if (count > rules.maxCopies) problems.push(`too many copies of ${describeCard(card)} (${count}, max ${rules.maxCopies})`);
   }
-  for (const issue of formatLegalityIssues(cardData, toUpstreamDeckPool(list), rules.format)) problems.push(issue.message);
+  for (const issue of formatLegalityIssues(cardData, toUpstreamList(list), rules.format)) problems.push(issue.message);
 
   if (problems.length > 0) throw new ListError(problems);
   return list;

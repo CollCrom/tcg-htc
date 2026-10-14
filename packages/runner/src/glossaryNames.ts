@@ -1,3 +1,5 @@
+// Finds the names our code declares that use a word GLOSSARY.md marks _Avoid_.
+
 import ts from "typescript";
 
 export interface Breach {
