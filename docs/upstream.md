@@ -1,6 +1,6 @@
 # Upstream entry points and gotchas
 
-What a coding agent can't learn quickly by reading fyendal's engine. Upstream paths are relative to `vendor/fyendal.net/`, at the commit AGENTS.md pins; `packages/runner/...` paths are ours, from the repo root. Recheck this file after a submodule bump.
+What a coding agent can't learn quickly by reading fyendal's engine. Upstream paths are relative to `vendor/fyendal.net/`, at the commit AGENTS.md pins; `packages/runner/...` paths are ours, from the repo root. `packages/runner/src/upstreamDoc.test.ts` checks every path here and asserts each cheap claim, beside a comment naming the bullet's bold lead or the entry-point row; when you add or change a claim, add or change its assertion.
 
 ## Gotchas
 
@@ -11,7 +11,7 @@ What a coding agent can't learn quickly by reading fyendal's engine. Upstream pa
 - **Until the Game is over, `legalIntents` always includes `concede` and a draw Intent** (`offer-draw`, `withdraw-draw`, or `accept-draw` and `decline-draw`). Filter them out with `kind !== "concede" && !kind.endsWith("-draw")`, the same filter upstream's bot uses (`packages/bot/src/evaluation.ts`). After the filter the list can be empty: a `choose-name` decision enumerates nothing, because the client submits a free-form card name.
 - **Pitch order multiplies Intents.** The same card paid with the same cards appears once for each legal pitch order. Sort `pitchInstanceIds` to compare Intents without order (`packages/runner/src/measure.ts`).
 - **There's no fatigue.** Random Games can stalemate with empty decks (`packages/cards/src/__tests__/fullmatch.test.ts`). Cap the number of steps.
-- **The seed is a 32-bit int.** `createGame` stores `seed | 0` as the rng state.
+- **The seed is a 32-bit int.** `createGame` stores `seed | 0` as the rng state, so seeds equal mod 2^32 give the same Game. Setup then shuffles, so `state.rngState` after `createGame` is no longer the seed: compare Games (replay projections), not `rngState`.
 - **`@fyendal/*` only resolves from a workspace package.** Put a throwaway probe in `packages/runner/scratch/` (create it; it's gitignored and outside `tsconfig`'s `include`) and run it with `pnpm --dir packages/runner exec tsx scratch/probe.ts` (tsx isn't installed at the root). From `docs/` it fails with `ERR_MODULE_NOT_FOUND`. A `.ts` in a session scratchpad outside the repo loads as CommonJS and happens to resolve, but an ESM one (`.mts`, top-level `await`) fails.
 
 ## Entry points
@@ -20,7 +20,7 @@ What a coding agent can't learn quickly by reading fyendal's engine. Upstream pa
 
 | Need | Call | Where |
 |---|---|---|
-| Create a Game | `createGame({ decklists, cards: cardData, scripts, seed, startPlayer })` | `packages/engine/src/index.ts`; `GameConfig` in `runtimeState.ts` |
+| Create a Game | `createGame({ decklists, cards: cardData, scripts, seed, startPlayer })`. `@fyendal/engine` doesn't export `GameConfig` by name; type a config as `Parameters<typeof createGame>[0]`. | `packages/engine/src/index.ts`; `GameConfig` in `runtimeState.ts` |
 | Which Seat acts | `state.pendingDecision?.player ?? state.priorityPlayer` | |
 | Legal Intents | `legalIntents(state, seat)`. It reads the full state; there is no View-based version. Every Intent it returns applies unchanged. | `index.ts`, implemented in `legal.ts` |
 | A Seat's View | `projectStateFor(state, seat)` returns a `GameView` with the opponent's hidden cards masked (`hidden: true`, `cardId: ""`). | `index.ts`, `project.ts` |
