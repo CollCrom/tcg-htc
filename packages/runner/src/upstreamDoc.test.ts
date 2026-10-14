@@ -6,11 +6,17 @@ import { missingDocPaths } from "./upstreamDoc.js";
 const repoRoot = join(import.meta.dirname, "../../..");
 
 describe("missingDocPaths", () => {
-  it("names a cited path that exists in neither root", () => {
-    const doc = "See `packages/runner/src/game.ts` and `packages/engine/src/gone.ts`.";
+  it("names each cited path that exists rejects", () => {
+    const doc =
+      "See `packages/runner/src/game.ts`, `packages/engine/src/gone.ts`, `apps/server/src/gone.ts` " +
+      "and `../../../vendor/fyendal.net/packages/cards/src/gone.ts`.";
     const exists = (path: string) => path.endsWith("game.ts");
 
-    expect(missingDocPaths(doc, exists)).toEqual(["packages/engine/src/gone.ts"]);
+    expect(missingDocPaths(doc, exists)).toEqual([
+      "packages/engine/src/gone.ts",
+      "apps/server/src/gone.ts",
+      "vendor/fyendal.net/packages/cards/src/gone.ts",
+    ]);
   });
 
   it("finds every path docs/upstream.md cites", () => {
