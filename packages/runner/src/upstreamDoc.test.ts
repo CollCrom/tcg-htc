@@ -35,14 +35,31 @@ describe("missingDocPaths", () => {
 // Each assertion guards a claim in docs/upstream.md. When one fails, fix the
 // doc line named in its comment, then the assertion.
 describe("docs/upstream.md gotchas", () => {
-  const decklists = [preconDecklist("precon-sbr"), preconDecklist("precon-sly")] as const;
-  const newGame = (seed = 1) =>
-    createGame({ decklists: [decklists[0], decklists[1]], cards: cardData, scripts, seed, startPlayer: 0 });
+  const config: Parameters<typeof createGame>[0] = {
+    decklists: [preconDecklist("precon-sbr"), preconDecklist("precon-sly")],
+    cards: cardData,
+    scripts,
+    seed: 1,
+    startPlayer: 0,
+  };
+  const newGame = (seed = 1) => createGame({ ...config, seed });
+  const upstreamSource = (path: string) => readFileSync(join(repoRoot, "vendor/fyendal.net", path), "utf8");
 
-  it("createGame accepts a config with no scripts", () => {
+  it("createGame starts a Game without scripts instead of rejecting the config", () => {
     // "Always pass `scripts` to `createGame`": leaving it out fails silently.
-    const state = createGame({ decklists: [decklists[0], decklists[1]], cards: cardData, seed: 1, startPlayer: 0 });
-    expect(state.phase).not.toBe("game-over");
+    const { scripts: _, ...withoutScripts } = config;
+    expect(createGame(withoutScripts).phase).not.toBe("game-over");
+  });
+
+  it("only upstream's server app holds the List size and copy limits and skips the ban check", () => {
+    // "The Fabrary text parser is in the server app": `MAX_POOL_SIZE`, `MAX_COPIES` live only in `decks.ts`.
+    const decks = upstreamSource("apps/server/src/decks.ts");
+    expect(decks).toMatch(/const MAX_POOL_SIZE\b/);
+    expect(decks).toMatch(/const MAX_COPIES\b/);
+    expect("MAX_POOL_SIZE" in cards || "MAX_COPIES" in cards).toBe(false);
+    // "`validateDeck` doesn't check bans or benched heroes": `validateArena` does.
+    expect(decks).not.toContain("formatLegalityIssues");
+    expect(upstreamSource("packages/cards/src/presentation.ts")).toContain("formatLegalityIssues(");
   });
 
   it("off-hands are an equipment subtype that goes in the weapon zone", () => {
@@ -63,6 +80,10 @@ describe("docs/upstream.md gotchas", () => {
     const kinds = legalIntents(state, 0).map((intent) => intent.kind);
     expect(kinds).toContain("concede");
     expect(kinds.some((kind) => kind.endsWith("-draw"))).toBe(true);
+    // Same bullet: upstream's bot filters them out the same way.
+    expect(upstreamSource("packages/bot/src/evaluation.ts")).toContain(
+      'intent.kind !== "concede" && !intent.kind.endsWith("-draw")',
+    );
 
     const conceded = applyIntent(state, 0, { kind: "concede" });
     if (!conceded.ok) throw new Error(conceded.error);
@@ -71,6 +92,19 @@ describe("docs/upstream.md gotchas", () => {
     expect(legalIntents(conceded.state, 1)).toEqual([]);
     // Entry points, "Apply an Intent": a finished Game rejects Intents with "game is over".
     expect(applyIntent(conceded.state, 1, { kind: "concede" })).toEqual({ ok: false, error: "game is over" });
+  });
+
+  it("applies every legal Intent unchanged, without mutating its input", () => {
+    // Entry points, "Legal Intents": every Intent it returns applies unchanged.
+    // Entry points, "Apply an Intent": `applyIntent` doesn't mutate its input.
+    const state = newGame();
+    const before = JSON.stringify(state);
+    for (const seat of [0, 1]) {
+      for (const intent of legalIntents(state, seat)) {
+        expect(applyIntent(state, seat, intent), `Seat ${seat} ${intent.kind}`).toMatchObject({ ok: true });
+      }
+    }
+    expect(JSON.stringify(state)).toBe(before);
   });
 
   it("stores the seed as a 32-bit int", () => {
