@@ -2,6 +2,8 @@
 
 fyendal's engine is vendored as a git submodule at `vendor/fyendal.net`, pinned to upstream commit `22e9ed8b952efaa746ce4f0f8d5c975a703ab683`. Stay on that commit until a deliberate bump; upstream changes daily. The pnpm workspace takes upstream's packages (shared, protocol, engine, cards, bot) and our `packages/*`, never upstream's apps.
 
+Upstream entry points and gotchas: `docs/upstream.md`.
+
 Develop in WSL: upstream has a file named `CON.json`, which Windows can't create. Node 24 (`.nvmrc`), pnpm 10.28.2 via corepack, TypeScript run through tsx with no build step.
 
 Setup, for a fresh clone or a new worktree:
@@ -11,8 +13,6 @@ git submodule update --init   # a fresh clone can use `git clone --recurse-submo
 corepack enable pnpm
 pnpm install --frozen-lockfile
 ```
-
-Upstream entry points and gotchas: `docs/upstream.md`.
 
 Run pnpm from the repo root. Inside `vendor/fyendal.net`, pnpm treats upstream's own workspace (apps included) as the root.
 
