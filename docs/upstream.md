@@ -12,6 +12,7 @@ What a coding agent can't learn quickly by reading fyendal's engine. Upstream pa
 - **Pitch order multiplies Intents.** The same card paid with the same cards appears once for each legal pitch order. Sort `pitchInstanceIds` to compare Intents without order (`packages/runner/src/measure.ts`).
 - **There's no fatigue.** Random Games can stalemate with empty decks (`packages/cards/src/__tests__/fullmatch.test.ts`). Cap the number of steps.
 - **The seed is a 32-bit int.** `createGame` stores `seed | 0` as the rng state.
+- **`@fyendal/*` only resolves from a workspace package.** Put a throwaway probe in `packages/runner/src` and run it with `pnpm --dir packages/runner exec tsx src/probe.ts` (tsx isn't installed at the root). From `docs/` it fails with `ERR_MODULE_NOT_FOUND`. A scratchpad `.ts` loads as CommonJS and happens to resolve, but an ESM one (`.mts`, top-level `await`) fails.
 
 ## Entry points
 
@@ -31,4 +32,4 @@ What a coding agent can't learn quickly by reading fyendal's engine. Upstream pa
 | Look up cards | `cardData` (keyed by printing id), `findPrinting(name, pitch?)`, `normalizeCardName`, `isImplemented(card)` | `packages/cards/src/catalog.ts`, `index.ts` |
 | Precons | `precon(id)`, `preconsForFormat(format)` | `packages/cards/src/catalog.ts` |
 
-`@fyendal/cards` exports only `.` and `./client`. Most of `presentation.ts` is reachable through it (`weaponSelectionError`, `MIN_DECK_SIZE`, `EXACT_DECK_SIZE`), but `functional.ts` (`functionalKey`) isn't.
+`@fyendal/cards` exports only `.` and `./client`. Most of `presentation.ts` is reachable through it (`weaponSelectionError`, `MIN_DECK_SIZE`, `EXACT_DECK_SIZE`), but `functional.ts` (`functionalKey`) isn't. A subpath import fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`; import such modules relatively into `vendor/fyendal.net/` (`../../../vendor/fyendal.net/packages/cards/src/functional.ts` from `packages/runner/src`).
