@@ -12,6 +12,8 @@ corepack enable pnpm
 pnpm install --frozen-lockfile
 ```
 
+Upstream entry points and gotchas: `docs/upstream.md`.
+
 Run pnpm from the repo root. Inside `vendor/fyendal.net`, pnpm treats upstream's own workspace (apps included) as the root.
 
 Checks:
