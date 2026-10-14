@@ -3,6 +3,10 @@ import { join } from "node:path";
 import * as cards from "@fyendal/cards";
 import { cardData, isWeaponZoneCard, scripts, weaponSelectionError } from "@fyendal/cards";
 import { applyIntent, createGame, legalIntents, projectStateForReplay } from "@fyendal/engine";
+// docs/upstream.md, entry points, "Create a Game": `@fyendal/engine` doesn't
+// export `GameConfig` by name. `pnpm typecheck` fails here once it does.
+// @ts-expect-error
+import type { GameConfig } from "@fyendal/engine";
 import { describe, expect, it } from "vitest";
 import { preconDecklist } from "./precons.js";
 import { missingDocPaths } from "./upstreamDoc.js";
@@ -35,6 +39,7 @@ describe("missingDocPaths", () => {
 // Each assertion guards a claim in docs/upstream.md. When one fails, fix the
 // doc line named in its comment, then the assertion.
 describe("docs/upstream.md gotchas", () => {
+  // Entry points, "Create a Game": the doc's suggested type for a config.
   const config: Parameters<typeof createGame>[0] = {
     decklists: [preconDecklist("precon-sbr"), preconDecklist("precon-sly")],
     cards: cardData,
