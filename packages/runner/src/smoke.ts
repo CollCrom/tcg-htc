@@ -15,7 +15,7 @@ const state = createGame({
   cards: cardData,
   scripts,
   seed: SEED,
-  startPlayer: SEAT,
+  startPlayer: SEAT, // glossary: upstream
 });
 
 const intents = legalIntents(state, SEAT);

@@ -15,6 +15,7 @@ A best-of-N series of Games between the same two Lists. Rarely needed, because F
 
 **Seat**:
 One of the two sides in a Game, numbered 0 and 1.
+_Avoid_: Player (upstream's name for a Seat)
 
 **Agent**:
 The decision-maker occupying a Seat. It chooses an Intent from what it is shown and never sees the full game state.
@@ -22,7 +23,7 @@ _Avoid_: Bot (reserved for upstream's scripted hero bots), AI
 
 **View**:
 What one Seat is allowed to see of the game: its own hidden cards, plus everything public.
-_Avoid_: State (the full, unhidden game)
+_Avoid_: State (for a View; state is the full, unhidden game)
 
 **Known information**:
 Hidden cards a Seat has learned the identity or position of, such as a deck top it looked at or a card the opponent revealed from hand. It belongs to the game, not to the Agent's memory.

@@ -40,7 +40,7 @@ describe("docs/upstream.md gotchas", () => {
     cards: cardData,
     scripts,
     seed: 1,
-    startPlayer: 0,
+    startPlayer: 0, // glossary: upstream
   };
   const newGame = (seed = 1) => createGame({ ...config, seed });
   const upstreamSource = (path: string) => readFileSync(join(repoRoot, "vendor/fyendal.net", path), "utf8");

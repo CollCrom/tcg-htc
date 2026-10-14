@@ -124,11 +124,11 @@ const countOf = (cards: ListCard[]) => cards.reduce((total, card) => total + car
 
 /** The List as upstream's legality and presentation checks take it (upstream
  * calls it a DeckPool): printing ids, one entry per copy. */
-export function toUpstreamDeckPool(list: List): DeckPool {
+export function toUpstreamDeckPool(list: List): DeckPool { // glossary: upstream
   return {
     heroId: list.hero.cardId,
     weaponIds: copiesOf(list.weapons),
-    equipmentPool: copiesOf(list.equipment),
+    equipmentPool: copiesOf(list.equipment), // glossary: upstream
     deck: copiesOf(list.deck),
   };
 }

@@ -13,6 +13,7 @@
     "smoke": "pnpm --filter @tcg-htc/runner smoke",
     "suite": "pnpm --filter @tcg-htc/runner suite",
     "typecheck": "pnpm --filter \"./packages/**\" typecheck",
-    "test": "pnpm --filter \"./packages/**\" test"
+    "test": "pnpm --filter \"./packages/**\" test",
+    "check:glossary": "pnpm --filter @tcg-htc/runner check:glossary"
   }
 }

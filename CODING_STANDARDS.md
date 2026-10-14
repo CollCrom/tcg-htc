@@ -4,7 +4,7 @@ Judgement calls for the reviewer. Anything a tool could check belongs in a check
 
 ## Use the glossary's words
 
-Name things in code, tests and issues with the terms in `GLOSSARY.md`: List, Decklist, Deck, Game, Match, Seat, Agent, View, Intent. Don't drift to the words it marks _Avoid_, such as "pool" for a List, "action" or "move" for an Intent, "player" for a Seat, or "match" for a single Game. Where upstream's engine uses a different name (its `player` fields, its `GameIntent` type), translate at the boundary instead of letting the upstream name spread through our code.
+Name things in code, tests and issues with the terms in `GLOSSARY.md`. `pnpm check:glossary` catches names using its _Avoid_ words, except those qualified "(for …)", which are wrong in only one sense: "match" for a single Game, "deck" for a whole List, "state" for a View. Those need your eye. Where upstream's engine uses a different name, translate at the boundary instead of letting the upstream name spread through our code; end a line with `// glossary: upstream` only where upstream forces its name, such as a field we pass to it.
 
 ## Test through the seams
 
