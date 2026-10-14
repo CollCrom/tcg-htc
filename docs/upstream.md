@@ -12,7 +12,7 @@ What a coding agent can't learn quickly by reading fyendal's engine. Upstream pa
 - **Pitch order multiplies Intents.** The same card paid with the same cards appears once for each legal pitch order. Sort `pitchInstanceIds` to compare Intents without order (`packages/runner/src/measure.ts`).
 - **There's no fatigue.** Random Games can stalemate with empty decks (`packages/cards/src/__tests__/fullmatch.test.ts`). Cap the number of steps.
 - **The seed is a 32-bit int.** `createGame` stores `seed | 0` as the rng state.
-- **`@fyendal/*` only resolves from a workspace package.** Put a throwaway probe in `packages/runner/scratch/` (gitignored, outside `tsconfig`'s `include`) and run it with `pnpm --dir packages/runner exec tsx scratch/probe.ts` (tsx isn't installed at the root). From `docs/` it fails with `ERR_MODULE_NOT_FOUND`. A scratchpad `.ts` loads as CommonJS and happens to resolve, but an ESM one (`.mts`, top-level `await`) fails.
+- **`@fyendal/*` only resolves from a workspace package.** Put a throwaway probe in `packages/runner/scratch/` (create it; it's gitignored and outside `tsconfig`'s `include`) and run it with `pnpm --dir packages/runner exec tsx scratch/probe.ts` (tsx isn't installed at the root). From `docs/` it fails with `ERR_MODULE_NOT_FOUND`. A `.ts` in a session scratchpad outside the repo loads as CommonJS and happens to resolve, but an ESM one (`.mts`, top-level `await`) fails.
 
 ## Entry points
 
