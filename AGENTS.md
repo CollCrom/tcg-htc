@@ -18,13 +18,12 @@ Run pnpm from the repo root. Inside `vendor/fyendal.net`, pnpm treats upstream's
 
 Checks:
 
+- `pnpm check` runs the fast checks CI runs, in order: typecheck, `check:glossary` (names in `packages/*/src` using a word `GLOSSARY.md` marks _Avoid_), `lint:workflows` (actionlint 1.7.7 over `.github/workflows/`; it downloads the binary into the gitignored `.cache/` once, and CI's runner also has shellcheck, so a `run:` step can fail there and pass here) and our packages' vitest suites. Run it before pushing. Each part is its own script in `package.json` when you want one.
 - `pnpm test:upstream` runs `pnpm test` in upstream's engine, cards and bot packages; bot's runs upstream's `generate:bot-runtime` first. They must pass before blaming our code.
-- `pnpm typecheck` typechecks our packages.
-- `pnpm check:glossary` fails on names in `packages/*/src` that use a word `GLOSSARY.md` marks _Avoid_.
-- `pnpm test` runs our packages' vitest suites.
 - `pnpm smoke` creates a Game from an upstream precon and prints Seat 0's legal Intents.
 - `pnpm suite` runs the Phase 1 suite: 100 Ira vs Bravo Games between random Agents (seeds 1 to 50, both seat orders), checks every replay reproduces, and prints outcomes, measurements and exit-criteria verdicts. It takes about a minute and exits non-zero if a criterion fails. Results: `docs/phase1-report.md`.
-- `pnpm lint:workflows` runs actionlint over `.github/workflows/`, the same version CI runs. The first run downloads the binary into the gitignored `.cache/`; run it before pushing a workflow change. actionlint also runs shellcheck over `run:` steps when it's on PATH, and CI's runner has it, so a clean run on a machine without shellcheck can still fail in CI.
+
+A new check is a root `package.json` script wired into `check`. TypeScript ones live in `packages/runner/src` with their vitest test beside them; shell ones in `scripts/`.
 
 ## Agent skills
 
