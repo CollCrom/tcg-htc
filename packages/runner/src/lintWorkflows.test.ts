@@ -1,12 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const repoRoot = join(import.meta.dirname, "../../..");
-// One cache per test file: the first run downloads actionlint, the rest reuse it.
-const cacheDir = mkdtempSync(join(tmpdir(), "actionlint-cache-"));
+const tempDir = mkdtempSync(join(tmpdir(), "lint-workflows-"));
+// A fresh cache, so the script has to bootstrap from nothing.
+const cacheDir = join(tempDir, "cache");
 
 const lintWorkflows = (...args: string[]) =>
   spawnSync("bash", [join(repoRoot, "scripts/lint-workflows.sh"), ...args], {
@@ -16,9 +17,18 @@ const lintWorkflows = (...args: string[]) =>
   });
 
 describe("pnpm lint:workflows", () => {
+  // The first run downloads actionlint and says so on stdout; every test below
+  // expects the quiet, cached run.
+  beforeAll(() => {
+    expect(lintWorkflows("-version").status).toBe(0);
+  });
+
+  afterAll(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
   it("exits non-zero on a finding", () => {
-    const dir = mkdtempSync(join(tmpdir(), "workflow-"));
-    const file = join(dir, "broken.yml");
+    const file = join(tempDir, "broken.yml");
     writeFileSync(file, "on: push\njobs:\n  build:\n    steps:\n      - run: echo hi\n");
 
     const result = lintWorkflows(file);
@@ -34,13 +44,11 @@ describe("pnpm lint:workflows", () => {
     expect(result.status).toBe(0);
   });
 
-  it("runs actionlint 1.7.7, the version CI pins", () => {
+  it("runs actionlint 1.7.7", () => {
     expect(lintWorkflows("-version").stdout).toMatch(/^1\.7\.7\n/);
   });
 
   it("reuses the cached binary instead of downloading again", () => {
-    lintWorkflows("-version");
-
     const result = lintWorkflows("-version");
 
     expect(result.stdout).not.toContain("Downloading");
