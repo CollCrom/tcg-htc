@@ -24,6 +24,7 @@ Checks:
 - `pnpm test` runs our packages' vitest suites.
 - `pnpm smoke` creates a Game from an upstream precon and prints Seat 0's legal Intents.
 - `pnpm suite` runs the Phase 1 suite: 100 Ira vs Bravo Games between random Agents (seeds 1 to 50, both seat orders), checks every replay reproduces, and prints outcomes, measurements and exit-criteria verdicts. It takes about a minute and exits non-zero if a criterion fails. Results: `docs/phase1-report.md`.
+- `pnpm lint:workflows` runs actionlint over `.github/workflows/`, the same version CI runs. The first run downloads the binary into the gitignored `.cache/`; run it before pushing a workflow change. actionlint also runs shellcheck over `run:` steps when it's on PATH, and CI's runner has it, so a clean run on a machine without shellcheck can still fail in CI.
 
 ## Agent skills
 

@@ -14,6 +14,7 @@
     "suite": "pnpm --filter @tcg-htc/runner suite",
     "typecheck": "pnpm --filter \"./packages/**\" typecheck",
     "test": "pnpm --filter \"./packages/**\" test",
-    "check:glossary": "pnpm --filter @tcg-htc/runner check:glossary"
+    "check:glossary": "pnpm --filter @tcg-htc/runner check:glossary",
+    "lint:workflows": "bash scripts/lint-workflows.sh"
   }
 }
