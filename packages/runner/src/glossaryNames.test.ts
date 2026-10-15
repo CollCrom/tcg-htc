@@ -47,6 +47,30 @@ _Avoid_: Bot (reserved for upstream's scripted hero bots), AI
     ]);
   });
 
+  it("throws on an Avoid entry of more than one word, which it could never match", () => {
+    const glossary = `${GLOSSARY}
+**View**:
+What a Seat can see.
+_Avoid_: Game state, snapshot
+`;
+    expect(() => glossaryBreaches(glossary, [])).toThrow(
+      'GLOSSARY.md Avoid entry "Game state" is not a single word, so the check could never match it. ' +
+        'Only entries qualified "(for …)" are skipped.',
+    );
+  });
+
+  it("throws on a hyphenated Avoid entry, since names are matched a letters-only part at a time", () => {
+    expect(() => glossaryBreaches("_Avoid_: Re-roll\n", [])).toThrow('Avoid entry "Re-roll" is not a single word');
+  });
+
+  it("still skips a multi-word Avoid entry the glossary qualifies with \"for\"", () => {
+    const glossary = "_Avoid_: Pool, card list (for the whole List)\n";
+    const text = "const cardList = 1;\nconst pool = 2;\n";
+    expect(glossaryBreaches(glossary, [{ path: "src/a.ts", text }])).toEqual([
+      { path: "src/a.ts", line: 2, identifier: "pool", word: "pool" },
+    ]);
+  });
+
   it("reads an Avoid entry whose explanation contains a comma", () => {
     const glossary = "_Avoid_: State (the full, unhidden game), memo (for a short, private note)\n";
     const text = "const gameState = 1;\nconst memo = 2;\n";

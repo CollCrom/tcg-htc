@@ -37,13 +37,25 @@ export function glossaryBreaches(glossary: string, files: { path: string; text: 
   return breaches;
 }
 
+/** The words GLOSSARY.md marks _Avoid_, lower-cased. Throws on an entry that
+ * isn't one word of letters: the check compares one part of a name at a time,
+ * so such an entry would silently go unenforced. */
 function avoidWords(glossary: string): string[] {
   return [...glossary.matchAll(/^_Avoid_:(.*)$/gm)].flatMap((match) =>
     match[1]!
       .split(/,(?![^(]*\))/)
       .map((entry) => entry.trim())
       .filter((entry) => !/\(for /.test(entry))
-      .map((entry) => entry.replace(/\(.*\)/, "").trim().toLowerCase()),
+      .map((entry) => {
+        const word = entry.replace(/\(.*\)/, "").trim();
+        if (!/^[A-Za-z]+$/.test(word)) {
+          throw new Error(
+            `GLOSSARY.md Avoid entry "${word}" is not a single word, so the check could never match it. ` +
+              'Only entries qualified "(for …)" are skipped.',
+          );
+        }
+        return word.toLowerCase();
+      }),
   );
 }
 

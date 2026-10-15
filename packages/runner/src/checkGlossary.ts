@@ -1,5 +1,6 @@
 // CI check: fails when a name in packages/*/src uses a word GLOSSARY.md marks
-// _Avoid_. Prints one GitHub annotation per breach.
+// _Avoid_, or when GLOSSARY.md has an Avoid entry the check could never match.
+// Prints one GitHub annotation per breach.
 
 import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,7 +13,13 @@ const files = globSync("packages/*/src/**/*.ts", { cwd: repoRoot }).map((path) =
   text: readFileSync(join(repoRoot, path), "utf8"),
 }));
 
-const breaches = glossaryBreaches(glossary, files);
+let breaches;
+try {
+  breaches = glossaryBreaches(glossary, files);
+} catch (error) {
+  console.log(`::error file=GLOSSARY.md::${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
 for (const { path, line, identifier, word } of breaches) {
   console.log(
     `::error file=${path},line=${line}::${identifier} uses "${word}", which GLOSSARY.md marks Avoid. ` +
