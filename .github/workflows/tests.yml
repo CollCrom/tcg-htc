@@ -66,17 +66,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Names avoid the glossary's Avoid words
-        run: pnpm check:glossary
+      # The fast checks, the same command an agent runs before pushing.
+      - name: Check
+        run: pnpm check
 
       - name: Smoke
         run: pnpm smoke
 
       - name: Upstream tests
         run: pnpm test:upstream
-
-      - name: Tests
-        run: pnpm test
