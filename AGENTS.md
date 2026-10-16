@@ -18,7 +18,7 @@ Run pnpm from the repo root. Inside `vendor/fyendal.net`, pnpm treats upstream's
 
 Checks:
 
-- `pnpm check` runs the fast checks CI runs, in order: typecheck, `check:glossary` (names in `packages/*/src` using a word `GLOSSARY.md` marks _Avoid_), `lint:workflows` (actionlint 1.7.7 over `.github/workflows/`; it downloads the binary into the gitignored `.cache/` once, and CI's runner also has shellcheck, so a `run:` step can fail there and pass here) and our packages' vitest suites. Run it before pushing. Each part is its own script in `package.json` when you want one.
+- `pnpm check` runs the fast checks CI runs; each part is its own script in `package.json`. Run it before pushing. Two gotchas: `check:glossary` covers names in `packages/*/src` against `GLOSSARY.md`'s _Avoid_ words, and `lint:workflows` (actionlint 1.7.7 over `.github/workflows/`) downloads the binary into the gitignored `.cache/` once, while CI's runner also has shellcheck, so a `run:` step can fail there and pass here.
 - `pnpm test:upstream` runs `pnpm test` in upstream's engine, cards and bot packages; bot's runs upstream's `generate:bot-runtime` first. They must pass before blaming our code.
 - `pnpm smoke` creates a Game from an upstream precon and prints Seat 0's legal Intents.
 - `pnpm suite` runs the Phase 1 suite: 100 Ira vs Bravo Games between random Agents (seeds 1 to 50, both seat orders), checks every replay reproduces, and prints outcomes, measurements and exit-criteria verdicts. It takes about a minute and exits non-zero if a criterion fails. Results: `docs/phase1-report.md`.

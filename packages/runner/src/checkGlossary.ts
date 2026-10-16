@@ -7,7 +7,7 @@
 
 import { globSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { glossaryBreaches, UPSTREAM_MARKER } from "./glossaryNames.js";
+import { glossaryBreaches, UPSTREAM_MARKER, UPSTREAM_MARKER_SCOPE } from "./glossaryNames.js";
 
 const repoRoot = join(import.meta.dirname, "../../..");
 const [glossaryPath = join(repoRoot, "GLOSSARY.md"), sourceGlob = "packages/*/src/**/*.ts"] = process.argv.slice(2);
@@ -26,8 +26,8 @@ try {
 }
 for (const { path, line, identifier, word, marked } of breaches) {
   const fix = marked
-    ? `The "${UPSTREAM_MARKER}" marker doesn't apply here: it exempts only an object-literal property ` +
-      "or a destructured binding that keeps upstream's field name, not a name we declare ourselves."
+    ? `The "${UPSTREAM_MARKER}" marker doesn't apply here: it exempts only ${UPSTREAM_MARKER_SCOPE}, ` +
+      "not a name we declare ourselves."
     : `Use the glossary's word, or end the line with "${UPSTREAM_MARKER}" if upstream forces the name.`;
   console.log(`::error file=${path},line=${line}::${identifier} uses "${word}", which GLOSSARY.md marks Avoid. ${fix}`);
 }

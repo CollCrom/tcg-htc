@@ -7,7 +7,7 @@
   "scripts": {
     "smoke": "tsx src/smoke.ts",
     "suite": "tsx src/suite.ts",
-    "test": "vitest run src",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:glossary": "tsx src/checkGlossary.ts"
   },
