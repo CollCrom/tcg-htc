@@ -4,7 +4,7 @@ Judgement calls for the reviewer. Anything a tool could check belongs in a check
 
 ## Use the glossary's words
 
-Name things in code, tests and issues with the terms in `GLOSSARY.md`. `pnpm check:glossary` catches names using its _Avoid_ words, except those qualified "(for …)", which are wrong in only one sense: "match" for a single Game, "deck" for a whole List, "state" for a View. Those need your eye. Where upstream's engine uses a different name, translate at the boundary instead of letting the upstream name spread through our code; end a line with `// glossary: upstream` only where upstream forces its name, such as a field we pass to it.
+Name things in code, tests and issues with the terms in `GLOSSARY.md`. `pnpm check:glossary` catches names using its _Avoid_ words, except those qualified "(for …)", which are wrong in only one sense: "match" for a single Game, "deck" for a whole List, "state" for a View. Those need your eye. Where upstream's engine uses a different name, translate at the boundary instead of letting the upstream name spread through our code. The check enforces where `// glossary: upstream` may go; your eye is for whether the boundary is in the right place.
 
 ## Test through the seams
 
