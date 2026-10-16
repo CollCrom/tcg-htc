@@ -11,10 +11,11 @@ export interface Breach {
   marked: boolean;
 }
 
-/** Ends a line whose names must stay upstream's. It exempts only the names
- * upstream forces: an object-literal property, and a destructured binding
- * that keeps upstream's field name. */
+/** Ends a line whose names must stay upstream's. */
 export const UPSTREAM_MARKER = "// glossary: upstream";
+
+/** The only names the marker exempts: the ones upstream forces. */
+export const UPSTREAM_MARKER_SCOPE = "an object-literal property or a destructured binding that keeps upstream's field name";
 
 /** The names `files` declare that use one of `glossary`'s _Avoid_ words, as a
  * whole camelCase or snake_case part, or that part plus "s". An Avoid word

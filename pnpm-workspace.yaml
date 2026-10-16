@@ -6,3 +6,7 @@ packages:
   - "vendor/fyendal.net/packages/cards"
   - "vendor/fyendal.net/packages/bot"
   - "packages/*"
+
+# esbuild's install script only checks its binary; tsx runs without it.
+ignoredBuiltDependencies:
+  - esbuild
