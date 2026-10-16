@@ -1,16 +1,20 @@
 // CI check: fails when a name in packages/*/src uses a word GLOSSARY.md marks
 // _Avoid_, or when GLOSSARY.md has an Avoid entry the check could never match.
 // Prints one GitHub annotation per breach.
+//
+// Usage: tsx checkGlossary.ts [glossary path] [source glob]
+// Both default to the repo's; the test passes fixtures.
 
 import { globSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { glossaryBreaches, UPSTREAM_MARKER } from "./glossaryNames.js";
 
 const repoRoot = join(import.meta.dirname, "../../..");
-const glossary = readFileSync(join(repoRoot, "GLOSSARY.md"), "utf8");
-const files = globSync("packages/*/src/**/*.ts", { cwd: repoRoot }).map((path) => ({
+const [glossaryPath = join(repoRoot, "GLOSSARY.md"), sourceGlob = "packages/*/src/**/*.ts"] = process.argv.slice(2);
+const glossary = readFileSync(glossaryPath, "utf8");
+const files = globSync(sourceGlob, { cwd: repoRoot }).map((path) => ({
   path,
-  text: readFileSync(join(repoRoot, path), "utf8"),
+  text: readFileSync(resolve(repoRoot, path), "utf8"),
 }));
 
 let breaches;
