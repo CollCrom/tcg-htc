@@ -7,9 +7,13 @@ export interface Breach {
   line: number;
   identifier: string;
   word: string;
+  /** The line ends in the upstream marker, which doesn't cover this name. */
+  marked: boolean;
 }
 
-/** Ends a line whose names must stay upstream's. */
+/** Ends a line whose names must stay upstream's. It exempts only the names
+ * upstream forces: an object-literal property, and a destructured binding
+ * that keeps upstream's field name. */
 export const UPSTREAM_MARKER = "// glossary: upstream";
 
 /** The names `files` declare that use one of `glossary`'s _Avoid_ words, as a
@@ -28,7 +32,10 @@ export function glossaryBreaches(glossary: string, files: { path: string; text: 
         const parts = (name.text.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+/g) ?? []).map((part) => part.toLowerCase());
         const word = words.find((word) => parts.some((part) => part === word || part === `${word}s`));
         const line = source.getLineAndCharacterOfPosition(name.getStart()).line + 1;
-        if (word && !marked.has(line)) breaches.push({ path, line, identifier: name.text, word });
+        const isMarked = marked.has(line);
+        if (word && !(isMarked && upstreamForces(node))) {
+          breaches.push({ path, line, identifier: name.text, word, marked: isMarked });
+        }
       }
       ts.forEachChild(node, visit);
     };
@@ -66,6 +73,14 @@ function declaredName(node: ts.Node): ts.Identifier | undefined {
   if (!ts.isDeclarationStatement(node) && !DECLARATIONS.some((is) => is(node))) return undefined;
   const name = ts.getNameOfDeclaration(node as ts.Declaration);
   return name && ts.isIdentifier(name) ? name : undefined;
+}
+
+/** Whether `node` names something upstream forces the name of: a property of
+ * an object literal we pass to it, or a destructured binding that keeps its
+ * field name. Any other declaration is a name we chose. */
+function upstreamForces(node: ts.Node): boolean {
+  if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) return true;
+  return ts.isBindingElement(node) && !node.propertyName && ts.isObjectBindingPattern(node.parent);
 }
 
 const DECLARATIONS: ((node: ts.Node) => boolean)[] = [

@@ -24,11 +24,12 @@ try {
   console.log(`::error file=GLOSSARY.md::${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }
-for (const { path, line, identifier, word } of breaches) {
-  console.log(
-    `::error file=${path},line=${line}::${identifier} uses "${word}", which GLOSSARY.md marks Avoid. ` +
-      `Use the glossary's word, or end the line with "${UPSTREAM_MARKER}" if upstream forces the name.`,
-  );
+for (const { path, line, identifier, word, marked } of breaches) {
+  const fix = marked
+    ? `The "${UPSTREAM_MARKER}" marker doesn't apply here: it exempts only an object-literal property ` +
+      "or a destructured binding that keeps upstream's field name, not a name we declare ourselves."
+    : `Use the glossary's word, or end the line with "${UPSTREAM_MARKER}" if upstream forces the name.`;
+  console.log(`::error file=${path},line=${line}::${identifier} uses "${word}", which GLOSSARY.md marks Avoid. ${fix}`);
 }
 console.log(`${files.length} files, ${breaches.length} glossary breaches`);
 process.exitCode = breaches.length > 0 ? 1 : 0;

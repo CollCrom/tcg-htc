@@ -42,6 +42,15 @@ describe("pnpm check:glossary", () => {
     expect(result.status).toBe(1);
   });
 
+  it("says the upstream marker doesn't apply to a name we declared ourselves", () => {
+    const result = checkGlossary("_Avoid_: Pool\n", "function toUpstreamDeckPool() {} // glossary: upstream\n");
+
+    expect(result.stdout).toMatch(
+      /^::error file=.*\/a\.ts,line=1::toUpstreamDeckPool uses "pool", which GLOSSARY\.md marks Avoid\. The "\/\/ glossary: upstream" marker doesn't apply here: /,
+    );
+    expect(result.status).toBe(1);
+  });
+
   it("exits 1 with an annotation on GLOSSARY.md for an Avoid entry it could never match", () => {
     const result = checkGlossary("_Avoid_: Game state\n", "const list = 1;\n");
 
