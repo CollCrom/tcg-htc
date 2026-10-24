@@ -10,6 +10,12 @@ importers:
 
   packages/claude-agent:
     dependencies:
+      '@fyendal/cards':
+        specifier: workspace:*
+        version: link:../../vendor/fyendal.net/packages/cards
+      '@fyendal/shared':
+        specifier: workspace:*
+        version: link:../../vendor/fyendal.net/packages/shared
       '@tcg-htc/runner':
         specifier: workspace:*
         version: link:../runner
