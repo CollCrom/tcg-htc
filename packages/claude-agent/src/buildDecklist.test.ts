@@ -238,14 +238,16 @@ describe("an invalid build", () => {
   }
 
   it(
-    "a rate limit ends the Game at once, without a retry",
+    "a rate limit pauses the Game at once, without a retry, keeping the valid build",
     async () => {
       const fake = fakeClaudeCode((request, index) => (index === 1 ? { kind: "rate-limit", detail: "You've hit your limit" } : buildsThenPlays(request, index)));
 
       const played = await playGame({ seed: SEED, lists, configs, call: fake, runDir: tempRunDir() });
 
       expect(fake.calls).toHaveLength(2);
-      expect(played.result).toMatchObject({ outcome: "error", cause: "rate-limit", step: 0, detail: "Seat 1's Claude Agent (sonnet, low): You've hit your limit" });
+      expect(played.result).toMatchObject({ outcome: "paused", cause: "rate-limit", step: 0, detail: "Seat 1's Claude Agent (sonnet, low): You've hit your limit" });
+      expect(played.file.status).toBe("paused");
+      expect(played.file.outcome).toBeUndefined();
       expect(played.file.decklistDecisions).toHaveLength(2);
       expect(played.file.decklistDecisions[0]!.decision).toMatchObject({ reasoning: "aggressive red build" });
       expect(played.file.decklistDecisions[1]!.decision).toMatchObject({ cause: "rate-limit", measurements: { retries: 0 } });
