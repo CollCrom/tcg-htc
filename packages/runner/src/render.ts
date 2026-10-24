@@ -2,7 +2,7 @@
 // Intents. It exists to estimate what a decision would cost a Claude Agent; the
 // exact text is not a contract yet. It reads only the View, never the state.
 import { cardData } from "@fyendal/cards";
-import type { CardView, PlayerView } from "@fyendal/shared";
+import type { CardCostSelection, CardView, PlayerView } from "@fyendal/shared";
 import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
 import { nameWithColour } from "./cards.js";
 
@@ -18,7 +18,7 @@ export interface RenderedDecision {
 
 /** Renders a Seat's View and its legal Intents as text. */
 export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): RenderedDecision {
-  const names = cardNames(view);
+  const names = namesOf(view);
   const intents = collapsePitchOrderings(legalIntents, view);
   const text = [
     `Turn ${view.turn}, ${view.phase} phase. Seat ${view.activePlayer}'s turn; Seat ${view.priorityPlayer} has priority. You are Seat ${seat}.`,
@@ -28,7 +28,7 @@ export function renderDecision(view: View, seat: Seat, legalIntents: readonly In
     ...renderDecisionPrompt(view, seat),
     ...section("Recent log", view.log.slice(-LOG_LINES)),
     "Legal Intents:",
-    ...intents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view)}`),
+    ...intents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view, seat)}`),
   ].join("\n");
   return { text, intents };
 }
@@ -126,46 +126,173 @@ function renderDecisionPrompt(view: View, seat: Seat): string[] {
   return [prompt, ...staged, ...revealed, ...looked];
 }
 
-function renderIntent(intent: Intent, names: ReadonlyMap<number, string>, view: View): string {
-  const name = (id: number) => names.get(id) ?? `card ${id}`;
-  const parts: string[] = [intent.kind];
-  for (const [key, value] of Object.entries(intent)) {
-    if (key === "kind" || value === undefined) continue;
-    if (key === "optionId" && typeof value === "string") parts.push(optionLabel(view, value));
-    else if (Array.isArray(value) && key.endsWith("InstanceIds")) parts.push(`${key} [${value.map(name).join(", ")}]`);
-    else if (key === "instanceIds" && Array.isArray(value)) parts.push(`[${value.map(name).join(", ")}]`);
-    else if (typeof value === "number" && /(InstanceId|instanceId|AllyId)$/.test(key)) parts.push(`${key} ${name(value)}`);
-    else parts.push(`${key} ${JSON.stringify(value)}`);
+/** Names of the cards this View shows, by instance id, plus the labels the
+ * pending decision gives its options. */
+interface Names {
+  card(instanceId: number): string;
+  option(optionId: string): string;
+}
+
+/** One Intent in plain language: what is done, to or with which cards. */
+function renderIntent(intent: Intent, names: Names, view: View, seat: Seat): string {
+  const list = (ids: readonly number[]) => listed(ids.map(names.card));
+  const pitching = (ids: readonly number[] | undefined) => (ids && ids.length > 0 ? `, pitching ${list(ids)}` : "");
+  const play = (verb: string, card: number, from: string, intent: Extract<Intent, { pitchInstanceIds: number[] }>) => {
+    const details = "boost" in intent || "meldSide" in intent ? playDetails(intent, names) : [];
+    return `${verb} ${names.card(card)}${from}${details.map((detail) => `, ${detail}`).join("")}${pitching(intent.pitchInstanceIds)}`;
+  };
+  switch (intent.kind) {
+    case "play-card":
+      return play("play", intent.instanceId, "", intent);
+    case "play-from-arsenal":
+      return play("play", intent.instanceId, " from arsenal", intent);
+    case "play-from-zone":
+      return play("play", intent.instanceId, ` from ${intent.zone}`, intent);
+    case "activate-ability": {
+      const ability = abilityOf(view, intent.sourceInstanceId, intent.abilityIndex ?? 0);
+      const source = names.card(intent.sourceInstanceId);
+      const verb = ability.attack ? `attack with ${source}` : `activate ${source}${ability.label ? `: ${ability.label}` : ""}`;
+      const target = targetOf(intent, names);
+      const alternative = intent.alternativeCostCardInstanceIds?.length
+        ? [`paying its alternative cost with ${list(intent.alternativeCostCardInstanceIds)}`]
+        : [];
+      const cost = intent.cardCostSelection ? [cardCost(intent.cardCostSelection)] : [];
+      return `${verb}${[...target, ...alternative, ...cost].map((detail) => `, ${detail}`).join("")}${pitching(intent.pitchInstanceIds)}`;
+    }
+    case "pass":
+      return `pass${passMeaning(view, seat)}`;
+    case "defend":
+      return intent.instanceIds.length === 0
+        ? "block with nothing"
+        : `block with ${list(intent.instanceIds)}${pitching(intent.pitchInstanceIds)}`;
+    case "stage-defenders":
+      return `stage ${list(intent.instanceIds)} to block`;
+    case "choose": {
+      const payment = view.pendingDecision?.resourcePayment?.options.find(({ optionId }) => optionId === intent.optionId);
+      if (payment) return `pay ${view.pendingDecision?.resourcePayment?.cost} by pitching ${list(payment.pitchInstanceIds)}`;
+      if (view.pendingDecision?.kind === "arsenal") return `put ${names.option(intent.optionId)} in arsenal`;
+      return `choose ${names.option(intent.optionId)}`;
+    }
+    case "choose-many":
+      return `choose ${listed(intent.optionIds.map(names.option))}`;
+    case "order-triggers":
+      return `resolve the triggers in this order: ${intent.optionIds.map(names.option).join(", then ")}`;
+    case "skip-runechant":
+      return "skip through the Runechant trigger";
+    case "close-chain":
+      return "close the combat chain";
+    case "concede":
+      return "concede the Game";
+    case "offer-draw":
+      return "offer a draw";
+    case "accept-draw":
+      return "accept the draw offer";
+    case "decline-draw":
+      return "decline the draw offer";
+    case "withdraw-draw":
+      return "withdraw the draw offer";
+    default:
+      return unreachable(intent);
   }
-  return parts.join(" ");
 }
 
-function optionLabel(view: View, optionId: string): string {
+/** The optional parts of a play Intent: meld side, target, boost, instant,
+ * alternative cost and card cost. */
+function playDetails(
+  intent: Extract<Intent, { kind: "play-card" | "play-from-arsenal" | "play-from-zone" }>,
+  names: Names,
+): string[] {
+  return [
+    ...(intent.meldSide ? [intent.meldSide === "both" ? "melding both sides" : `melding the ${intent.meldSide} side`] : []),
+    ...targetOf(intent, names),
+    ...(intent.boost ? [intent.boostCount && intent.boostCount > 1 ? `boosted ${intent.boostCount} times` : "boosted"] : []),
+    ...(intent.asInstant ? ["as an instant"] : []),
+    ...(intent.alternativeCostCardInstanceIds?.length
+      ? [`paying its alternative cost with ${listed(intent.alternativeCostCardInstanceIds.map(names.card))}`]
+      : []),
+    ...(intent.cardCostSelection ? [cardCost(intent.cardCostSelection)] : []),
+  ];
+}
+
+function targetOf(intent: { targetAllyId?: number; targetCardInstanceId?: number }, names: Names): string[] {
+  const target = intent.targetCardInstanceId ?? intent.targetAllyId;
+  return target === undefined ? [] : [`targeting ${names.card(target)}`];
+}
+
+function cardCost(selection: CardCostSelection): string {
+  const modes = selection.modes.map(({ kind, maximum }) => `${kind} up to ${maximum}`).join(" or ");
+  return `its card cost (${selection.cardLabel}: ${modes})`;
+}
+
+/** What passing does here, when the rules give it a specific meaning. */
+function passMeaning(view: View, seat: Seat): string {
   const decision = view.pendingDecision;
-  const index = decision?.options?.indexOf(optionId) ?? -1;
-  const card = index >= 0 ? decision?.optionCards?.[index] : null;
-  return decision?.optionLabels?.[index] ?? (card ? describeCard(card) : optionId);
+  if (decision?.kind === "arsenal") return " (put nothing in arsenal)";
+  if (decision?.kind === "optional-effect") return " (decline)";
+  if (!decision && view.phase === "action" && view.activePlayer === seat && view.chain.length === 0 && view.stack.length === 0)
+    return " (end your turn)";
+  return "";
 }
 
-/** Names of the cards this View shows, by instance id, for naming Intents' cards. */
-function cardNames(view: View): Map<number, string> {
-  const names = new Map<number, string>();
+/** An activated ability of a card the View shows: whether it attacks, and its
+ * label when the card has several. */
+function abilityOf(view: View, sourceInstanceId: number, abilityIndex: number): { attack: boolean; label?: string } {
+  for (const seatView of view.players) {
+    if (seatView.heroInstanceId === sourceInstanceId)
+      return { attack: seatView.heroAttackAbilityIndexes?.includes(abilityIndex) ?? false, label: seatView.heroAbilityLabels?.[abilityIndex] };
+  }
+  const card = cardsOf(view).find((card) => card.instanceId === sourceInstanceId);
+  return { attack: card?.attackAbilityIndexes?.includes(abilityIndex) ?? false, label: card?.activatedAbilityLabels?.[abilityIndex] };
+}
+
+/** "A", "A and B" or "A, B and C". */
+function listed(items: readonly string[]): string {
+  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+function unreachable(value: never): never {
+  throw new Error(`unknown Intent ${JSON.stringify(value)}`);
+}
+
+/** Names for Intents: a card's name with colour from the View, or "card <id>"
+ * when the View doesn't show it; an option's label, card, or id. */
+function namesOf(view: View): Names {
+  const cards = new Map<number, string>();
+  for (const seatView of view.players) cards.set(seatView.heroInstanceId, seatView.heroName);
+  for (const card of cardsOf(view)) if (!card.hidden) cards.set(card.instanceId, cardName(card));
+  const decision = view.pendingDecision;
+  return {
+    card: (instanceId) => cards.get(instanceId) ?? `card ${instanceId}`,
+    option: (optionId) => {
+      const index = decision?.options?.indexOf(optionId) ?? -1;
+      const card = index >= 0 ? decision?.optionCards?.[index] : null;
+      return decision?.optionLabels?.[index] ?? (card ? cardName(card) : optionId);
+    },
+  };
+}
+
+/** Every card the View shows, in any zone of either Seat, including cards
+ * underneath others and the cards of the pending decision. */
+function cardsOf(view: View): CardView[] {
+  const cards: CardView[] = [];
   const add = (card: CardView | null | undefined) => {
-    if (card && !card.hidden) names.set(card.instanceId, describeCard(card));
+    if (!card) return;
+    cards.push(card);
+    card.subcards?.forEach(add);
   };
   for (const seatView of view.players) {
-    names.set(seatView.heroInstanceId, seatView.heroName);
     for (const zone of [seatView.hand, seatView.arsenal, seatView.pitch, seatView.graveyard, seatView.banish, seatView.soul, seatView.weapons, seatView.board])
       zone.forEach(add);
     Object.values(seatView.equipment).forEach(add);
+    seatView.heroSubcards?.forEach(add);
     add(seatView.visibleDeckTop);
   }
-  for (const link of view.chain) [link.attackingCard, ...link.defendingCards, ...link.reactions].forEach(add);
+  for (const link of view.chain) [link.attackingCard, ...link.defendingCards, ...link.reactions, link.targetAlly].forEach(add);
   for (const layer of view.stack) add(layer.card);
   const decision = view.pendingDecision;
   [...(decision?.optionCards ?? []), ...(decision?.revealedCards ?? []), ...(decision?.lookedCards ?? []), ...(decision?.stagedCards ?? [])].forEach(add);
   add(decision?.preStackSource?.card);
-  return names;
+  return cards;
 }
 
 /** Cards grouped by name with counts. Face-down cards are grouped by name when

@@ -1,5 +1,5 @@
 import { cardData, scripts } from "@fyendal/cards";
-import { applyIntent, createGame, legalIntents as engineLegalIntents, projectStateFor } from "@fyendal/engine";
+import { applyIntent, createGame, legalIntents as engineLegalIntents, projectStateFor, type GameState } from "@fyendal/engine";
 import { describe, expect, it } from "vitest";
 import { randomAgent, type Intent, type Seat, type View } from "./agent.js";
 import { runGame, type Replay } from "./game.js";
@@ -38,6 +38,28 @@ describe("renderDecision", () => {
     // The first ordering the engine lists is the one kept.
     expect(intents[0]).toEqual(legal[0]);
   });
+
+  it("renders each Intent in plain language, naming its cards with their colours", () => {
+    const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
+
+    const entries = numberedEntries(renderDecision(view, seat, legal).text);
+
+    expect(entries[0]).toBe("1. play Buckling Blow (blue), pitching Test of Might (red) and Clash of Might (blue)");
+    expect(entries).toContain("11. play Thunk (blue) from arsenal, pitching Buckling Blow (blue) and Clash of Might (blue)");
+    expect(entries).toContain("14. attack with Titan's Fist, pitching Buckling Blow (blue)");
+    expect(entries.at(-1)).toBe("18. pass (end your turn)");
+  });
+
+  it("renders no Intent of the Game as JSON or raw field names", () => {
+    let entriesChecked = 0;
+    for (const { view, seat, legal } of decisions(replay)) {
+      for (const entry of numberedEntries(renderDecision(view, seat, legal).text)) {
+        expect(entry).not.toMatch(/[{}"]|Ids?\b|\bkind\b|optionId|instance/);
+        entriesChecked++;
+      }
+    }
+    expect(entriesChecked).toBeGreaterThan(500);
+  });
 });
 
 /** The numbered Intent entries at the end of a rendering. */
@@ -51,21 +73,45 @@ function numberedEntries(text: string): string[] {
     .filter((line) => /^\d+\. /.test(line));
 }
 
+interface Decision {
+  view: View;
+  seat: Seat;
+  legal: Intent[];
+}
+
 /** What the acting Seat was shown at `step` of a replay, and what it could do. */
-function decisionAt(replay: Replay, step: number): { view: View; seat: Seat; legal: Intent[] } {
-  const state = stateAt({ ...replay, intents: replay.intents.slice(0, step) });
+function decisionAt(replay: Replay, step: number): Decision {
+  return decisionOf(stateAt({ ...replay, intents: replay.intents.slice(0, step) }));
+}
+
+/** Every decision of a replay, in order. */
+function* decisions(replay: Replay): Generator<Decision> {
+  let state = newGame(replay);
+  for (const intent of replay.intents) {
+    const decision = decisionOf(state);
+    yield decision;
+    const applied = applyIntent(state, decision.seat, intent);
+    if (!applied.ok) throw new Error(`engine rejected ${intent.kind}: ${applied.error}`);
+    state = applied.state;
+  }
+}
+
+function decisionOf(state: GameState): Decision {
   const seat: Seat = (state.pendingDecision?.player ?? state.priorityPlayer) === 1 ? 1 : 0;
   const legal = engineLegalIntents(state, seat).filter((intent) => intent.kind !== "concede" && !intent.kind.endsWith("-draw"));
   return { view: projectStateFor(state, seat), seat, legal };
 }
 
-function stateAt(replay: Replay) {
-  let state = createGame({ decklists: [replay.decklists[0], replay.decklists[1]], cards: cardData, scripts, seed: replay.seed, startPlayer: replay.startingSeat }); // glossary: upstream
+function stateAt(replay: Replay): GameState {
+  let state = newGame(replay);
   replay.intents.forEach((intent, step) => {
-    const seat = (state.pendingDecision?.player ?? state.priorityPlayer) === 1 ? 1 : 0;
-    const applied = applyIntent(state, seat, intent);
+    const applied = applyIntent(state, decisionOf(state).seat, intent);
     if (!applied.ok) throw new Error(`step ${step}: engine rejected ${intent.kind}: ${applied.error}`);
     state = applied.state;
   });
   return state;
+}
+
+function newGame(replay: Replay): GameState {
+  return createGame({ decklists: [replay.decklists[0], replay.decklists[1]], cards: cardData, scripts, seed: replay.seed, startPlayer: replay.startingSeat }); // glossary: upstream
 }
