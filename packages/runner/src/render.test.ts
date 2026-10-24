@@ -5,6 +5,7 @@ import { randomAgent, type Intent, type Seat, type View } from "./agent.js";
 import { runGame, type Replay } from "./game.js";
 import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE } from "./list/fixtureLists.js";
 import { pickDecklist } from "./list/pickDecklist.js";
+import { measureDecision } from "./measure.js";
 import { renderDecision } from "./render.js";
 
 /** Ira (Seat 0) vs Bravo (Seat 1), seed 1, between random Agents. */
@@ -78,6 +79,12 @@ describe("renderDecision", () => {
     expect(reference.join("\n")).not.toMatch(/Buckling Blow|Titan's Fist|Bravo|Feign Vengeance/);
   });
 
+  it("pins one rendered decision", () => {
+    const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
+
+    expect(renderDecision(view, seat, legal).text).toMatchSnapshot();
+  });
+
   it("renders no Intent of the Game as JSON or raw field names", () => {
     let entriesChecked = 0;
     for (const { view, seat, legal } of decisions(replay)) {
@@ -87,6 +94,17 @@ describe("renderDecision", () => {
       }
     }
     expect(entriesChecked).toBeGreaterThan(500);
+  });
+});
+
+describe("measureDecision", () => {
+  it("counts the Intents offered, the numbered entries and the tokens of the text", () => {
+    const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
+
+    const measurement = measureDecision(view, seat, legal);
+
+    expect(measurement).toMatchObject({ seat: 1, intents: 27, reorderFreeIntents: 18 });
+    expect(measurement.tokens).toBe(Math.ceil(renderDecision(view, seat, legal).text.length / 4));
   });
 });
 

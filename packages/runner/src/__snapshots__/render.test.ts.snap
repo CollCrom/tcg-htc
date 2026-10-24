@@ -1,0 +1,61 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderDecision > pins one rendered decision 1`] = `
+"Turn 6, action phase. Seat 1's turn; Seat 1 has priority. You are Seat 1.
+== You (Seat 1): Bravo, Flattering Showman, life 12, action points 1, resources 0
+Hand: Buckling Blow (blue) [attack 6, defense 3]; Test of Might (red) [defense 4]; Clash of Might (blue) [attack 4, defense 3]; Debilitate (blue) [attack 6, defense 3]
+Deck: 33 cards
+Arsenal: Thunk (blue) [attack 6, defense 3, face-down]
+Equipment: head: Civic Peak [defense 2]; chest: Nullrune Robe [defense 0]; arms: Nullrune Gloves [defense 0]; legs: Nullrune Boots [defense 0]
+Weapons: Bastion of Duty [defense 1]; Titan's Fist [attack 3]
+Graveyard: 1x Disable (blue); 1x Thunder Quake (blue)
+== Opponent (Seat 0): Ira, Crimson Haze, life 13, action points 1, resources 0
+Hand: 4 cards
+Deck: 32 cards
+Arsenal: 1 face-down
+Equipment: head: Blade Beckoner Helm [defense 1]; chest: Double Cross Strap [defense 0]
+Weapons: Edge of Autumn [attack 1]
+Graveyard: 1x Tearing Shuko; 1x Sirens of Safe Harbor (red); 1x Pouncing Paws; 1x Humble (red); 1x Sirens of Safe Harbor (blue)
+Banish: 1x Crouching Tiger
+Log, previous turn and this turn:
+— Turn 5: Ira, Crimson Haze's turn —
+Ira, Crimson Haze pitches Feign Vengeance
+Ira, Crimson Haze activates Edge of Autumn
+Ira, Crimson Haze attacks with Edge of Autumn (1 attack)
+Bravo, Flattering Showman defends with 1 card(s) (0 defense)
+Edge of Autumn hits for 1 (Bravo, Flattering Showman at 12 life)
+Edge of Autumn has Go again (+1 action point)
+The combat chain closes
+Ira, Crimson Haze draws 2 card(s)
+— Turn 6: Bravo, Flattering Showman's turn —
+Opponent's cards you can see:
+Ira, Crimson Haze: ninja hero. Life 20, intellect 4. Your second attack each turn gets +1{p}.
+Tearing Shuko: ninja equipment - arms. Defense 1. Instant - Destroy this: The next Crouching Tiger you play this turn gains +2{p}. Battleworn
+Sirens of Safe Harbor (red): generic action - attack. Cost 2, pitch 1, attack 6, defense 2. When this is put into your graveyard from anywhere, gain 1{h}.
+Pouncing Paws: ninja equipment - legs. Defense 1. Instant - Destroy this: Create a Crouching Tiger in your banished zone. You may play it this turn. Battleworn
+Humble (red): generic action - attack. Cost 2, pitch 1, attack 6, defense 2. When this hits a hero, they lose all hero card abilities until the end of their next turn.
+Sirens of Safe Harbor (blue): generic action - attack. Cost 2, pitch 3, attack 4, defense 2. When this is put into your graveyard from anywhere, gain 1{h}.
+Crouching Tiger: ninja action - attack. Cost 0, attack 0. Ephemeral. Go again
+Edge of Autumn: ninja weapon - sword, 2h. Attack 1. Once per Turn Action - {r}: Attack. Go again
+Blade Beckoner Helm: generic equipment - head. Defense 1. This gets +1{d} while defending a weapon attack. Guardwell
+Double Cross Strap: ninja equipment - chest. Defense 0. Instant - Destroy this: Gain {r}. Activate this only if you've hit 2 or more times this combat chain. Arcane Barrier 1
+Legal Intents:
+1. play Buckling Blow (blue), pitching Test of Might (red) and Clash of Might (blue)
+2. play Buckling Blow (blue), pitching Test of Might (red) and Debilitate (blue)
+3. play Buckling Blow (blue), pitching Clash of Might (blue) and Debilitate (blue)
+4. play Clash of Might (blue), pitching Buckling Blow (blue)
+5. play Clash of Might (blue), pitching Debilitate (blue)
+6. play Clash of Might (blue), pitching Test of Might (red) and Buckling Blow (blue)
+7. play Clash of Might (blue), pitching Test of Might (red) and Debilitate (blue)
+8. play Debilitate (blue), pitching Buckling Blow (blue) and Test of Might (red)
+9. play Debilitate (blue), pitching Buckling Blow (blue) and Clash of Might (blue)
+10. play Debilitate (blue), pitching Test of Might (red) and Clash of Might (blue)
+11. play Thunk (blue) from arsenal, pitching Buckling Blow (blue) and Clash of Might (blue)
+12. play Thunk (blue) from arsenal, pitching Buckling Blow (blue) and Debilitate (blue)
+13. play Thunk (blue) from arsenal, pitching Clash of Might (blue) and Debilitate (blue)
+14. attack with Titan's Fist, pitching Buckling Blow (blue)
+15. attack with Titan's Fist, pitching Clash of Might (blue)
+16. attack with Titan's Fist, pitching Debilitate (blue)
+17. attack with Titan's Fist, pitching Test of Might (red) and Buckling Blow (blue)
+18. pass (end your turn)"
+`;

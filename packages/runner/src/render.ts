@@ -1,6 +1,8 @@
-// A first, simple text rendering of one decision: a Seat's View plus its legal
-// Intents. It exists to estimate what a decision would cost a Claude Agent; the
-// exact text is not a contract yet. It reads only the View, never the state.
+// The text rendering of one decision: a Seat's View, the log of the current and
+// previous turn, a reference for the opponent's visible cards, and the legal
+// Intents in plain language, numbered. It is the contract a Claude Agent reads
+// a decision from (render.test.ts pins one rendering), and the text whose size
+// measure.ts estimates. It reads only the View, never the state.
 import { cardData } from "@fyendal/cards";
 import type { CardCostSelection, CardView, PlayerView } from "@fyendal/shared";
 import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
@@ -156,10 +158,23 @@ function renderCombat(view: View): string[] {
   return [...section("Combat chain", chain), ...section("Stack, top first", stack), ...section("Ongoing effects", ongoing)];
 }
 
+/** What each pending decision kind asks, for a decision the engine gives no prompt. */
+const DECISION_KINDS: Record<NonNullable<View["pendingDecision"]>["kind"], string> = {
+  defend: "declare defending cards",
+  "attack-reaction": "attack reaction window",
+  "defense-reaction": "defense reaction window",
+  "priority-window": "play an instant or pass",
+  arsenal: "put a card in arsenal or pass",
+  "choose-target": "choose one",
+  "choose-name": "name a card",
+  "order-triggers": "order the triggers",
+  "optional-effect": "optional effect",
+};
+
 function renderDecisionPrompt(view: View, seat: Seat): string[] {
   const decision = view.pendingDecision;
   if (!decision || decision.player !== seat) return [];
-  const prompt = `Decision: ${decision.kind}${decision.prompt ? ` - ${decision.prompt}` : ""}`;
+  const prompt = `Decision: ${decision.prompt || DECISION_KINDS[decision.kind]}`;
   const staged = decision.stagedCards?.length ? [`Staged defenders: ${decision.stagedCards.map(describeCard).join(", ")}`] : [];
   const revealed = decision.revealedCards?.length ? [`Revealed: ${decision.revealedCards.map(describeCard).join(", ")}`] : [];
   const looked = decision.lookedCards?.length ? [`Looked at: ${decision.lookedCards.map(describeCard).join(", ")}`] : [];
@@ -191,7 +206,7 @@ function renderIntent(intent: Intent, names: Names, view: View, seat: Seat): str
     case "activate-ability": {
       const ability = abilityOf(view, intent.sourceInstanceId, intent.abilityIndex ?? 0);
       const source = names.card(intent.sourceInstanceId);
-      const verb = ability.attack ? `attack with ${source}` : `activate ${source}${ability.label ? `: ${ability.label}` : ""}`;
+      const verb = ability.attack ? `attack with ${source}` : `activate ${source}'s ability${ability.label ? ` (${ability.label})` : ""}`;
       const target = targetOf(intent, names);
       const alternative = intent.alternativeCostCardInstanceIds?.length
         ? [`paying its alternative cost with ${list(intent.alternativeCostCardInstanceIds)}`]
