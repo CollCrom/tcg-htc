@@ -1,6 +1,6 @@
 // Measurements of a Game: what it would cost a Claude Agent to play it.
-import type { Intent, Seat, View } from "./agent.js";
-import { estimateTokens, renderDecision } from "./render.js";
+import type { Intent, Seat } from "./agent.js";
+import { estimateTokens, type RenderedDecision } from "./render.js";
 
 /** One decision: the Seat that made it, the Intents it was offered and the
  * estimated tokens of its rendered View plus legal Intents. */
@@ -23,9 +23,9 @@ export interface GameMeasurements {
   durationMs: number;
 }
 
-/** Measures one decision from what the deciding Seat was shown. */
-export function measureDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): DecisionMeasurement {
-  const rendered = renderDecision(view, seat, legalIntents);
+/** Measures one decision from what the deciding Seat was shown: the legal
+ * Intents and the rendering they were offered in. */
+export function measureDecision(seat: Seat, legalIntents: readonly Intent[], rendered: RenderedDecision): DecisionMeasurement {
   return {
     seat,
     intents: legalIntents.length,

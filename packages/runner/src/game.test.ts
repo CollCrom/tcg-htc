@@ -1,10 +1,9 @@
 import { cardData } from "@fyendal/cards";
 import type { CardView } from "@fyendal/shared";
 import { describe, expect, it } from "vitest";
-import { opponentOf, randomAgent, type Agent, type Intent, type Seat, type View } from "./agent.js";
+import { opponentOf, randomAgent, type Agent, type Decision, type Intent, type Seat, type View } from "./agent.js";
 import { MAX_STEPS, replayGame, runGame } from "./game.js";
 import { preconDecklist } from "./precons.js";
-import { renderDecision } from "./render.js";
 
 const decklists = [preconDecklist("precon-sbr"), preconDecklist("precon-sly")] as const;
 const GAME_TIMEOUT = 15_000;
@@ -14,8 +13,8 @@ const STALL_TIMEOUT = 60_000;
 describe("runGame", () => {
   it(
     "plays two random Agents on precon Decklists to a win or a draw",
-    () => {
-      const result = runGame({ decklists, seed: 1, startingSeat: 0, agents: [randomAgent, randomAgent] });
+    async () => {
+      const result = await runGame({ decklists, seed: 1, startingSeat: 0, agents: [randomAgent, randomAgent] });
 
       expect(["win", "draw"]).toContain(result.outcome);
       if (result.outcome === "win") expect([0, 1]).toContain(result.winner);
@@ -27,7 +26,7 @@ describe("runGame", () => {
 
   it(
     "hands each Agent only its own Seat's View and legal Intents",
-    () => {
+    async () => {
       const offers: { seat: Seat; args: unknown[] }[] = [];
       const recording =
         (seat: Seat): Agent =>
@@ -36,7 +35,7 @@ describe("runGame", () => {
           return randomAgent(...args);
         };
 
-      runGame({ decklists, seed: 2, startingSeat: 1, agents: [recording(0), recording(1)] });
+      await runGame({ decklists, seed: 2, startingSeat: 1, agents: [recording(0), recording(1)] });
 
       expect(offers.map(({ seat }) => seat)).toEqual(expect.arrayContaining([0, 1]));
       for (const { seat, args } of offers) {
@@ -57,19 +56,19 @@ describe("runGame", () => {
 
   it(
     "plays the same Game from the same seed",
-    () => {
+    async () => {
       const options = { decklists, seed: 3, startingSeat: 0, agents: [randomAgent, randomAgent], clock: () => 0 } as const;
 
-      expect(runGame(options)).toEqual(runGame(options));
-      expect(runGame({ ...options, seed: 4 }).replay.intents).not.toEqual(runGame(options).replay.intents);
+      expect(await runGame(options)).toEqual(await runGame(options));
+      expect((await runGame({ ...options, seed: 4 })).replay.intents).not.toEqual((await runGame(options)).replay.intents);
     },
     GAME_TIMEOUT,
   );
 
   it(
     "records a replay that replayGame reproduces exactly",
-    () => {
-      const result = runGame({ decklists, seed: 5, startingSeat: 1, agents: [randomAgent, randomAgent] });
+    async () => {
+      const result = await runGame({ decklists, seed: 5, startingSeat: 1, agents: [randomAgent, randomAgent] });
 
       expect(result.replay).toMatchObject({ decklists, seed: 5, startingSeat: 1 });
       expect(result.replay.intents).toHaveLength(result.steps);
@@ -81,13 +80,13 @@ describe("runGame", () => {
 
   it(
     "measures every decision: Seat, Intents offered and estimated tokens",
-    () => {
+    async () => {
       const offered: number[] = [];
       const counting: Agent = (view, legal, rng) => {
         offered.push(legal.length);
         return randomAgent(view, legal, rng);
       };
-      const { measurements, steps } = runGame({ decklists, seed: 7, startingSeat: 0, agents: [counting, counting] });
+      const { measurements, steps } = await runGame({ decklists, seed: 7, startingSeat: 0, agents: [counting, counting] });
 
       expect(measurements.decisionsPerSeat[0]).toBeGreaterThan(0);
       expect(measurements.decisionsPerSeat[1]).toBeGreaterThan(0);
@@ -107,8 +106,8 @@ describe("runGame", () => {
 
   it(
     "counts Intents that differ only in pitch order once",
-    () => {
-      const { measurements } = runGame({ decklists, seed: 8, startingSeat: 1, agents: [randomAgent, randomAgent] });
+    async () => {
+      const { measurements } = await runGame({ decklists, seed: 8, startingSeat: 1, agents: [randomAgent, randomAgent] });
 
       expect(measurements.decisions.some((d) => d.reorderFreeIntents < d.intents)).toBe(true);
     },
@@ -117,13 +116,13 @@ describe("runGame", () => {
 
   it(
     "estimates tokens from a rendering more compact than the raw View",
-    () => {
+    async () => {
       const sizes: number[] = [];
       const sizing: Agent = (view, legal, rng) => {
         sizes.push(JSON.stringify({ view, legal }).length / 4);
         return randomAgent(view, legal, rng);
       };
-      const { measurements } = runGame({ decklists, seed: 9, startingSeat: 0, agents: [sizing, sizing] });
+      const { measurements } = await runGame({ decklists, seed: 9, startingSeat: 0, agents: [sizing, sizing] });
 
       measurements.decisions.forEach(({ tokens }, i) => expect(tokens).toBeLessThan(sizes[i]!));
     },
@@ -132,19 +131,20 @@ describe("runGame", () => {
 
   it(
     "renders a decision without the opponent's hidden cards",
-    () => {
-      // Reaches the renderer directly: runGame exposes only token counts, and the Agent-honesty standard needs the text checked.
-      const offers: { step: number; seat: Seat; view: View; legal: readonly Intent[] }[] = [];
+    async () => {
+      // The Agent-honesty standard: the text in each Decision record, which is what an Agent is shown, names no hidden card.
+      const offers: { step: number; seat: Seat; view: View }[] = [];
       const recording =
         (seat: Seat): Agent =>
         (view, legal, rng) => {
-          offers.push({ step: offers.length, seat, view, legal });
+          offers.push({ step: offers.length, seat, view });
           return randomAgent(view, legal, rng);
         };
-      const { replay } = runGame({ decklists, seed: 10, startingSeat: 0, agents: [recording(0), recording(1)] });
+      const { replay, decisions } = await runGame({ decklists, seed: 10, startingSeat: 0, agents: [recording(0), recording(1)] });
 
+      expect(decisions).toHaveLength(offers.length);
       let secretsChecked = 0;
-      for (const { step, seat, view, legal } of offers) {
+      for (const { step, seat, view } of offers) {
         // Every card revealed, at the moment of this decision.
         const full = replayGame({ ...replay, intents: replay.intents.slice(0, step) }).players[opponentOf(seat)];
         const hidden = [
@@ -157,7 +157,7 @@ describe("runGame", () => {
         const shown = JSON.stringify(view);
         const visibleNames = new Set([...shown.matchAll(/"cardId":"([^"]+)"/g)].map(([, id]) => cardData[id!]?.name));
         const secrets = new Set(hidden.map(nameOf).filter((name) => !visibleNames.has(name) && !shown.includes(name)));
-        const { text } = renderDecision(view, seat, legal);
+        const text = decisions[step]!.rendered;
         for (const secret of secrets) expect(text).not.toContain(secret);
         secretsChecked += secrets.size;
       }
@@ -169,8 +169,8 @@ describe("runGame", () => {
 
   it(
     "tells a replay with different Intents apart",
-    () => {
-      const result = runGame({ decklists, seed: 6, startingSeat: 0, agents: [randomAgent, randomAgent] });
+    async () => {
+      const result = await runGame({ decklists, seed: 6, startingSeat: 0, agents: [randomAgent, randomAgent] });
       const shortened = { ...result.replay, intents: result.replay.intents.slice(0, -1) };
 
       expect(replayGame(shortened)).not.toEqual(result.finalProjection);
@@ -180,10 +180,13 @@ describe("runGame", () => {
 
   it(
     "reports a Game that runs past the step cap as a stall with its seed",
-    () => {
-      const passing: Agent = (view, legal, rng) => legal.find((intent) => intent.kind === "pass") ?? randomAgent(view, legal, rng);
+    async () => {
+      const passing: Agent = (view, legal, rng) => {
+        const pass = legal.find((intent) => intent.kind === "pass");
+        return pass ? Promise.resolve({ intent: pass }) : randomAgent(view, legal, rng);
+      };
 
-      const result = runGame({ decklists, seed: 7, startingSeat: 0, agents: [passing, passing] });
+      const result = await runGame({ decklists, seed: 7, startingSeat: 0, agents: [passing, passing] });
 
       expect(result).toMatchObject({ outcome: "stall", seed: 7, step: MAX_STEPS, steps: MAX_STEPS });
       if (result.outcome !== "stall") return;
@@ -197,18 +200,65 @@ describe("runGame", () => {
 
   it(
     "reports an Intent the engine rejects as an error with its seed, step and the engine's message",
-    () => {
+    async () => {
       let decisions = 0;
       const illegalOnFourth: Agent = (view, legal, rng) =>
-        ++decisions === 4 ? { kind: "play-card", instanceId: -1, pitchInstanceIds: [] } : randomAgent(view, legal, rng);
+        ++decisions === 4
+          ? Promise.resolve({ intent: { kind: "play-card", instanceId: -1, pitchInstanceIds: [] } })
+          : randomAgent(view, legal, rng);
 
-      const result = runGame({ decklists, seed: 8, startingSeat: 1, agents: [illegalOnFourth, illegalOnFourth] });
+      const result = await runGame({ decklists, seed: 8, startingSeat: 1, agents: [illegalOnFourth, illegalOnFourth] });
 
       expect(result).toMatchObject({ outcome: "error", seed: 8, step: 3, steps: 3 });
       if (result.outcome !== "error") return;
       expect(result.detail).toContain("card not found");
       expect(result.replay.intents).toHaveLength(3);
       expect(replayGame(result.replay)).toEqual(result.finalProjection);
+    },
+    GAME_TIMEOUT,
+  );
+  it(
+    "records a Decision record per decision: Seat, rendered text, Intents offered and the Decision",
+    async () => {
+      const offers: { seat: Seat; view: View; legal: readonly Intent[]; decision: Decision }[] = [];
+      const recording =
+        (seat: Seat): Agent =>
+        async (view, legal, rng) => {
+          const decision: Decision = { ...(await randomAgent(view, legal, rng)), reasoning: `decision ${offers.length}`, planNotes: "keep attacking" };
+          offers.push({ seat, view, legal, decision });
+          return decision;
+        };
+
+      const result = await runGame({ decklists, seed: 11, startingSeat: 0, agents: [recording(0), recording(1)] });
+
+      expect(result.outcome).toBe("win");
+      expect(result.decisions).toHaveLength(result.steps);
+      expect(result.decisions).toHaveLength(offers.length);
+      result.decisions.forEach((record, i) => {
+        const offer = offers[i]!;
+        expect(record.seat).toBe(offer.seat);
+        expect(record.intents).toEqual(offer.legal);
+        expect(record.decision).toEqual(offer.decision);
+        expect(record.rendered).toContain(`You are Seat ${offer.seat}`);
+        for (const card of offer.view.players[offer.seat].hand) expect(record.rendered).toContain(nameOf(card));
+      });
+    },
+    GAME_TIMEOUT,
+  );
+  it(
+    "ends the Game as an error when an Agent returns a failure Decision, naming its detail and keeping its cause",
+    async () => {
+      let decisions = 0;
+      const failure: Decision = { cause: "rate-limit", detail: "Seat 1's Claude Agent (opus, medium) hit a rate limit" };
+      const failingOnFourth: Agent = (view, legal, rng) => (++decisions === 4 ? Promise.resolve(failure) : randomAgent(view, legal, rng));
+
+      const result = await runGame({ decklists, seed: 12, startingSeat: 1, agents: [failingOnFourth, failingOnFourth] });
+
+      expect(result).toMatchObject({ outcome: "error", seed: 12, step: 3, steps: 3, detail: failure.detail, cause: "rate-limit" });
+      expect(result.decisions).toHaveLength(4);
+      expect(result.decisions[3]!.decision).toEqual(failure);
+      expect(result.replay.intents).toHaveLength(3);
+      expect(result.finalProjection.phase).not.toBe("game-over");
     },
     GAME_TIMEOUT,
   );

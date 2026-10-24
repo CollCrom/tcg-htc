@@ -10,8 +10,9 @@ import {
   type GameState,
 } from "@fyendal/engine";
 import type { Decklist, GameView } from "@fyendal/shared";
-import type { Agent, Intent, Rng, Seat } from "./agent.js";
+import { isDecisionFailure, type Agent, type Decision, type DecisionFailureCause, type Intent, type Rng, type Seat } from "./agent.js";
 import { measureDecision, summarise, type DecisionMeasurement, type GameMeasurements } from "./measure.js";
+import { renderDecision } from "./render.js";
 
 /** Steps after which a Game is abandoned. */
 export const MAX_STEPS = 5_000;
@@ -37,21 +38,37 @@ export type GameOutcome =
   | { outcome: "win"; winner: Seat }
   | { outcome: "draw" }
   | GameFailure<"stall">
-  | GameFailure<"error">;
+  | GameError;
 
 /** Whether a Game went wrong: a stall or an error rather than a win or a draw. */
-export function isFailure(outcome: GameOutcome): outcome is GameFailure<"stall"> | GameFailure<"error"> {
+export function isFailure(outcome: GameOutcome): outcome is GameFailure<"stall"> | GameError {
   return outcome.outcome === "stall" || outcome.outcome === "error";
 }
 
 /** A Game that went wrong at `step` (the number of Intents applied before it).
  * A stall exceeded the step cap or left the acting Seat without a legal Intent;
- * an error is an Intent the engine rejected, with the engine's message. */
+ * an error is an Intent the engine rejected, with the engine's message, or an
+ * Agent's failure Decision, with its detail. */
 export interface GameFailure<Kind extends "stall" | "error"> {
   outcome: Kind;
   seed: number;
   step: number;
   detail: string;
+}
+
+/** An error outcome. When an Agent's failure Decision ended the Game, `cause`
+ * says why, so a Run can tell a rate limit from the rest. */
+export type GameError = GameFailure<"error"> & { cause?: DecisionFailureCause };
+
+/** The saved account of one decision of a Game. */
+export interface DecisionRecord {
+  seat: Seat;
+  /** The View and legal Intents as rendered for the Agent. */
+  rendered: string;
+  /** Every legal Intent offered. The numbered entries of `rendered` are the
+   * `intents` of `renderDecision`: the same list with pitch orderings collapsed. */
+  intents: readonly Intent[];
+  decision: Decision;
 }
 
 /** Everything needed to play a Game again: its setup and the Intents applied,
@@ -70,14 +87,17 @@ export type GameResult = GameOutcome & {
   /** The replay projection of the final state; `replayGame(replay)` reproduces it. */
   finalProjection: ReplayProjection;
   measurements: GameMeasurements;
+  /** One record per decision, in order. */
+  decisions: DecisionRecord[];
 };
 
-export function runGame({ decklists, seed, startingSeat, agents, clock = () => performance.now() }: RunGameOptions): GameResult {
+export async function runGame({ decklists, seed, startingSeat, agents, clock = () => performance.now() }: RunGameOptions): Promise<GameResult> {
   const started = clock();
   let state = newGame({ decklists, seed, startingSeat });
   const rngs = [seatRng(seed, 0), seatRng(seed, 1)] as const;
   const intents: Intent[] = [];
-  const decisions: DecisionMeasurement[] = [];
+  const measured: DecisionMeasurement[] = [];
+  const decisions: DecisionRecord[] = [];
   let steps = 0;
   let failure: GameOutcome | undefined;
   for (; state.phase !== "game-over"; steps++) {
@@ -92,8 +112,15 @@ export function runGame({ decklists, seed, startingSeat, agents, clock = () => p
       break;
     }
     const view = projectStateFor(state, seat);
-    decisions.push(measureDecision(view, seat, legal));
-    const intent = agents[seat](view, legal, rngs[seat]);
+    const rendered = renderDecision(view, seat, legal);
+    measured.push(measureDecision(seat, legal, rendered));
+    const decision = await agents[seat](view, legal, rngs[seat]);
+    decisions.push({ seat, rendered: rendered.text, intents: legal, decision });
+    if (isDecisionFailure(decision)) {
+      failure = { outcome: "error", seed, step: steps, detail: decision.detail, cause: decision.cause };
+      break;
+    }
+    const { intent } = decision;
     const applied = applyIntent(state, seat, intent);
     if (!applied.ok) {
       failure = { outcome: "error", seed, step: steps, detail: `engine rejected ${intent.kind}: ${applied.error}` };
@@ -108,7 +135,8 @@ export function runGame({ decklists, seed, startingSeat, agents, clock = () => p
     steps,
     replay: { decklists, seed, startingSeat, intents },
     finalProjection: projectStateForReplay(state),
-    measurements: summarise(decisions, clock() - started),
+    measurements: summarise(measured, clock() - started),
+    decisions,
   };
 }
 

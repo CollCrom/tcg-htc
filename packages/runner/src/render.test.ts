@@ -10,12 +10,12 @@ import { renderDecision } from "./render.js";
 
 /** Ira (Seat 0) vs Bravo (Seat 1), seed 1, between random Agents. */
 const SEED = 1;
-const replay = runGame({
+const { replay } = await runGame({
   decklists: [pickDecklist(fixtureList(IRA_LIST_FILE), SEED), pickDecklist(fixtureList(BRAVO_LIST_FILE), SEED)],
   seed: SEED,
   startingSeat: 0,
   agents: [randomAgent, randomAgent],
-}).replay;
+});
 
 /** Step 78 of that Game: turn 6, Bravo's action phase. Bravo holds four cards
  * and can pay for each play in several pitch orders; Ira has cards in the
@@ -100,11 +100,12 @@ describe("renderDecision", () => {
 describe("measureDecision", () => {
   it("counts the Intents offered, the numbered entries and the tokens of the text", () => {
     const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
+    const rendered = renderDecision(view, seat, legal);
 
-    const measurement = measureDecision(view, seat, legal);
+    const measurement = measureDecision(seat, legal, rendered);
 
     expect(measurement).toMatchObject({ seat: 1, intents: 27, reorderFreeIntents: 18 });
-    expect(measurement.tokens).toBe(Math.ceil(renderDecision(view, seat, legal).text.length / 4));
+    expect(measurement.tokens).toBe(Math.ceil(rendered.text.length / 4));
   });
 });
 
