@@ -34,6 +34,9 @@ export interface RunGameOptions extends GameSetup {
    * Intent is applied, or at once for a failure or an Intent the engine
    * rejects. A Run writes its Game file and prints its progress line here. */
   onDecision?: (record: DecisionRecord, progress: DecisionProgress) => void;
+  /** Steps after which the Game is abandoned as a stall. `MAX_STEPS` by
+   * default; a Run between Claude Agents sets a lower cap. */
+  maxSteps?: number;
 }
 
 /** Where a Game stands after one decision. */
@@ -108,7 +111,8 @@ export type GameResult = GameOutcome & {
   decisions: DecisionRecord[];
 };
 
-export async function runGame({ decklists, seed, startingSeat, agents, clock = () => performance.now(), onDecision }: RunGameOptions): Promise<GameResult> {
+export async function runGame(options: RunGameOptions): Promise<GameResult> {
+  const { decklists, seed, startingSeat, agents, clock = () => performance.now(), onDecision, maxSteps = MAX_STEPS } = options;
   const started = clock();
   let state = newGame({ decklists, seed, startingSeat });
   const rngs = [seatRng(seed, 0), seatRng(seed, 1)] as const;
@@ -118,8 +122,8 @@ export async function runGame({ decklists, seed, startingSeat, agents, clock = (
   let steps = 0;
   let failure: GameOutcome | undefined;
   for (; state.phase !== "game-over"; steps++) {
-    if (steps >= MAX_STEPS) {
-      failure = { outcome: "stall", seed, step: steps, detail: `Game exceeded ${MAX_STEPS} steps` };
+    if (steps >= maxSteps) {
+      failure = { outcome: "stall", seed, step: steps, detail: `Game exceeded ${maxSteps} steps` };
       break;
     }
     const seat = actingSeat(state);
