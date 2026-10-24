@@ -1,5 +1,41 @@
-import { describe, expect, it } from "vitest";
-import { classify, type ProcessRun } from "./claudeCode.js";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { type CallRequest, claudeCodeCall, classify, type ProcessRun, systemPromptFile } from "./claudeCode.js";
+
+const tempDir = mkdtempSync(join(tmpdir(), "claude-code-call-"));
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
+
+/** A stand-in for the `claude` binary: a shell script that records what it was
+ * given under `dir` and prints `stdout`. */
+function fakeBinary(dir: string, stdout: string, body = ""): string {
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, "claude");
+  writeFileSync(
+    path,
+    [
+      "#!/usr/bin/env bash",
+      `printf '%s\\n' "$@" > '${dir}/args'`,
+      `pwd > '${dir}/cwd'`,
+      `cat > '${dir}/stdin'`,
+      `env | grep -E '^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_CALL_PROBE)=' > '${dir}/env' || true`,
+      body,
+      `printf '%s' '${stdout.replace(/'/g, "'\\''")}'`,
+    ].join("\n"),
+  );
+  chmodSync(path, 0o755);
+  return path;
+}
+
+const request = (resultsDir: string, overrides: Partial<CallRequest> = {}): CallRequest => ({
+  systemPrompt: "You are Seat 0.",
+  message: "Choose an Intent.\nLine two.",
+  schema: { type: "object", properties: { n: { type: "integer" } }, required: ["n"] },
+  config: { model: "haiku", effort: "low" },
+  resultsDir,
+  ...overrides,
+});
 
 /** A print-mode JSON result as Claude Code 2.1 prints it, with the fields the
  * call reads. */
@@ -34,6 +70,82 @@ const run = (overrides: Partial<ProcessRun> = {}): ProcessRun => ({
   timedOut: false,
   latencyMs: 4321,
   ...overrides,
+});
+
+describe("claudeCodeCall", () => {
+  it("spawns claude -p with the print-mode flags, in an empty cwd, without the API key", async () => {
+    const dir = join(tempDir, "spawn");
+    const resultsDir = join(dir, "results");
+    const binary = fakeBinary(dir, resultJson());
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.ANTHROPIC_AUTH_TOKEN = "token-test";
+    process.env.CLAUDE_CODE_CALL_PROBE = "kept";
+
+    const result = await claudeCodeCall({ binary })(request(resultsDir));
+
+    expect(result).toMatchObject({ kind: "answer", output: { n: 7 } });
+    const args = readFileSync(join(dir, "args"), "utf8").trimEnd().split("\n");
+    const promptFile = systemPromptFile(resultsDir, "You are Seat 0.");
+    expect(args).toEqual([
+      "-p",
+      "--output-format",
+      "json",
+      "--json-schema",
+      JSON.stringify(request(resultsDir).schema),
+      "--tools",
+      "",
+      "--strict-mcp-config",
+      "--disable-slash-commands",
+      "--setting-sources",
+      "",
+      "--no-session-persistence",
+      "--system-prompt-file",
+      promptFile,
+      "--model",
+      "haiku",
+      "--effort",
+      "low",
+      "--max-turns",
+      "2",
+    ]);
+    expect(args).not.toContain("--bare");
+    expect(readFileSync(promptFile, "utf8")).toBe("You are Seat 0.");
+    expect(readFileSync(join(dir, "stdin"), "utf8")).toBe("Choose an Intent.\nLine two.");
+    expect(readFileSync(join(dir, "cwd"), "utf8").trim()).toBe(join(resultsDir, "cwd"));
+    expect(readdirSync(join(resultsDir, "cwd"))).toEqual([]);
+    expect(readFileSync(join(dir, "env"), "utf8").trim()).toBe("CLAUDE_CODE_CALL_PROBE=kept");
+  });
+
+  it("kills a claude that gives no result in time and reports a timeout", async () => {
+    const dir = join(tempDir, "timeout");
+    const binary = fakeBinary(dir, resultJson(), "sleep 30");
+
+    const started = Date.now();
+    const result = await claudeCodeCall({ binary, timeoutMs: 300 })(request(join(dir, "results")));
+
+    expect(result.kind).toBe("timeout");
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
+  it("writes the system prompt file once and reuses it unchanged for the same text", async () => {
+    const dir = join(tempDir, "reuse");
+    const resultsDir = join(dir, "results");
+    const binary = fakeBinary(dir, resultJson());
+    const call = claudeCodeCall({ binary });
+
+    await call(request(resultsDir));
+    const promptFile = systemPromptFile(resultsDir, "You are Seat 0.");
+    const first = statSync(promptFile);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await call(request(resultsDir, { message: "Another decision." }));
+    await call(request(resultsDir, { systemPrompt: "You are Seat 1." }));
+
+    expect(statSync(promptFile).mtimeMs).toBe(first.mtimeMs);
+    const otherFile = systemPromptFile(resultsDir, "You are Seat 1.");
+    expect(otherFile).not.toBe(promptFile);
+    expect(existsSync(otherFile)).toBe(true);
+    expect(readFileSync(join(dir, "args"), "utf8")).toContain(otherFile);
+  });
 });
 
 describe("classify", () => {

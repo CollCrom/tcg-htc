@@ -2,6 +2,11 @@
 // the developer's subscription (ADR-0002). Text and a schema in, parsed JSON
 // plus usage out.
 
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 /** A Claude Code model alias. What it maps to changes by the day, so the
  * answer's `usage.model` keeps the model Claude Code reports. */
 export type ModelAlias = "opus" | "sonnet" | "haiku" | "fable";
@@ -55,6 +60,112 @@ export type CallResult =
 
 /** The seam: tests fake it, another transport could replace it. */
 export type ClaudeCodeCall = (request: CallRequest) => Promise<CallResult>;
+
+export interface CallOptions {
+  /** The `claude` executable; the default is found on PATH. */
+  binary?: string;
+  /** How long a call may take before it is killed. Default five minutes. */
+  timeoutMs?: number;
+}
+
+/** Variables the child never sees. A key would make print mode bill the API
+ * instead of the subscription (ADR-0002); CLAUDECODE marks a nested session,
+ * which the Agent's process is not. */
+export const STRIPPED_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE"];
+
+/** The turn cap: one turn to answer, one for the StructuredOutput tool. */
+export const MAX_TURNS = 2;
+
+/** The real call: spawns `claude -p` and classifies what comes back. */
+export function claudeCodeCall(options: CallOptions = {}): ClaudeCodeCall {
+  return async (request) => classify(await runClaudeCode(request, options));
+}
+
+/** Where `systemPrompt` lives under `resultsDir`: one file per distinct text,
+ * named by its hash, so a Game's decisions share one file byte for byte. */
+export function systemPromptFile(resultsDir: string, systemPrompt: string): string {
+  const hash = createHash("sha256").update(systemPrompt, "utf8").digest("hex").slice(0, 16);
+  return join(resultsDir, `system-prompt-${hash}.txt`);
+}
+
+/** Spawns `claude -p` for `request` and waits for it: in an empty `cwd/` under
+ * the results directory so no AGENTS.md, hooks or settings load; with no tools,
+ * no MCP servers, no skills, no settings files and no saved conversation; the
+ * message on stdin; the API key stripped. Never `--bare`, which ignores the
+ * subscription's credentials. */
+export async function runClaudeCode(request: CallRequest, options: CallOptions = {}): Promise<ProcessRun> {
+  const { binary = "claude", timeoutMs = 5 * 60_000 } = options;
+  const cwd = join(request.resultsDir, "cwd");
+  mkdirSync(cwd, { recursive: true });
+  const promptFile = systemPromptFile(request.resultsDir, request.systemPrompt);
+  if (!existsSync(promptFile) || readFileSync(promptFile, "utf8") !== request.systemPrompt) {
+    writeFileSync(promptFile, request.systemPrompt);
+  }
+  const args = [
+    "-p",
+    "--output-format",
+    "json",
+    "--json-schema",
+    JSON.stringify(request.schema),
+    "--tools",
+    "",
+    "--strict-mcp-config",
+    "--disable-slash-commands",
+    "--setting-sources",
+    "",
+    "--no-session-persistence",
+    "--system-prompt-file",
+    promptFile,
+    "--model",
+    request.config.model,
+    "--effort",
+    request.config.effort,
+    "--max-turns",
+    String(MAX_TURNS),
+  ];
+  const env = { ...process.env };
+  for (const name of STRIPPED_ENV) delete env[name];
+
+  const started = Date.now();
+  return new Promise<ProcessRun>((resolve, reject) => {
+    const child = spawn(binary, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    let settled = false;
+    const finish = (exitCode: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode, stdout, stderr, timedOut, latencyMs: Date.now() - started });
+    };
+    const timer = setTimeout(() => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        // It exited; only a grandchild holds the pipes open. Take what it printed.
+        finish(child.exitCode);
+        return;
+      }
+      timedOut = true;
+      child.kill("SIGKILL");
+      // A grandchild could hold the pipes open past the kill; don't wait for it.
+      child.stdout.destroy();
+      child.stderr.destroy();
+      child.once("exit", finish);
+    }, timeoutMs);
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    // `close` follows the last pipe closing, so stdout is complete by then.
+    child.on("close", finish);
+    child.stdin.on("error", () => {
+      // The child exited before reading its message; `close` reports that.
+    });
+    child.stdin.end(request.message);
+  });
+}
 
 /** What a finished (or killed) `claude` process left behind. */
 export interface ProcessRun {
