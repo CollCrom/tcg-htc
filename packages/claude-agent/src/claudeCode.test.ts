@@ -48,7 +48,6 @@ const resultJson = (overrides: Record<string, unknown> = {}) =>
     duration_api_ms: 3900,
     num_turns: 1,
     result: '{"n":7}',
-    session_id: "0000",
     total_cost_usd: 0.0123,
     usage: {
       input_tokens: 12,
