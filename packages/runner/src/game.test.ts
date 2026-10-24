@@ -2,8 +2,9 @@ import { cardData } from "@fyendal/cards";
 import type { CardView } from "@fyendal/shared";
 import { describe, expect, it } from "vitest";
 import { opponentOf, randomAgent, type Agent, type Decision, type Intent, type Seat, type View } from "./agent.js";
-import { MAX_STEPS, replayGame, runGame } from "./game.js";
+import { MAX_STEPS, replayGame, runGame, type DecisionProgress, type DecisionRecord } from "./game.js";
 import { preconDecklist } from "./precons.js";
+import { renderDecision } from "./render.js";
 
 const decklists = [preconDecklist("precon-sbr"), preconDecklist("precon-sly")] as const;
 const GAME_TIMEOUT = 15_000;
@@ -259,6 +260,67 @@ describe("runGame", () => {
       expect(result.decisions[3]!.decision).toEqual(failure);
       expect(result.replay.intents).toHaveLength(3);
       expect(result.finalProjection.phase).not.toBe("game-over");
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "reports each Decision record as it is made, with its step, its turn, the numbered Intents and the Intents applied so far",
+    async () => {
+      const seen: { record: DecisionRecord; progress: DecisionProgress; applied: number }[] = [];
+      const views: View[] = [];
+      const recording: Agent = (view, legal, rng) => {
+        views.push(view);
+        return randomAgent(view, legal, rng);
+      };
+
+      const result = await runGame({
+        decklists,
+        seed: 13,
+        startingSeat: 0,
+        agents: [recording, recording],
+        onDecision: (record, progress) => seen.push({ record, progress, applied: progress.intents.length }),
+      });
+
+      expect(result.outcome).toBe("win");
+      expect(seen).toHaveLength(result.decisions.length);
+      seen.forEach(({ record, progress, applied }, i) => {
+        expect(record).toBe(result.decisions[i]);
+        expect(progress.step).toBe(i);
+        expect(progress.turn).toBe(views[i]!.turn);
+        expect(applied).toBe(i + 1);
+        expect(progress.intents.slice(0, applied)).toEqual(result.replay.intents.slice(0, applied));
+        expect(progress.listed).toEqual(renderDecision(views[i]!, record.seat, record.intents).intents);
+        for (const intent of progress.listed) expect(record.intents).toContain(intent);
+      });
+      // The random Agent picks from the raw list, so its choice can be a pitch ordering the numbered entries fold away.
+      expect(seen.some(({ record, progress }) => progress.listed.length < record.intents.length)).toBe(true);
+      expect(seen.at(-1)!.progress.turn).toBe(result.turns);
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "reports a failure Decision's record too, with no Intent applied for it",
+    async () => {
+      let decisions = 0;
+      const failure: Decision = { cause: "timeout", detail: "Seat 0's Claude Agent (opus, medium): timed out" };
+      const failingOnThird: Agent = (view, legal, rng) => (++decisions === 3 ? Promise.resolve(failure) : randomAgent(view, legal, rng));
+      const seen: { record: DecisionRecord; progress: DecisionProgress }[] = [];
+
+      const result = await runGame({
+        decklists,
+        seed: 14,
+        startingSeat: 0,
+        agents: [failingOnThird, failingOnThird],
+        onDecision: (record, progress) => seen.push({ record, progress: { ...progress, intents: [...progress.intents] } }),
+      });
+
+      expect(result).toMatchObject({ outcome: "error", step: 2, steps: 2 });
+      expect(seen).toHaveLength(3);
+      expect(seen[2]!.record.decision).toEqual(failure);
+      expect(seen[2]!.progress).toMatchObject({ step: 2, intents: result.replay.intents });
+      expect(seen[2]!.progress.intents).toHaveLength(2);
     },
     GAME_TIMEOUT,
   );

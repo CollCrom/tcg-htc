@@ -13,6 +13,7 @@
     "test:upstream": "pnpm --filter @fyendal/engine --filter @fyendal/cards --filter @fyendal/bot test",
     "smoke": "pnpm --filter @tcg-htc/runner smoke",
     "suite": "pnpm --filter @tcg-htc/runner suite",
+    "game:claude": "pnpm --filter @tcg-htc/claude-agent game:claude",
     "typecheck": "pnpm --filter \"./packages/**\" typecheck",
     "test": "pnpm --filter \"./packages/**\" test",
     "check:glossary": "pnpm --filter @tcg-htc/runner check:glossary",
