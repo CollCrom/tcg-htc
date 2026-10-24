@@ -212,5 +212,7 @@ export function outcomeOf(result: GameOutcome): GameOutcome {
       return { outcome: "stall", seed: result.seed, step: result.step, detail: result.detail };
     case "error":
       return { outcome: "error", seed: result.seed, step: result.step, detail: result.detail, ...(result.cause ? { cause: result.cause } : {}) };
+    case "paused":
+      return { outcome: "paused", seed: result.seed, step: result.step, detail: result.detail, ...(result.cause ? { cause: result.cause } : {}) };
   }
 }

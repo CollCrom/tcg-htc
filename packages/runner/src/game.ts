@@ -37,6 +37,16 @@ export interface RunGameOptions extends GameSetup {
   /** Steps after which the Game is abandoned as a stall. `MAX_STEPS` by
    * default; a Run between Claude Agents sets a lower cap. */
   maxSteps?: number;
+  /** Asked before every decision; once it answers true the Game returns
+   * `paused` at that step, with every Intent applied so far in its replay. A
+   * Run pausing on a rate limit sets it for the Games still in flight. */
+  shouldStop?: () => boolean;
+  /** A Game to carry on: these Intents are applied first (the engine is
+   * deterministic, so they rebuild the saved state exactly), then play
+   * continues. `steps` and the replay count from the start of the Game; the
+   * decisions and measurements cover only the new decisions. Throws if the
+   * engine rejects a saved Intent. */
+  resume?: { intents: readonly Intent[] };
 }
 
 /** Where a Game stands after one decision. */
@@ -58,12 +68,28 @@ export type GameOutcome =
   | { outcome: "win"; winner: Seat }
   | { outcome: "draw" }
   | GameFailure<"stall">
-  | GameError;
+  | GameError
+  | GamePause;
 
-/** Whether a Game went wrong: a stall or an error rather than a win or a draw. */
+/** Whether a Game went wrong: a stall or an error rather than a win, a draw or
+ * a pause. */
 export function isFailure(outcome: GameOutcome): outcome is GameFailure<"stall"> | GameError {
   return outcome.outcome === "stall" || outcome.outcome === "error";
 }
+
+/** A Game stopped before its `step`th decision, to be resumed from its replay:
+ * `shouldStop` said so, or (`cause: "rate-limit"`) an Agent's Decision was a
+ * rate-limit failure, whose record is kept with no Intent applied for it. */
+export interface GamePause {
+  outcome: "paused";
+  seed: number;
+  step: number;
+  detail: string;
+  cause?: "rate-limit";
+}
+
+/** What a `shouldStop` pause says. */
+export const STOPPED_DETAIL = "stopped before the decision";
 
 /** A Game that went wrong at `step` (the number of Intents applied before it).
  * A stall exceeded the step cap or left the acting Seat without a legal Intent;
@@ -112,7 +138,7 @@ export type GameResult = GameOutcome & {
 };
 
 export async function runGame(options: RunGameOptions): Promise<GameResult> {
-  const { decklists, seed, startingSeat, agents, clock = () => performance.now(), onDecision, maxSteps = MAX_STEPS } = options;
+  const { decklists, seed, startingSeat, agents, clock = () => performance.now(), onDecision, maxSteps = MAX_STEPS, shouldStop, resume } = options;
   const started = clock();
   let state = newGame({ decklists, seed, startingSeat });
   const rngs = [seatRng(seed, 0), seatRng(seed, 1)] as const;
@@ -121,7 +147,16 @@ export async function runGame(options: RunGameOptions): Promise<GameResult> {
   const decisions: DecisionRecord[] = [];
   let steps = 0;
   let failure: GameOutcome | undefined;
+  for (const intent of resume?.intents ?? []) {
+    state = apply(state, intent, seed, steps);
+    intents.push(intent);
+    steps++;
+  }
   for (; state.phase !== "game-over"; steps++) {
+    if (shouldStop?.()) {
+      failure = { outcome: "paused", seed, step: steps, detail: STOPPED_DETAIL };
+      break;
+    }
     if (steps >= maxSteps) {
       failure = { outcome: "stall", seed, step: steps, detail: `Game exceeded ${maxSteps} steps` };
       break;
@@ -140,7 +175,10 @@ export async function runGame(options: RunGameOptions): Promise<GameResult> {
     decisions.push(record);
     const report = () => onDecision?.(record, { step: steps, turn: view.turn, intents, listed: rendered.intents });
     if (isDecisionFailure(decision)) {
-      failure = { outcome: "error", seed, step: steps, detail: decision.detail, cause: decision.cause };
+      failure =
+        decision.cause === "rate-limit"
+          ? { outcome: "paused", seed, step: steps, detail: decision.detail, cause: "rate-limit" }
+          : { outcome: "error", seed, step: steps, detail: decision.detail, cause: decision.cause };
       report();
       break;
     }
@@ -171,12 +209,16 @@ export async function runGame(options: RunGameOptions): Promise<GameResult> {
 export function replayGame(replay: Replay): ReplayProjection {
   let state = newGame(replay);
   replay.intents.forEach((intent, step) => {
-    const seat = actingSeat(state);
-    const applied = applyIntent(state, seat, intent);
-    if (!applied.ok) throw new Error(`seed ${replay.seed}, step ${step}: engine rejected ${intent.kind}: ${applied.error}`);
-    state = applied.state;
+    state = apply(state, intent, replay.seed, step);
   });
   return projectStateForReplay(state);
+}
+
+/** Applies a saved Intent for the acting Seat, throwing if the engine rejects it. */
+function apply(state: GameState, intent: Intent, seed: number, step: number): GameState {
+  const applied = applyIntent(state, actingSeat(state), intent);
+  if (!applied.ok) throw new Error(`seed ${seed}, step ${step}: engine rejected ${intent.kind}: ${applied.error}`);
+  return applied.state;
 }
 
 function newGame({ decklists, seed, startingSeat }: GameSetup): GameState {

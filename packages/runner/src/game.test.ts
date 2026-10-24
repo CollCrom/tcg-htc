@@ -2,11 +2,16 @@ import { cardData } from "@fyendal/cards";
 import type { CardView } from "@fyendal/shared";
 import { describe, expect, it } from "vitest";
 import { opponentOf, randomAgent, type Agent, type Decision, type Intent, type Seat, type View } from "./agent.js";
-import { MAX_STEPS, replayGame, runGame, type DecisionProgress, type DecisionRecord } from "./game.js";
+import { isFailure, MAX_STEPS, replayGame, runGame, type DecisionProgress, type DecisionRecord } from "./game.js";
+import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE } from "./list/fixtureLists.js";
+import { pickDecklist } from "./list/pickDecklist.js";
 import { preconDecklist } from "./precons.js";
 import { renderDecision } from "./render.js";
 
 const decklists = [preconDecklist("precon-sbr"), preconDecklist("precon-sly")] as const;
+/** The Phase 2 Decklists, free of the card whose `canPlay` is impure (#180),
+ * so a paused Game's live state and its replay agree. */
+const iraVsBravo = [pickDecklist(fixtureList(IRA_LIST_FILE), 12), pickDecklist(fixtureList(BRAVO_LIST_FILE), 12)] as const;
 const GAME_TIMEOUT = 15_000;
 /** A stalled Game plays all MAX_STEPS steps, then replays them. */
 const STALL_TIMEOUT = 60_000;
@@ -267,16 +272,85 @@ describe("runGame", () => {
     "ends the Game as an error when an Agent returns a failure Decision, naming its detail and keeping its cause",
     async () => {
       let decisions = 0;
-      const failure: Decision = { cause: "rate-limit", detail: "Seat 1's Claude Agent (opus, medium) hit a rate limit" };
+      const failure: Decision = { cause: "timeout", detail: "Seat 1's Claude Agent (opus, medium) timed out" };
       const failingOnFourth: Agent = (view, legal, rng) => (++decisions === 4 ? Promise.resolve(failure) : randomAgent(view, legal, rng));
 
       const result = await runGame({ decklists, seed: 12, startingSeat: 1, agents: [failingOnFourth, failingOnFourth] });
 
-      expect(result).toMatchObject({ outcome: "error", seed: 12, step: 3, steps: 3, detail: failure.detail, cause: "rate-limit" });
+      expect(result).toMatchObject({ outcome: "error", seed: 12, step: 3, steps: 3, detail: failure.detail, cause: "timeout" });
+      expect(isFailure(result)).toBe(true);
       expect(result.decisions).toHaveLength(4);
       expect(result.decisions[3]!.decision).toEqual(failure);
       expect(result.replay.intents).toHaveLength(3);
       expect(result.finalProjection.phase).not.toBe("game-over");
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "pauses the Game, not failing it, when an Agent's failure Decision is a rate limit: the record kept, no Intent applied, the replay intact",
+    async () => {
+      let decisions = 0;
+      const failure: Decision = { cause: "rate-limit", detail: "Seat 1's Claude Agent (opus, medium): You've hit your limit" };
+      const failingOnFourth: Agent = (view, legal, rng) => (++decisions === 4 ? Promise.resolve(failure) : randomAgent(view, legal, rng));
+
+      const result = await runGame({ decklists: iraVsBravo, seed: 12, startingSeat: 1, agents: [failingOnFourth, failingOnFourth] });
+
+      expect(result).toMatchObject({ outcome: "paused", seed: 12, step: 3, steps: 3, detail: failure.detail, cause: "rate-limit" });
+      expect(isFailure(result)).toBe(false);
+      expect(result.decisions).toHaveLength(4);
+      expect(result.decisions[3]!.decision).toEqual(failure);
+      expect(result.replay.intents).toHaveLength(3);
+      expect(replayGame(result.replay)).toEqual(result.finalProjection);
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "pauses before a decision once `shouldStop` says so, with every applied Intent in the replay and no record for the decision not made",
+    async () => {
+      let decisions = 0;
+      const counting: Agent = (view, legal, rng) => {
+        decisions++;
+        return randomAgent(view, legal, rng);
+      };
+
+      const result = await runGame({ decklists: iraVsBravo, seed: 13, startingSeat: 0, agents: [counting, counting], shouldStop: () => decisions >= 5 });
+
+      expect(result).toMatchObject({ outcome: "paused", seed: 13, step: 5, steps: 5 });
+      expect(result).not.toHaveProperty("cause");
+      expect(isFailure(result)).toBe(false);
+      expect(decisions).toBe(5);
+      expect(result.decisions).toHaveLength(5);
+      expect(result.replay.intents).toHaveLength(5);
+      expect(result.finalProjection.phase).not.toBe("game-over");
+      expect(replayGame(result.replay)).toEqual(result.finalProjection);
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "resumes from saved Intents: they are applied before the first new decision, and the result counts and replays from the start",
+    async () => {
+      const decklists = iraVsBravo;
+      const whole = await runGame({ decklists, seed: 14, startingSeat: 1, agents: [randomAgent, randomAgent], clock: () => 0 });
+      const half = Math.floor(whole.steps / 2);
+      const saved = whole.replay.intents.slice(0, half);
+
+      const resumed = await runGame({ decklists, seed: 14, startingSeat: 1, agents: [randomAgent, randomAgent], clock: () => 0, resume: { intents: saved } });
+
+      expect(resumed.replay.intents.slice(0, half)).toEqual(saved);
+      expect(resumed.steps).toBe(resumed.replay.intents.length);
+      expect(resumed.steps).toBeGreaterThan(half);
+      expect(resumed.decisions).toHaveLength(resumed.steps - half);
+      expect(resumed.measurements.decisions).toHaveLength(resumed.steps - half);
+      expect(["win", "draw"]).toContain(resumed.outcome);
+      expect(replayGame(resumed.replay)).toEqual(resumed.finalProjection);
+      // Stopping at once after the replay leaves exactly the saved Game.
+      const stopped = await runGame({ decklists, seed: 14, startingSeat: 1, agents: [randomAgent, randomAgent], resume: { intents: saved }, shouldStop: () => true });
+      expect(stopped).toMatchObject({ outcome: "paused", step: half, steps: half });
+      expect(stopped.decisions).toEqual([]);
+      expect(stopped.finalProjection).toEqual(replayGame({ ...whole.replay, intents: saved }));
     },
     GAME_TIMEOUT,
   );
