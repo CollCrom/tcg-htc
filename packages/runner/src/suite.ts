@@ -1,5 +1,6 @@
 // The Phase 1 suite: Ira vs Bravo for 50 seeds in both seat orders, 100 Games
-// between random Agents, each replayed to check it reproduces exactly.
+// between random Agents, each replayed to check it reproduces exactly. Games
+// are played one after another, as a script with top-level await.
 import { isDeepStrictEqual } from "node:util";
 import { randomAgent } from "./agent.js";
 import { isFailure, replayGame, runGame, type GameResult } from "./game.js";
@@ -37,7 +38,7 @@ for (const seed of SEEDS) {
   for (const lists of SEAT_ORDERS) {
     const decklists = [pickDecklist(lists[0], seed), pickDecklist(lists[1], seed)] as const;
     const started = performance.now();
-    const result = runGame({ decklists, seed, startingSeat: 0, agents: [randomAgent, randomAgent] });
+    const result = await runGame({ decklists, seed, startingSeat: 0, agents: [randomAgent, randomAgent] });
     playMs += performance.now() - started;
     try {
       const reproduces = isDeepStrictEqual(replayGame(result.replay), result.finalProjection);
