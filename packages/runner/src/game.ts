@@ -30,6 +30,23 @@ export interface RunGameOptions extends GameSetup {
   /** Milliseconds from an arbitrary origin, for timing the Game. Defaults to
    * `performance.now`; inject a fixed clock to compare results exactly. */
   clock?: () => number;
+  /** Called with each Decision record as soon as it is complete: after its
+   * Intent is applied, or at once for a failure or an Intent the engine
+   * rejects. A Run writes its Game file and prints its progress line here. */
+  onDecision?: (record: DecisionRecord, progress: DecisionProgress) => void;
+}
+
+/** Where a Game stands after one decision. */
+export interface DecisionProgress {
+  /** The decision's index: the number of Intents applied before it. */
+  step: number;
+  /** The turn the decision was made in. */
+  turn: number;
+  /** Every Intent applied so far, this decision's included when it was. */
+  intents: readonly Intent[];
+  /** The Intents behind the numbered entries of the record's `rendered` text
+   * (`renderDecision`'s `intents`), so a chosen Intent resolves to its entry. */
+  listed: readonly Intent[];
 }
 
 /** How a Game ended. A stall or an error is returned rather than thrown, with
@@ -91,7 +108,7 @@ export type GameResult = GameOutcome & {
   decisions: DecisionRecord[];
 };
 
-export async function runGame({ decklists, seed, startingSeat, agents, clock = () => performance.now() }: RunGameOptions): Promise<GameResult> {
+export async function runGame({ decklists, seed, startingSeat, agents, clock = () => performance.now(), onDecision }: RunGameOptions): Promise<GameResult> {
   const started = clock();
   let state = newGame({ decklists, seed, startingSeat });
   const rngs = [seatRng(seed, 0), seatRng(seed, 1)] as const;
@@ -115,19 +132,24 @@ export async function runGame({ decklists, seed, startingSeat, agents, clock = (
     const rendered = renderDecision(view, seat, legal);
     measured.push(measureDecision(seat, legal, rendered));
     const decision = await agents[seat](view, legal, rngs[seat]);
-    decisions.push({ seat, rendered: rendered.text, intents: legal, decision });
+    const record: DecisionRecord = { seat, rendered: rendered.text, intents: legal, decision };
+    decisions.push(record);
+    const report = () => onDecision?.(record, { step: steps, turn: view.turn, intents, listed: rendered.intents });
     if (isDecisionFailure(decision)) {
       failure = { outcome: "error", seed, step: steps, detail: decision.detail, cause: decision.cause };
+      report();
       break;
     }
     const { intent } = decision;
     const applied = applyIntent(state, seat, intent);
     if (!applied.ok) {
       failure = { outcome: "error", seed, step: steps, detail: `engine rejected ${intent.kind}: ${applied.error}` };
+      report();
       break;
     }
     state = applied.state;
     intents.push(intent);
+    report();
   }
   return {
     ...(failure ?? outcomeOf(state)),
