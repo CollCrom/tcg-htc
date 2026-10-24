@@ -1,14 +1,14 @@
 // playGame, driven with fake-backed Claude Agents in both Seats: the Game file
 // it writes as the Game goes, and what the file holds at the end.
-import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, replayGame, type DecisionRecord } from "@tcg-htc/runner";
+import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, replayGame, type DecisionChoice, type DecisionRecord } from "@tcg-htc/runner";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { CallResult, ClaudeConfig } from "./claudeCode.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
-import { gameFileName, readGameFile, type GameFile } from "./gameFile.js";
-import { playGame, type PlayedGame } from "./playGame.js";
+import { gameFileName, gameId, readGameFile, type GameFile } from "./gameFile.js";
+import { playGame, progressLine, type PlayedGame } from "./playGame.js";
 
 const SEED = 31;
 const GAME_TIMEOUT = 60_000;
@@ -52,27 +52,35 @@ interface Snapshot {
   handed: GameFile;
 }
 
-let completed: Promise<{ played: PlayedGame; runDir: string; snapshots: Snapshot[] }> | undefined;
+let completed: Promise<{ played: PlayedGame; runDir: string; snapshots: Snapshot[]; lines: string[] }> | undefined;
 /** One complete Game, played once and shared by the tests that read its file. */
 function completeGame() {
   completed ??= (async () => {
     const runDir = tempRunDir();
     const snapshots: Snapshot[] = [];
+    const lines: string[] = [];
     const played = await playGame({
       seed: SEED,
       lists,
       configs,
       call: fakeClaudeCode(varied),
       runDir,
-      onDecision: (_record, progress, written) => {
+      onDecision: (record, progress, written) => {
+        lines.push(progressLine(gameId(SEED, lists[0].hero.name), record, progress));
         if (progress.step < 2 || progress.step % 25 === 0) {
           snapshots.push({ step: progress.step, onDisk: readGameFile(written.path), handed: written.file });
         }
       },
     });
-    return { played, runDir, snapshots };
+    return { played, runDir, snapshots, lines };
   })();
   return completed;
+}
+
+/** The numbered Intent entries of a rendered decision, without their numbers. */
+function entriesOf(rendered: string): string[] {
+  const lines = rendered.split("\n");
+  return lines.slice(lines.indexOf("Legal Intents:") + 1).map((line) => line.replace(/^\d+\. /, ""));
 }
 
 describe("playGame", () => {
@@ -151,16 +159,49 @@ describe("playGame", () => {
   );
 
   it(
+    "renders one progress line per decision: Game, step, turn, Seat, the chosen Intent's text and the latency",
+    async () => {
+      const { played, lines } = await completeGame();
+
+      expect(lines).toHaveLength(played.result.decisions.length);
+      lines.forEach((line, i) => {
+        const record = played.result.decisions[i]!;
+        const chosen = (record.decision as DecisionChoice).intent;
+        const entries = entriesOf(record.rendered);
+        const text = line.slice(line.indexOf(": ") + 2, line.lastIndexOf(" ("));
+        expect(line).toMatch(new RegExp(`^game 31-ira-first step ${i} turn \\d+ seat ${record.seat}: .+ \\(1500 ms\\)$`));
+        expect(entries).toContain(text);
+        // The chosen entry is the one whose number the fake answered: 1 + (i % entries).
+        expect(text).toBe(entries[i % entries.length]);
+        expect(chosen).toBeDefined();
+      });
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
     "leaves a complete file with the error outcome when an Agent fails",
     async () => {
       const runDir = tempRunDir();
       const script = (request: RecordedCall, index: number): CallResult =>
         index === 5 ? answer(99) : index === 6 ? answer("none") : varied(request, index);
       const seen: DecisionRecord[] = [];
+      const lines: string[] = [];
 
-      const played = await playGame({ seed: SEED, lists: [lists[1], lists[0]], configs, call: fakeClaudeCode(script), runDir, onDecision: (record) => seen.push(record) });
+      const played = await playGame({
+        seed: SEED,
+        lists: [lists[1], lists[0]],
+        configs,
+        call: fakeClaudeCode(script),
+        runDir,
+        onDecision: (record, progress) => {
+          seen.push(record);
+          lines.push(progressLine(gameId(SEED, lists[1].hero.name), record, progress));
+        },
+      });
 
       const file = readGameFile(played.path);
+      expect(lines.at(-1)).toMatch(/^game 31-bravo-first step 5 turn \d+ seat [01]: failed \(invalid-answer\): Seat [01]'s Claude Agent \(\w+, \w+\): .+ \(3000 ms\)$/);
       expect(played.path).toBe(join(runDir, "game-31-bravo-first.json"));
       expect(played.result).toMatchObject({ outcome: "error", cause: "invalid-answer", step: 5, steps: 5 });
       expect(file.status).toBe("complete");

@@ -2,6 +2,7 @@
 // Run's directory after every decision.
 import type { Decklist } from "@fyendal/shared";
 import {
+  isDecisionFailure,
   measureDecision,
   pickDecklist,
   runGame,
@@ -15,6 +16,7 @@ import {
   type Seat,
 } from "@tcg-htc/runner";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { claudeAgent, type ClaudeAgent } from "./claudeAgent.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { agentTotals, gameFileName, writeGameFile, type GameFile, type GameFileSetup } from "./gameFile.js";
@@ -104,6 +106,25 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
   };
   writeGameFile(path, file);
   return { result, file, path, agents };
+}
+
+/** The one line a Run prints per decision:
+ * `game <id> step <n> turn <t> seat <s>: <chosen Intent's text> (<latency> ms)`,
+ * or `failed (<cause>): <detail>` in place of the Intent. */
+export function progressLine(id: string, record: DecisionRecord, progress: DecisionProgress): string {
+  const { decision } = record;
+  const what = isDecisionFailure(decision) ? `failed (${decision.cause}): ${decision.detail}` : chosenEntry(record, progress);
+  return `game ${id} step ${progress.step} turn ${progress.turn} seat ${record.seat}: ${what} (${decision.measurements?.latencyMs ?? 0} ms)`;
+}
+
+/** The text of the numbered entry the record's Intent stands behind. */
+function chosenEntry(record: DecisionRecord, progress: DecisionProgress): string {
+  if (isDecisionFailure(record.decision)) return "";
+  const { intent } = record.decision;
+  const index = progress.listed.findIndex((listed) => listed === intent || isDeepStrictEqual(listed, intent));
+  const lines = record.rendered.split("\n");
+  const entry = lines[lines.indexOf("Legal Intents:") + 1 + index];
+  return index >= 0 && entry ? entry.replace(/^\d+\. /, "") : JSON.stringify(intent);
 }
 
 function totals(records: readonly DecisionRecord[]): Pick<GameFile["measurements"], "perSeat" | "totals"> {
