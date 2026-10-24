@@ -62,6 +62,22 @@ describe("renderDecision", () => {
     expect(log.join("\n")).not.toMatch(/Turn 4|⟦/);
   });
 
+  it("lists each visible opponent card once with its cost, pitch, attack, defense and text, and none of the Seat's own", () => {
+    const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
+
+    const reference = section(renderDecision(view, seat, legal).text, "Opponent's cards you can see:");
+
+    expect(reference).toContain(
+      "Sirens of Safe Harbor (red): generic action - attack. Cost 2, pitch 1, attack 6, defense 2. When this is put into your graveyard from anywhere, gain 1{h}.",
+    );
+    expect(reference).toContain("Edge of Autumn: ninja weapon - sword, 2h. Attack 1. Once per Turn Action - {r}: Attack. Go again");
+    expect(reference).toContain("Ira, Crimson Haze: ninja hero. Life 20, intellect 4. Your second attack each turn gets +1{p}.");
+    // Two printings of Sirens sit in the graveyard: one entry each. Feign Vengeance was pitched last turn and is back in the deck: no entry.
+    expect(reference.filter((line) => line.startsWith("Sirens of Safe Harbor"))).toHaveLength(2);
+    expect(reference).toHaveLength(10);
+    expect(reference.join("\n")).not.toMatch(/Buckling Blow|Titan's Fist|Bravo|Feign Vengeance/);
+  });
+
   it("renders no Intent of the Game as JSON or raw field names", () => {
     let entriesChecked = 0;
     for (const { view, seat, legal } of decisions(replay)) {

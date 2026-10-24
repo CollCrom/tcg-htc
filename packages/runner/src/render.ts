@@ -30,6 +30,31 @@ function recentTurns(view: View): string[] {
   return view.log.slice(from).map((line) => line.replace(/⟦[^⟧]*⟧/g, ""));
 }
 
+/** One reference line per distinct opponent card the View shows (the hero
+ * included): its name with colour, type, printed cost, pitch, attack, defense
+ * and rules text. The Seat's own cards belong in its system prompt. */
+function opponentReference(view: View, seat: Seat): string[] {
+  const opponent = view.players[opponentOf(seat)];
+  const visible = cardsOf(view).filter((card) => card.owner === opponent.seat && !card.hidden && card.cardId);
+  const cardIds = new Set([opponent.heroCardId, ...visible.map((card) => card.cardId)]);
+  return [...cardIds].map((cardId) => {
+    const data = cardData[cardId];
+    if (!data) return `${visible.find((card) => card.cardId === cardId)?.name ?? cardId}: no card data`;
+    const type = [...(data.classes ?? []), data.cardType].join(" ") + (data.subtypes?.length ? ` - ${data.subtypes.join(", ")}` : "");
+    const stats = [
+      ["cost", data.cost],
+      ["pitch", data.pitch],
+      ["attack", data.attack],
+      ["defense", data.defense],
+      ["life", data.life],
+      ["intellect", data.intellect],
+    ].flatMap(([label, value]) => (value === undefined ? [] : [`${label} ${value}`]));
+    const statsLine = stats.length > 0 ? ` ${stats.join(", ").replace(/^./, (first) => first.toUpperCase())}.` : "";
+    const text = data.text.trim().replace(/\.?\s*\n\s*/g, ". ");
+    return `${nameWithColour(data.name, data.pitch)}: ${type}.${statsLine}${text ? ` ${text}` : ""}`;
+  });
+}
+
 /** Renders a Seat's View and its legal Intents as text. */
 export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): RenderedDecision {
   const names = namesOf(view);
@@ -41,6 +66,7 @@ export function renderDecision(view: View, seat: Seat, legalIntents: readonly In
     ...renderCombat(view),
     ...renderDecisionPrompt(view, seat),
     ...section("Log, previous turn and this turn", recentTurns(view)),
+    ...section("Opponent's cards you can see", opponentReference(view, seat)),
     "Legal Intents:",
     ...intents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view, seat)}`),
   ].join("\n");
