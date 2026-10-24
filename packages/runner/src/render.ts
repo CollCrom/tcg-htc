@@ -6,14 +6,28 @@ import type { CardCostSelection, CardView, PlayerView } from "@fyendal/shared";
 import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
 import { nameWithColour } from "./cards.js";
 
-const LOG_LINES = 5;
-
 /** One rendered decision. `intents[i]` is the engine Intent behind numbered
  * entry `i + 1` of `text`: Intents that differ only in pitch order share one
  * entry, which stands for the first ordering the engine listed. */
 export interface RenderedDecision {
   text: string;
   intents: Intent[];
+}
+
+/** The log lines of the current turn and the turn before it. The engine logs
+ * one line at the start of every turn: its structured entry carries a
+ * `turn-start` event, and its text starts "— Turn N:". The last two such lines
+ * are the turn boundaries; a log without them (a legacy View, or a Game in its
+ * first turn) is shown whole. The engine also appends a hidden `⟦CARDID⟧` tag
+ * per card named in a line, for its client; those go. */
+function recentTurns(view: View): string[] {
+  const isTurnStart = (index: number): boolean => {
+    const entry = view.logEntries?.[index];
+    return entry && "event" in entry ? entry.event?.kind === "turn-start" : /^— Turn \d+:/.test(view.log[index] ?? "");
+  };
+  const starts = view.log.map((_, index) => index).filter(isTurnStart);
+  const from = starts.at(-2) ?? 0;
+  return view.log.slice(from).map((line) => line.replace(/⟦[^⟧]*⟧/g, ""));
 }
 
 /** Renders a Seat's View and its legal Intents as text. */
@@ -26,7 +40,7 @@ export function renderDecision(view: View, seat: Seat, legalIntents: readonly In
     ...renderSeat(view.players[opponentOf(seat)], "Opponent"),
     ...renderCombat(view),
     ...renderDecisionPrompt(view, seat),
-    ...section("Recent log", view.log.slice(-LOG_LINES)),
+    ...section("Log, previous turn and this turn", recentTurns(view)),
     "Legal Intents:",
     ...intents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view, seat)}`),
   ].join("\n");

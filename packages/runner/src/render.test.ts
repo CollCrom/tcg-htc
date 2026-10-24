@@ -50,6 +50,18 @@ describe("renderDecision", () => {
     expect(entries.at(-1)).toBe("18. pass (end your turn)");
   });
 
+  it("shows every log line of the current turn and the previous turn, without printing tags", () => {
+    const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
+
+    const log = section(renderDecision(view, seat, legal).text, "Log, previous turn and this turn:");
+
+    expect(log[0]).toBe("— Turn 5: Ira, Crimson Haze's turn —");
+    expect(log).toContain("Ira, Crimson Haze pitches Feign Vengeance");
+    expect(log.at(-1)).toBe("— Turn 6: Bravo, Flattering Showman's turn —");
+    expect(log).toHaveLength(10);
+    expect(log.join("\n")).not.toMatch(/Turn 4|⟦/);
+  });
+
   it("renders no Intent of the Game as JSON or raw field names", () => {
     let entriesChecked = 0;
     for (const { view, seat, legal } of decisions(replay)) {
@@ -61,6 +73,16 @@ describe("renderDecision", () => {
     expect(entriesChecked).toBeGreaterThan(500);
   });
 });
+
+/** The lines of a rendering's section, from its heading line to the next heading or the end. */
+function section(text: string, heading: string): string[] {
+  const lines = text.split("\n");
+  const start = lines.indexOf(heading);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^[A-Z][^.]*:$/.test(line) && !line.startsWith("—"));
+  return rest.slice(0, end === -1 ? undefined : end);
+}
 
 /** The numbered Intent entries at the end of a rendering. */
 function numberedEntries(text: string): string[] {
