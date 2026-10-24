@@ -17,21 +17,34 @@ export {
   systemPromptFile,
 } from "./claudeCode.js";
 export { type FakeClaudeCode, type FakeScript, type RecordedCall, fakeClaudeCode } from "./fakeClaudeCode.js";
+export { type Asked, type Question, type Read, MAX_RETRIES, PROBLEM_HEADING, ask, failed } from "./ask.js";
+export { CARD_SYMBOLS_SECTION, PRIMER_FILE, primer } from "./prompt.js";
+export {
+  type BuildDecklistOptions,
+  type DecklistBuild,
+  type DecklistChoice,
+  type DecklistDecision,
+  DECKLIST_SCHEMA,
+  buildDecklist,
+  buildDecklistMessage,
+  buildDecklistSystemPrompt,
+  describeList,
+} from "./buildDecklist.js";
+export { legalPresentation } from "./scriptedBuild.js";
 export {
   type ClaudeAgent,
   type ClaudeAgentConfig,
   type ClaudeAgentOptions,
   ANSWER_SCHEMA,
-  MAX_RETRIES,
   PLAN_NOTES_HEADING,
   PLAN_NOTES_LIMIT,
-  PRIMER_FILE,
   buildMessage,
   buildSystemPrompt,
   claudeAgent,
 } from "./claudeAgent.js";
 export {
   type AgentTotals,
+  type DecklistDecisionRecord,
   type GameFile,
   type GameFileMeasurements,
   type GameFileSetup,
@@ -42,7 +55,7 @@ export {
   readGameFile,
   writeGameFile,
 } from "./gameFile.js";
-export { type PlayedGame, type PlayGameOptions, type WrittenGameFile, outcomeOf, playGame, progressLine } from "./playGame.js";
+export { type PlayedGame, type PlayGameOptions, type UnplayedGame, type WrittenGameFile, outcomeOf, playGame, progressLine } from "./playGame.js";
 export {
   type GameClaudeArgs,
   type Hero,

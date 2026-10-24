@@ -17,25 +17,34 @@ Every decision is one fresh call. The system prompt is built once in the factory
 
 A failure's `detail` starts "Seat N's Claude Agent (model, effort): ". Every Decision carries `measurements`: the model Claude Code reported, the effort, tokens, latency and cost summed over the decision's calls, `retries`, `firstAnswerInvalid` and `notesCut`.
 
-`src/claudeAgent.test.ts` drives all of this through whole Games against the random Agent with `fakeClaudeCode`, and holds the honesty test: with a Claude Agent in both Seats, no opponent hidden card appears in any system prompt or message sent.
+The retry loop is `ask` (`src/ask.ts`), shared with the Decklist build: a question with a `read` function that accepts the parsed answer or names the problem. The primer and the symbol key both prompts share are in `src/prompt.ts`.
+
+`src/claudeAgent.test.ts` drives all of this through whole Games against the random Agent with `fakeClaudeCode`. `src/honesty.test.ts` holds the honesty test: through `playGame` with a Claude Agent in both Seats, no card of the opponent's Decklist appears in any system prompt or message sent, the builds included, unless the View shown at that decision held it.
+
+## Building a Decklist
+
+Before each Game, each Claude Agent builds its own Decklist in one call. `buildDecklist({ seat, list, opponentHero, config, call, resultsDir })` in `src/buildDecklist.ts` sends a system prompt of the primer, the Seat and its task, the symbol key, the answer format and the whole List with a printing id in square brackets before each card (hero; weapon-zone cards; equipment with the slots each piece fits; main-deck cards with their copies), and a message naming the opponent's hero and nothing else about the opponent. The answer must match `DECKLIST_SCHEMA`: `weaponIds`, `equipment` (`head`, `chest`, `arms`, `legs`), `deck` (40 printing ids, one per copy) and `reasoning`. It goes through upstream's `validatePresentation` against the List, plus a check that at least one presented card is a weapon (upstream accepts empty weapon zones). An invalid build gets one retry whose message appends the error; a second failure, or a call failure after its retry, is a `DecisionFailure` as in play, a rate limit at once. It returns `{ systemPrompt, message, decision }`, the decision a `DecklistChoice` (`presented`, upstream's `decklist`, `reasoning`, `measurements`) or the failure. The Decklist is built afresh for every Game.
+
+`legalPresentation(list)` (`src/scriptedBuild.ts`) derives one legal presentation from a List, for scripting the fake's answer in tests.
 
 ## Playing a Game, and the Game file
 
-`playGame({ seed, lists, configs, call, runDir, decklistPicker?, onDecision?, clock? })` in `src/playGame.ts` plays one Game between two Claude Agents: `lists` are the two Lists by Seat (Seat 0 takes the first turn), `configs` each Seat's `{ model, effort }`, `call` the Claude Code call both Agents share, `runDir` the Run's directory (the Game file, the system prompt files and Claude Code's `cwd/` all go there). Each Decklist comes from `decklistPicker(list, seed)`, `pickDecklist` by default. It returns `{ result, file, path, agents }`: the runner's `GameResult`, the final `GameFile` and where it was written. `onDecision(record, progress, { file, path })` is called after every decision, once the file holds it; `progressLine(id, record, progress)` renders the Run's one line per decision from the same arguments.
+`playGame({ seed, lists, configs, call, runDir, decklistPicker?, onDecision?, clock? })` in `src/playGame.ts` plays one Game between two Claude Agents: `lists` are the two Lists by Seat (Seat 0 takes the first turn), `configs` each Seat's `{ model, effort }`, `call` the Claude Code call both Agents share, `runDir` the Run's directory (the Game file, the system prompt files and Claude Code's `cwd/` all go there). Each Claude Agent first builds its Decklist with `buildDecklist`, told only the opponent's hero name; a test that wants no build calls passes `decklistPicker(list, seed)` (the seeded `pickDecklist`) instead, and the file then records no Decklist decisions. It returns `{ result, file, path, agents }`: the runner's `GameResult`, the final `GameFile` and where it was written. When a build fails, the Game never starts: the file is complete with the error outcome at step 0 and no play records, `result` is an `UnplayedGame` (the error outcome with `turns: 0`, `steps: 0`, empty `decisions`, no replay) and `agents` is absent. `onDecision(record, progress, { file, path })` is called after every decision, once the file holds it; `progressLine(id, record, progress)` renders the Run's one line per decision from the same arguments.
 
 The Game file (`src/gameFile.ts`) is one JSON document, `<runDir>/game-<seed>-<hero of Seat 0>-first.json` (`gameFileName`), rewritten after every decision by writing `<path>.tmp` and renaming it over the old file, so a crash leaves a whole document. Its shape:
 
 | Field | Holds |
 |---|---|
 | `status` | `playing`, then `complete` once the outcome is known |
-| `setup` | `seed`, `startingSeat`, `lists` (names), `heroes`, `decklists`, `configs` by Seat |
-| `systemPrompts` | each Seat's system prompt, once |
-| `replay` | the runner's `Replay`: setup plus every Intent applied so far, `replayGame` takes it |
+| `setup` | `seed`, `startingSeat`, `lists` (names), `heroes`, `configs` by Seat, and `decklists` once both builds are valid |
+| `decklistDecisions` | each Seat's build as a `DecklistDecisionRecord` (`kind: "decklist"`, `seat`, the build's own `systemPrompt` and `message`, `decision`), Seat 0 first, before any play record; a failed build is the last |
+| `systemPrompts` | each Seat's play system prompt, once; absent when the Game never started |
+| `replay` | the runner's `Replay`: setup plus every Intent applied so far, `replayGame` takes it; absent when the Game never started |
 | `outcome`, `turns` | the `GameOutcome` (cause included for an Agent's failure) and turn count, once complete |
-| `measurements` | the runner's `GameMeasurements` plus `perSeat` and `totals`: `AgentTotals` (decisions, tokens, latency, cost, retries, invalid first answers, notes cut) |
+| `measurements` | the runner's `GameMeasurements` plus `perSeat` and `totals` over the play records and `builds` over the Decklist builds: `AgentTotals` (decisions, tokens, latency, cost, retries, invalid first answers, notes cut) |
 | `decisions` | every `DecisionRecord` in order; each Seat's last record holds its latest Plan notes |
 
-A Run resumes a Game from `replay.intents` and the Plan notes in `decisions`. `readGameFile(path)` reads one back.
+A Run resumes a Game from `setup.decklists`, `replay.intents` and the Plan notes in `decisions`; it never rebuilds the Decklists. `readGameFile(path)` reads one back.
 
 ## The single-Game script
 

@@ -20,6 +20,9 @@ importers:
         specifier: workspace:*
         version: link:../runner
     devDependencies:
+      '@fyendal/engine':
+        specifier: workspace:*
+        version: link:../../vendor/fyendal.net/packages/engine
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2

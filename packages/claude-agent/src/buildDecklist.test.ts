@@ -196,10 +196,11 @@ describe("an invalid build", () => {
         decisions: [],
       });
       expect(played.agents).toBeUndefined();
+      const detail = played.result.outcome === "error" ? played.result.detail : "";
       const file = readGameFile(played.path);
       expect(file).toEqual(played.file);
       expect(file.status).toBe("complete");
-      expect(file.outcome).toEqual({ outcome: "error", cause: "invalid-answer", seed: SEED, step: 0, detail: played.result.detail });
+      expect(file.outcome).toEqual({ outcome: "error", cause: "invalid-answer", seed: SEED, step: 0, detail });
       expect(file.setup).toEqual({ seed: SEED, startingSeat: 0, lists: [lists[0].name, lists[1].name], heroes: ["Ira, Crimson Haze", "Bravo, Flattering Showman"], configs });
       expect(file.systemPrompts).toBeUndefined();
       expect(file.replay).toBeUndefined();
@@ -209,7 +210,7 @@ describe("an invalid build", () => {
         kind: "decklist",
         seat: 0,
         message: fake.calls[0]!.message,
-        decision: { cause: "invalid-answer", detail: played.result.detail, measurements: { retries: 1, firstAnswerInvalid: true, inputTokens: 200 } },
+        decision: { cause: "invalid-answer", detail, measurements: { retries: 1, firstAnswerInvalid: true, inputTokens: 200 } },
       });
       expect(file.measurements.builds).toMatchObject({ decisions: 1, retries: 1, invalidFirstAnswers: 1 });
       expect(file.measurements.totals.decisions).toBe(0);
