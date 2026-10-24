@@ -116,7 +116,7 @@ describe("runSuite", () => {
       expect(readManifest(runDir)).toEqual(manifest);
       expect(readdirSync(runDir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
       expect(reportPath).toBe(join(runDir, "report.md"));
-      expect(readFileSync(reportPath, "utf8")).toContain("# Phase 2 report");
+      expect(readFileSync(reportPath!, "utf8")).toContain("# Phase 2 report");
     },
     RUN_TIMEOUT,
   );

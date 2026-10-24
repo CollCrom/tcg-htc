@@ -1,7 +1,9 @@
 // A Run: the Phase 2 suite played into one results directory. Its manifest
 // says which Games it holds and where each stands; it is rewritten on every
-// change so a pause or a crash can be picked up from it (#177). When every
-// Game is done the Run writes its report and marks itself complete.
+// change so a pause or a crash can be picked up from it. A rate limit pauses
+// the Run: no new Game starts, each Game in flight stops after its current
+// decision, and the manifest says how to resume. When every Game is done the
+// Run writes its report and marks itself complete.
 import { isFailure, type DecisionProgress, type DecisionRecord, type GameOutcome, type List } from "@tcg-htc/runner";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,6 +32,8 @@ export const DEFAULT_SEEDS = [1, 2, 3, 4, 5];
 export const DEFAULT_CONCURRENCY = 2;
 
 export type RunStatus = "running" | "paused" | "complete";
+/** `playing` covers a Game in flight and, in a paused Run, one stopped between
+ * decisions that resumes from its Game file. */
 export type GameStatus = "pending" | "playing" | "complete" | "failed";
 
 /** One Game of the Run. `failed` keeps the stall or error outcome. */
@@ -42,7 +46,7 @@ export interface ManifestGame {
   outcome?: GameOutcome;
   /** The Game file's name within the Run directory. */
   file: string;
-  /** Intents applied, once the Game is done. */
+  /** Intents applied, once the Game is done or the Run paused. */
   steps?: number;
   startedAt?: string;
   finishedAt?: string;
@@ -54,10 +58,17 @@ export interface Manifest {
   startedAt: string;
   updatedAt: string;
   games: ManifestGame[];
-  /** Set when the Run paused on a rate limit (#177). */
+  /** When the Run paused on a rate limit; cleared on resume. */
   pausedAt?: string;
-  /** How to resume a paused Run (#177). */
+  /** The command that resumes a paused Run. */
   resumeHint?: string;
+  /** What the rate limit said. */
+  pauseDetail?: string;
+}
+
+/** How a paused Run is resumed. */
+export function resumeHint(runDir: string): string {
+  return `pnpm suite:claude --resume ${runDir}`;
 }
 
 export const MANIFEST_FILE = "manifest.json";
@@ -84,12 +95,16 @@ export interface DecisionContext {
   manifest: Manifest;
 }
 
+/** Everything but `config`, which a resumed Run reads from its manifest. */
+export type ResumeSuiteOptions = Omit<RunSuiteOptions, "config">;
+
 export interface RunResult {
   manifest: Manifest;
-  /** Each finished Game's file, by Game id. */
+  /** Each Game's file, by Game id, for the Games that have one. */
   gameFiles: Record<string, GameFile>;
-  report: string;
-  reportPath: string;
+  /** The report, once the Run is complete; absent when it paused. */
+  report?: string;
+  reportPath?: string;
 }
 
 /** The Run's Games, all pending: each seed with each List in Seat 0, the
@@ -109,12 +124,34 @@ export function planGames(config: RunConfig): ManifestGame[] {
 
 /** Plays the Run: `concurrency` Games at a time until none is pending, then
  * writes the report and marks the Run complete. A Game that stalls, errors or
- * throws is `failed` with its outcome; the Run goes on. */
+ * throws is `failed` with its outcome; the Run goes on. A rate limit pauses
+ * the Run instead (see `play`). */
 export async function runSuite(options: RunSuiteOptions): Promise<RunResult> {
-  const { config, runDir, call, onDecision, onGame, now = () => new Date() } = options;
+  const { config, runDir, now = () => new Date() } = options;
   mkdirSync(runDir, { recursive: true });
   const startedAt = now().toISOString();
   const manifest: Manifest = { status: "running", config, startedAt, updatedAt: startedAt, games: planGames(config) };
+  return play(manifest, options);
+}
+
+/** Resumes the Run in `runDir` from its manifest: `complete` and `failed`
+ * Games are left alone, `pending` ones are played, and `playing` ones carry on
+ * from their Game files (a Game file already complete settles its Game). The
+ * Run is marked running, pauses again on another rate limit, and writes its
+ * report when it completes. Throws if the Run is already complete. */
+export async function resumeSuite(options: ResumeSuiteOptions): Promise<RunResult> {
+  const manifest = readManifest(options.runDir);
+  if (manifest.status === "complete") throw new Error(`the Run in ${options.runDir} is complete; there is nothing to resume`);
+  manifest.status = "running";
+  delete manifest.pausedAt;
+  delete manifest.resumeHint;
+  delete manifest.pauseDetail;
+  return play(manifest, options);
+}
+
+async function play(manifest: Manifest, options: ResumeSuiteOptions): Promise<RunResult> {
+  const { runDir, call, onDecision, onGame, now = () => new Date() } = options;
+  const { config } = manifest;
   const lists = config.lists.map(heroList) as unknown as readonly [List, List];
   const save = () => {
     manifest.updatedAt = now().toISOString();
@@ -127,14 +164,31 @@ export async function runSuite(options: RunSuiteOptions): Promise<RunResult> {
     onGame?.(game, manifest);
   };
 
-  /** Claims the next pending Game, or nothing once none is left (or the Run
-   * stops starting Games, when #177 pauses it). */
+  /** Set by the first rate limit; every Game in flight then stops after its
+   * current decision, and no Game is claimed. */
+  let pausing = false;
+  const shouldStop = () => pausing;
+  const pause = (detail: string) => {
+    if (pausing) return;
+    pausing = true;
+    manifest.status = "paused";
+    manifest.pausedAt = now().toISOString();
+    manifest.resumeHint = resumeHint(runDir);
+    manifest.pauseDetail = detail;
+  };
+
+  /** The Games this process is playing right now. */
+  const inFlight = new Set<string>();
+
+  /** Claims the next Game to play, a pending one or (resuming) a playing one
+   * not in flight, or nothing once none is left or the Run is pausing. */
   const claim = (): ManifestGame | undefined => {
     if (manifest.status !== "running") return undefined;
-    const game = manifest.games.find(({ status }) => status === "pending");
+    const game = manifest.games.find(({ id, status }) => status === "pending" || (status === "playing" && !inFlight.has(id)));
     if (!game) return undefined;
+    inFlight.add(game.id);
     game.status = "playing";
-    game.startedAt = now().toISOString();
+    game.startedAt ??= now().toISOString();
     changed(game);
     return game;
   };
@@ -142,28 +196,45 @@ export async function runSuite(options: RunSuiteOptions): Promise<RunResult> {
   const playOne = async (game: ManifestGame): Promise<void> => {
     const first = lists.find((list) => heroSlug(list.hero.name) === game.first)!;
     const second = lists.find((list) => list !== first)!;
+    const path = join(runDir, game.file);
+    const saved = existsSync(path) ? readGameFile(path) : undefined;
     try {
-      const played = await playGame({
-        seed: game.seed,
-        lists: [first, second],
-        configs: config.configs,
-        call,
-        runDir,
-        maxSteps: config.maxSteps,
-        onDecision: (record, progress, written) => onDecision?.(record, progress, { game, written, manifest }),
-      });
-      game.outcome = outcomeOf(played.result);
-      game.steps = played.result.steps;
-      game.status = isFailure(played.result) ? "failed" : "complete";
+      if (saved?.status === "complete" && saved.outcome) {
+        // Written before the manifest could record it.
+        settle(game, saved.outcome, saved.replay?.intents.length ?? 0);
+      } else {
+        const played = await playGame({
+          seed: game.seed,
+          lists: [first, second],
+          configs: config.configs,
+          call,
+          runDir,
+          maxSteps: config.maxSteps,
+          shouldStop,
+          ...(saved ? { resumeFrom: saved } : {}),
+          onDecision: (record, progress, written) => onDecision?.(record, progress, { game, written, manifest }),
+        });
+        const { result } = played;
+        if (result.outcome === "paused") {
+          game.steps = result.steps;
+          if (result.cause === "rate-limit") pause(result.detail);
+        } else {
+          settle(game, outcomeOf(result), result.steps);
+        }
+      }
     } catch (error) {
-      const path = join(runDir, game.file);
       const step = existsSync(path) ? (readGameFile(path).replay?.intents.length ?? 0) : 0;
-      game.outcome = { outcome: "error", seed: game.seed, step, detail: error instanceof Error ? error.message : String(error) };
-      game.steps = step;
-      game.status = "failed";
+      settle(game, { outcome: "error", seed: game.seed, step, detail: error instanceof Error ? error.message : String(error) }, step);
     }
-    game.finishedAt = now().toISOString();
+    inFlight.delete(game.id);
     changed(game);
+  };
+
+  const settle = (game: ManifestGame, outcome: GameOutcome, steps: number) => {
+    game.outcome = outcome;
+    game.steps = steps;
+    game.status = isFailure(outcome) ? "failed" : "complete";
+    game.finishedAt = now().toISOString();
   };
 
   const worker = async (): Promise<void> => {
@@ -172,6 +243,10 @@ export async function runSuite(options: RunSuiteOptions): Promise<RunResult> {
   await Promise.all(Array.from({ length: Math.max(1, config.concurrency) }, worker));
 
   const gameFiles = readGameFiles(runDir, manifest);
+  if (pausing) {
+    save();
+    return { manifest, gameFiles };
+  }
   const report = renderReport(manifest, gameFiles, { upstreamCommit: options.upstreamCommit ?? upstreamCommit(), runDir });
   const reportPath = join(runDir, REPORT_FILE);
   writeFileSync(reportPath, report);
