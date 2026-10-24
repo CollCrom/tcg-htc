@@ -157,7 +157,7 @@ export async function runSuite(options: RunSuiteOptions): Promise<RunResult> {
       game.status = isFailure(played.result) ? "failed" : "complete";
     } catch (error) {
       const path = join(runDir, game.file);
-      const step = existsSync(path) ? readGameFile(path).replay.intents.length : 0;
+      const step = existsSync(path) ? (readGameFile(path).replay?.intents.length ?? 0) : 0;
       game.outcome = { outcome: "error", seed: game.seed, step, detail: error instanceof Error ? error.message : String(error) };
       game.steps = step;
       game.status = "failed";

@@ -3,19 +3,25 @@
 // it (the replay's Intents and each Seat's last Plan notes, in the Decision
 // records), and the report reads its outcome and measurements.
 import type { Decklist } from "@fyendal/shared";
-import type { DecisionRecord, GameMeasurements, GameOutcome, Replay, Seat } from "@tcg-htc/runner";
+import type { AgentMeasurements, DecisionRecord, GameMeasurements, GameOutcome, Replay, Seat } from "@tcg-htc/runner";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type { DecklistBuild } from "./buildDecklist.js";
 import type { ClaudeConfig } from "./claudeCode.js";
 
 export interface GameFile {
   /** `playing` until the Game's outcome is known. */
   status: "playing" | "complete";
   setup: GameFileSetup;
-  /** Each Seat's system prompt, identical for every decision of the Game. */
-  systemPrompts: readonly [string, string];
-  /** The setup and every Intent applied so far: `replayGame` takes it. */
-  replay: Replay;
+  /** Each Seat's Decklist build, Seat 0 first, before any play record. A
+   * failed build is the last: the Game ended there. */
+  decklistDecisions: readonly DecklistDecisionRecord[];
+  /** Each Seat's play system prompt, identical for every decision of the
+   * Game. Absent when a Decklist build failed and the Game never started. */
+  systemPrompts?: readonly [string, string];
+  /** The setup and every Intent applied so far: `replayGame` takes it.
+   * Absent when a Decklist build failed and the Game never started. */
+  replay?: Replay;
   /** Known once the Game is complete. */
   outcome?: GameOutcome;
   /** Known once the Game is complete. */
@@ -33,15 +39,27 @@ export interface GameFileSetup {
   lists: readonly [string, string];
   /** The hero of the List in each Seat. */
   heroes: readonly [string, string];
-  decklists: readonly [Decklist, Decklist];
+  /** What each Seat built. Absent when a build failed and the Game never started. */
+  decklists?: readonly [Decklist, Decklist];
   /** Each Seat's Claude Agent config. */
   configs: readonly [ClaudeConfig, ClaudeConfig];
 }
 
+/** The Decision record of a Seat's Decklist build: its own kind, with the
+ * build's system prompt (not the play prompt) and message, so the Game file
+ * stays self-contained. */
+export interface DecklistDecisionRecord extends DecklistBuild {
+  kind: "decklist";
+  seat: Seat;
+}
+
 /** The runner's measurements plus what the Agents reported, totalled. */
 export interface GameFileMeasurements extends GameMeasurements {
+  /** Over the play records. */
   perSeat: readonly [AgentTotals, AgentTotals];
   totals: AgentTotals;
+  /** Over the Decklist builds; its `decisions` counts builds. */
+  builds: AgentTotals;
 }
 
 /** Agent measurements summed over Decision records. */
@@ -78,8 +96,8 @@ export function heroSlug(heroName: string): string {
     .replace(/^-|-$/g, "");
 }
 
-/** Sums the Agent measurements of `records`. */
-export function agentTotals(records: readonly DecisionRecord[]): AgentTotals {
+/** Sums the Agent measurements of `records`, play or build. */
+export function agentTotals(records: readonly { decision: { measurements?: AgentMeasurements } }[]): AgentTotals {
   const totals: AgentTotals = {
     decisions: 0,
     inputTokens: 0,

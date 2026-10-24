@@ -4,9 +4,12 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { DECKLIST_SCHEMA } from "./buildDecklist.js";
 import type { CallResult, ClaudeConfig } from "./claudeCode.js";
-import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
+import { fakeClaudeCode, type FakeScript, type RecordedCall } from "./fakeClaudeCode.js";
+import { heroList } from "./heroLists.js";
 import { readManifest, runSuite, type Manifest, type ManifestGame, type RunConfig } from "./run.js";
+import { legalPresentation } from "./scriptedBuild.js";
 
 const RUN_TIMEOUT = 120_000;
 const configs: readonly [ClaudeConfig, ClaudeConfig] = [
@@ -22,14 +25,27 @@ function entriesOf({ message }: RecordedCall): string[] {
   return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).map((line) => line.replace(/^\d+\. /, ""));
 }
 
+const lists = [heroList("ira"), heroList("bravo")];
+
+/** Builds legally for the List the build's system prompt describes (it names
+ * no other hero), and leaves every play decision to `play`. */
+const building =
+  (play: (request: RecordedCall, index: number) => CallResult): ((request: RecordedCall, index: number) => CallResult) =>
+  (request, index) => {
+    if (request.schema !== DECKLIST_SCHEMA) return play(request, index);
+    const list = lists.find(({ hero }) => request.systemPrompt.includes(hero.name));
+    if (!list) throw new Error("the build's system prompt names no known hero");
+    return { kind: "answer", output: { ...legalPresentation(list), reasoning: "built" }, turns: 2, usage };
+  };
+
 /** Answers a different listed Intent each call, so Games move along and end. */
-const varied = (request: RecordedCall, index: number): CallResult => answer(1 + (index % entriesOf(request).length));
+const varied: FakeScript = building((request, index) => answer(1 + (index % entriesOf(request).length)));
 
 /** Passes whenever it can, so the Game never ends and runs into the cap. */
-const passing = (request: RecordedCall): CallResult => {
+const passing: FakeScript = building((request) => {
   const index = entriesOf(request).findIndex((entry) => entry.startsWith("pass"));
   return answer(index >= 0 ? index + 1 : 1);
-};
+});
 
 const tempDirs: string[] = [];
 function tempRunDir(): string {

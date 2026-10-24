@@ -1,8 +1,8 @@
 // renderReport, over a hand-built Run: four Games of two seeds, two won, one
 // stalled at the cap and one ended by an Agent's invalid answer.
-import type { AgentMeasurements, DecisionRecord, GameOutcome, Intent, Seat } from "@tcg-htc/runner";
+import type { AgentMeasurements, DecisionRecord, GameOutcome, Intent, Replay, Seat } from "@tcg-htc/runner";
 import { describe, expect, it } from "vitest";
-import { agentTotals, type GameFile } from "./gameFile.js";
+import { agentTotals, type GameFile, type GameFileSetup } from "./gameFile.js";
 import { exitCriteria, renderReport, reproduceCommand } from "./report.js";
 import type { Manifest, ManifestGame } from "./run.js";
 
@@ -49,12 +49,13 @@ function gameFile({ seed, first, outcome, turns, decisions }: Fixture): GameFile
   const perSeat = (seat: Seat) => agentTotals(decisions.filter((entry) => entry.seat === seat));
   return {
     status: "complete",
-    setup: { seed, startingSeat: 0, lists: heroes, heroes, decklists: [{}, {}] as unknown as GameFile["setup"]["decklists"], configs: manifestConfig.configs },
+    setup: { seed, startingSeat: 0, lists: heroes, heroes, decklists: [{}, {}] as unknown as GameFileSetup["decklists"], configs: manifestConfig.configs },
+    decklistDecisions: [],
     systemPrompts: ["", ""],
-    replay: { decklists: [{}, {}] as unknown as GameFile["replay"]["decklists"], seed, startingSeat: 0, intents: [] },
+    replay: { decklists: [{}, {}] as unknown as Replay["decklists"], seed, startingSeat: 0, intents: [] },
     outcome,
     turns,
-    measurements: { decisionsPerSeat: [0, 0], decisions: [], durationMs: 0, perSeat: [perSeat(0), perSeat(1)], totals: agentTotals(decisions) },
+    measurements: { decisionsPerSeat: [0, 0], decisions: [], durationMs: 0, perSeat: [perSeat(0), perSeat(1)], totals: agentTotals(decisions), builds: agentTotals([]) },
     decisions,
   };
 }
