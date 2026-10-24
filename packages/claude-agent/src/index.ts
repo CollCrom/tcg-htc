@@ -30,3 +30,27 @@ export {
   buildSystemPrompt,
   claudeAgent,
 } from "./claudeAgent.js";
+export {
+  type AgentTotals,
+  type GameFile,
+  type GameFileMeasurements,
+  type GameFileSetup,
+  agentTotals,
+  gameFileName,
+  gameId,
+  heroSlug,
+  readGameFile,
+  writeGameFile,
+} from "./gameFile.js";
+export { type PlayedGame, type PlayGameOptions, type WrittenGameFile, outcomeOf, playGame, progressLine } from "./playGame.js";
+export {
+  type GameClaudeArgs,
+  type Hero,
+  DEFAULT_CONFIG,
+  EFFORTS,
+  HEROES,
+  MODELS,
+  USAGE,
+  parseGameClaudeArgs,
+  runDirName,
+} from "./gameClaudeArgs.js";

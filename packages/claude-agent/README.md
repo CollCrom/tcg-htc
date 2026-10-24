@@ -19,6 +19,28 @@ A failure's `detail` starts "Seat N's Claude Agent (model, effort): ". Every Dec
 
 `src/claudeAgent.test.ts` drives all of this through whole Games against the random Agent with `fakeClaudeCode`, and holds the honesty test: with a Claude Agent in both Seats, no opponent hidden card appears in any system prompt or message sent.
 
+## Playing a Game, and the Game file
+
+`playGame({ seed, lists, configs, call, runDir, decklistPicker?, onDecision?, clock? })` in `src/playGame.ts` plays one Game between two Claude Agents: `lists` are the two Lists by Seat (Seat 0 takes the first turn), `configs` each Seat's `{ model, effort }`, `call` the Claude Code call both Agents share, `runDir` the Run's directory (the Game file, the system prompt files and Claude Code's `cwd/` all go there). Each Decklist comes from `decklistPicker(list, seed)`, `pickDecklist` by default. It returns `{ result, file, path, agents }`: the runner's `GameResult`, the final `GameFile` and where it was written. `onDecision(record, progress, { file, path })` is called after every decision, once the file holds it; `progressLine(id, record, progress)` renders the Run's one line per decision from the same arguments.
+
+The Game file (`src/gameFile.ts`) is one JSON document, `<runDir>/game-<seed>-<hero of Seat 0>-first.json` (`gameFileName`), rewritten after every decision by writing `<path>.tmp` and renaming it over the old file, so a crash leaves a whole document. Its shape:
+
+| Field | Holds |
+|---|---|
+| `status` | `playing`, then `complete` once the outcome is known |
+| `setup` | `seed`, `startingSeat`, `lists` (names), `heroes`, `decklists`, `configs` by Seat |
+| `systemPrompts` | each Seat's system prompt, once |
+| `replay` | the runner's `Replay`: setup plus every Intent applied so far, `replayGame` takes it |
+| `outcome`, `turns` | the `GameOutcome` (cause included for an Agent's failure) and turn count, once complete |
+| `measurements` | the runner's `GameMeasurements` plus `perSeat` and `totals`: `AgentTotals` (decisions, tokens, latency, cost, retries, invalid first answers, notes cut) |
+| `decisions` | every `DecisionRecord` in order; each Seat's last record holds its latest Plan notes |
+
+A Run resumes a Game from `replay.intents` and the Plan notes in `decisions`. `readGameFile(path)` reads one back.
+
+## The single-Game script
+
+`pnpm game:claude` (root script, `src/gameClaude.ts`) plays one Game through the real call and prints a progress line per decision, the outcome, the token and cost totals and the Game file's path; it exits non-zero on a stall or an error. Flags, parsed by `parseGameClaudeArgs` in `src/gameClaudeArgs.ts`: `--seed` (1), `--first ira|bravo` (the hero in Seat 0; ira), `--model0`/`--model1` (opus), `--effort0`/`--effort1` (medium), `--results` (the results directory, relative to where pnpm was run; `results`, gitignored). The Run directory is `<results>/<UTC timestamp>-game-<seed>-<first>-first/`.
+
 ## The Claude Code call
 
 `claudeCodeCall()` in `src/claudeCode.ts` is the one function that talks to Claude Code, and the seam tests fake with `fakeClaudeCode` (`src/fakeClaudeCode.ts`). A request is a system prompt, a user message, a JSON Schema, a config (`model` alias, `effort`) and the Run's results directory. The call spawns
