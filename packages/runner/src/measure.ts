@@ -1,6 +1,6 @@
 // Measurements of a Game: what it would cost a Claude Agent to play it.
-import type { Intent, Seat, View } from "./agent.js";
-import { estimateTokens } from "./render.js";
+import type { Intent, Seat } from "./agent.js";
+import { estimateTokens, type RenderedDecision } from "./render.js";
 
 /** One decision: the Seat that made it, the Intents it was offered and the
  * estimated tokens of its rendered View plus legal Intents. */
@@ -23,14 +23,14 @@ export interface GameMeasurements {
   durationMs: number;
 }
 
-/** Measures one decision from what the deciding Seat was shown: its View, the
- * legal Intents and the text they were rendered as. */
-export function measureDecision(view: View, seat: Seat, legalIntents: readonly Intent[], rendered: string): DecisionMeasurement {
+/** Measures one decision from what the deciding Seat was shown: the legal
+ * Intents and the rendering they were offered in. */
+export function measureDecision(seat: Seat, legalIntents: readonly Intent[], rendered: RenderedDecision): DecisionMeasurement {
   return {
     seat,
     intents: legalIntents.length,
-    reorderFreeIntents: new Set(legalIntents.map((intent) => reorderFreeKey(intent, view))).size,
-    tokens: estimateTokens(rendered),
+    reorderFreeIntents: rendered.intents.length,
+    tokens: estimateTokens(rendered.text),
   };
 }
 
@@ -39,17 +39,4 @@ export function summarise(decisions: DecisionMeasurement[], durationMs: number):
   const decisionsPerSeat: [number, number] = [0, 0];
   for (const { seat } of decisions) decisionsPerSeat[seat]++;
   return { decisionsPerSeat, decisions, durationMs };
-}
-
-/** Identifies an Intent up to the order its cards are pitched in. A scripted
- * payment's `choose` option is keyed by the cards it pitches. */
-function reorderFreeKey(intent: Intent, view: View): string {
-  const byId = (a: number, b: number) => a - b;
-  if (intent.kind === "choose") {
-    const payment = view.pendingDecision?.resourcePayment?.options.find(({ optionId }) => optionId === intent.optionId);
-    if (payment) return JSON.stringify({ kind: "pay", pitchInstanceIds: [...payment.pitchInstanceIds].sort(byId) });
-  }
-  if ("pitchInstanceIds" in intent && intent.pitchInstanceIds)
-    return JSON.stringify({ ...intent, pitchInstanceIds: [...intent.pitchInstanceIds].sort(byId) });
-  return JSON.stringify(intent);
 }

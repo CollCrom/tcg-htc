@@ -65,7 +65,8 @@ export interface DecisionRecord {
   seat: Seat;
   /** The View and legal Intents as rendered for the Agent. */
   rendered: string;
-  /** The legal Intents offered, in the order rendered. */
+  /** Every legal Intent offered. The numbered entries of `rendered` are the
+   * `intents` of `renderDecision`: the same list with pitch orderings collapsed. */
   intents: readonly Intent[];
   decision: Decision;
 }
@@ -112,9 +113,9 @@ export async function runGame({ decklists, seed, startingSeat, agents, clock = (
     }
     const view = projectStateFor(state, seat);
     const rendered = renderDecision(view, seat, legal);
-    measured.push(measureDecision(view, seat, legal, rendered));
+    measured.push(measureDecision(seat, legal, rendered));
     const decision = await agents[seat](view, legal, rngs[seat]);
-    decisions.push({ seat, rendered, intents: legal, decision });
+    decisions.push({ seat, rendered: rendered.text, intents: legal, decision });
     if (isDecisionFailure(decision)) {
       failure = { outcome: "error", seed, step: steps, detail: decision.detail, cause: decision.cause };
       break;
