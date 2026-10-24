@@ -8,13 +8,13 @@ const SEED = 120;
 
 it(
   "plays one Game of Ira vs Bravo, from Decklists picked from the fixture Lists, to an outcome",
-  () => {
+  async () => {
     const decklists = [
       pickDecklist(fixtureList(IRA_LIST_FILE), SEED),
       pickDecklist(fixtureList(BRAVO_LIST_FILE), SEED),
     ] as const;
 
-    const result = runGame({ decklists, seed: SEED, startingSeat: 0, agents: [randomAgent, randomAgent] });
+    const result = await runGame({ decklists, seed: SEED, startingSeat: 0, agents: [randomAgent, randomAgent] });
 
     const { replay: _replay, finalProjection: _final, ...outcome } = result;
     console.info(`Ira vs Bravo, seed ${SEED}:`, JSON.stringify(outcome));
