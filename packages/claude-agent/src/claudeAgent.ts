@@ -5,27 +5,16 @@
 // and answers with one Intent number, its reasoning and new Plan notes.
 import { cardData } from "@fyendal/cards";
 import type { Decklist } from "@fyendal/shared";
-import {
-  describeCardData,
-  EQUIPMENT_SLOTS,
-  renderDecision,
-  type Agent,
-  type AgentMeasurements,
-  type Decision,
-  type DecisionFailureCause,
-  type Seat,
-} from "@tcg-htc/runner";
-import { readFileSync } from "node:fs";
-import type { CallResult, ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
+import { describeCardData, EQUIPMENT_SLOTS, renderDecision, type Agent, type Seat } from "@tcg-htc/runner";
+import { ask, failed, field, type Read } from "./ask.js";
+import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
+import { CARD_SYMBOLS_SECTION, primer } from "./prompt.js";
 
-/** The rules primer every Claude Agent reads, owner-reviewed: see prompts/README.md. */
-export const PRIMER_FILE = new URL("../prompts/primer.md", import.meta.url);
+export { MAX_RETRIES } from "./ask.js";
+export { PRIMER_FILE } from "./prompt.js";
 
 /** Plan notes longer than this are cut, and the cut recorded on the Decision. */
 export const PLAN_NOTES_LIMIT = 2_000;
-
-/** Calls made for one decision after the first: one retry. */
-export const MAX_RETRIES = 1;
 
 /** What an answer must look like: the Intent number, reasoning, Plan notes. */
 export const ANSWER_SCHEMA = {
@@ -79,51 +68,21 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
 
   const agent: Agent = async (view, legalIntents) => {
     const rendered = renderDecision(view, seat, legalIntents);
-    const count = rendered.intents.length;
-    const message = buildMessage(rendered.text, planNotes);
-    const measurements: AgentMeasurements = {
-      effort,
-      inputTokens: 0,
-      cachedTokens: 0,
-      outputTokens: 0,
-      latencyMs: 0,
-      retries: 0,
-      firstAnswerInvalid: false,
-      notesCut: false,
-      costUsd: 0,
-    };
-    const fail = (cause: DecisionFailureCause, detail: string): Decision => ({ cause, detail: `${who}: ${detail}`, measurements });
-
-    let problem: string | undefined;
-    for (let attempt = 0; ; attempt++) {
-      const result = await call({
-        systemPrompt,
-        message: problem ? `${message}\n\n${PROBLEM_HEADING}\n${problem}` : message,
-        schema: ANSWER_SCHEMA,
-        config: callConfig,
-        resultsDir,
-      });
-      measurements.retries = attempt;
-      if (result.kind === "answer") {
-        const { usage } = result;
-        measurements.model = usage.model;
-        measurements.inputTokens! += usage.inputTokens;
-        measurements.cachedTokens! += usage.cachedTokens;
-        measurements.outputTokens! += usage.outputTokens;
-        measurements.latencyMs! += usage.latencyMs;
-        measurements.costUsd! += usage.costUsd;
-      }
-      const outcome = readAnswer(result, count);
-      if (outcome.kind === "choice") {
-        if (outcome.planNotes.length > PLAN_NOTES_LIMIT) measurements.notesCut = true;
-        planNotes = outcome.planNotes.slice(0, PLAN_NOTES_LIMIT);
-        return { intent: rendered.intents[outcome.intent - 1]!, reasoning: outcome.reasoning, planNotes, measurements };
-      }
-      if (outcome.kind === "rate-limit") return fail("rate-limit", outcome.detail);
-      if (outcome.kind === "invalid-answer" && attempt === 0) measurements.firstAnswerInvalid = true;
-      if (attempt >= MAX_RETRIES) return fail(outcome.kind, outcome.detail);
-      problem = outcome.kind === "invalid-answer" ? outcome.detail : undefined;
-    }
+    const asked = await ask({
+      call,
+      who,
+      systemPrompt,
+      message: buildMessage(rendered.text, planNotes),
+      schema: ANSWER_SCHEMA,
+      config: callConfig,
+      resultsDir,
+      read: (output) => readAnswer(output, rendered.intents.length),
+    });
+    if (failed(asked)) return { ...asked, measurements: { ...asked.measurements, notesCut: false } };
+    const { value, measurements } = asked;
+    measurements.notesCut = value.planNotes.length > PLAN_NOTES_LIMIT;
+    planNotes = value.planNotes.slice(0, PLAN_NOTES_LIMIT);
+    return { intent: rendered.intents[value.intent - 1]!, reasoning: value.reasoning, planNotes, measurements };
   };
 
   return Object.defineProperties(agent, {
@@ -134,27 +93,23 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
   }) as ClaudeAgent;
 }
 
-const PROBLEM_HEADING = "Your previous answer was not accepted. Answer again, fixing this problem:";
+/** The three fields of an answer, once it names a listed Intent. */
+interface Answer {
+  intent: number;
+  reasoning: string;
+  planNotes: string;
+}
 
-/** What one call came to: a usable choice, an answer that names no listed
- * Intent, or the call's own failure. */
-type AnswerOutcome =
-  | { kind: "choice"; intent: number; reasoning: string; planNotes: string }
-  | { kind: "invalid-answer" | "rate-limit" | "refusal" | "timeout" | "failure"; detail: string };
-
-function readAnswer(result: CallResult, count: number): AnswerOutcome {
-  if (result.kind !== "answer") return result;
-  const output = result.output;
-  const field = (name: string): unknown => (output && typeof output === "object" ? (output as Record<string, unknown>)[name] : undefined);
-  const intent = field("intent");
+function readAnswer(output: unknown, count: number): Read<Answer> {
+  const intent = field(output, "intent");
   const text = (value: unknown): string => (typeof value === "string" ? value : "");
   if (typeof intent !== "number" || !Number.isInteger(intent)) {
-    return { kind: "invalid-answer", detail: `Your answer named no Intent number (got ${JSON.stringify(intent)}); answer with one of 1 to ${count}` };
+    return { ok: false, problem: `Your answer named no Intent number (got ${JSON.stringify(intent)}); answer with one of 1 to ${count}` };
   }
   if (intent < 1 || intent > count) {
-    return { kind: "invalid-answer", detail: `Your answer named Intent ${intent} but only 1 to ${count} are listed` };
+    return { ok: false, problem: `Your answer named Intent ${intent} but only 1 to ${count} are listed` };
   }
-  return { kind: "choice", intent, reasoning: text(field("reasoning")), planNotes: text(field("planNotes")) };
+  return { ok: true, value: { intent, reasoning: text(field(output, "reasoning")), planNotes: text(field(output, "planNotes")) } };
 }
 
 /** The per-decision message: the rendered decision, then the Plan notes. */
@@ -166,11 +121,10 @@ export function buildMessage(rendered: string, planNotes: string): string {
  * answer format, and the Seat's own Decklist with full card text. */
 export function buildSystemPrompt(seat: Seat, decklist: Decklist): string {
   return [
-    readFileSync(PRIMER_FILE, "utf8").trimEnd(),
+    primer(),
     "## You",
     `You are Seat ${seat}. Your objective is to win the Game.`,
-    "## Card text symbols",
-    "{p} power, {r} resource, {h} life, {d} defense, {t} tap.",
+    CARD_SYMBOLS_SECTION,
     "## How to answer",
     [
       "Answer with a JSON object of exactly three fields.",

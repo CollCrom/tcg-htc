@@ -1,6 +1,8 @@
 // playGame, driven with fake-backed Claude Agents in both Seats: the Game file
-// it writes as the Game goes, and what the file holds at the end.
-import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, replayGame, type DecisionChoice, type DecisionRecord } from "@tcg-htc/runner";
+// it writes as the Game goes, and what the file holds at the end. The Decklists
+// come from the seeded picker here; the Agent's own build is tested in
+// buildDecklist.test.ts.
+import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, pickDecklist, replayGame, type DecisionChoice, type DecisionRecord, type GameResult } from "@tcg-htc/runner";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,6 +67,7 @@ function completeGame() {
       configs,
       call: fakeClaudeCode(varied),
       runDir,
+      decklistPicker: pickDecklist,
       onDecision: (record, progress, written) => {
         lines.push(progressLine(gameId(SEED, lists[0].hero.name), record, progress));
         if (progress.step < 2 || progress.step % 25 === 0) {
@@ -75,6 +78,12 @@ function completeGame() {
     return { played, runDir, snapshots, lines };
   })();
   return completed;
+}
+
+/** The result of a Game that was played, which these Games all are. */
+function playedResult(played: PlayedGame): GameResult {
+  if (!("replay" in played.result)) throw new Error("the Game never started");
+  return played.result;
 }
 
 /** The numbered Intent entries of a rendered decision, without their numbers. */
@@ -97,7 +106,7 @@ describe("playGame", () => {
         expect(onDisk).toEqual(handed);
         expect(onDisk.status).toBe("playing");
         expect(onDisk.decisions).toHaveLength(step + 1);
-        expect(onDisk.replay.intents).toHaveLength(step + 1);
+        expect(onDisk.replay!.intents).toHaveLength(step + 1);
         expect(onDisk.outcome).toBeUndefined();
         expect(onDisk.decisions).toEqual(played.result.decisions.slice(0, step + 1));
         expect(onDisk.measurements.decisions).toEqual(played.result.measurements.decisions.slice(0, step + 1));
@@ -112,11 +121,13 @@ describe("playGame", () => {
     "ends with a complete file: setup, both system prompts once, the replay, the outcome, measurements and every Decision record",
     async () => {
       const { played } = await completeGame();
-      const { result } = played;
+      const result = playedResult(played);
       const file = readGameFile(played.path);
 
       expect(file).toEqual(played.file);
       expect(file.status).toBe("complete");
+      expect(file.decklistDecisions).toEqual([]);
+      expect(file.measurements.builds.decisions).toBe(0);
       expect(file.setup).toEqual({
         seed: SEED,
         startingSeat: 0,
@@ -125,15 +136,15 @@ describe("playGame", () => {
         decklists: result.replay.decklists,
         configs,
       });
-      expect(file.systemPrompts[0]).toBe(played.agents[0].systemPrompt);
-      expect(file.systemPrompts[1]).toBe(played.agents[1].systemPrompt);
-      expect(file.systemPrompts[0]).toContain("You are Seat 0.");
-      expect(file.systemPrompts[1]).toContain("You are Seat 1.");
-      const encodedPrompt = JSON.stringify(file.systemPrompts[0]).slice(1, -1);
+      expect(file.systemPrompts![0]).toBe(played.agents![0].systemPrompt);
+      expect(file.systemPrompts![1]).toBe(played.agents![1].systemPrompt);
+      expect(file.systemPrompts![0]).toContain("You are Seat 0.");
+      expect(file.systemPrompts![1]).toContain("You are Seat 1.");
+      const encodedPrompt = JSON.stringify(file.systemPrompts![0]).slice(1, -1);
       expect(readFileSync(played.path, "utf8").split(encodedPrompt)).toHaveLength(2);
       expect(file.replay).toEqual(result.replay);
-      expect(file.replay.intents).toHaveLength(result.steps);
-      expect(replayGame(file.replay)).toEqual(result.finalProjection);
+      expect(file.replay!.intents).toHaveLength(result.steps);
+      expect(replayGame(file.replay!)).toEqual(result.finalProjection);
       expect(file.outcome).toEqual(result.outcome === "win" ? { outcome: "win", winner: result.winner } : { outcome: "draw" });
       expect(file.turns).toBe(result.turns);
       expect(file.decisions).toEqual(result.decisions);
@@ -194,6 +205,7 @@ describe("playGame", () => {
         configs,
         call: fakeClaudeCode(script),
         runDir,
+        decklistPicker: pickDecklist,
         onDecision: (record, progress) => {
           seen.push(record);
           lines.push(progressLine(gameId(SEED, lists[1].hero.name), record, progress));
@@ -208,7 +220,7 @@ describe("playGame", () => {
       expect(file.outcome).toEqual({ outcome: "error", seed: SEED, step: 5, detail: expect.stringContaining("Claude Agent"), cause: "invalid-answer" });
       expect(file.decisions).toHaveLength(6);
       expect(file.decisions).toEqual(seen);
-      expect(file.replay.intents).toHaveLength(5);
+      expect(file.replay!.intents).toHaveLength(5);
       expect(file.setup.heroes).toEqual(["Bravo, Flattering Showman", "Ira, Crimson Haze"]);
       expect(file.measurements.totals).toMatchObject({ decisions: 6, retries: 1, invalidFirstAnswers: 1, inputTokens: 700 });
       expect(existsSync(`${played.path}.tmp`)).toBe(false);
