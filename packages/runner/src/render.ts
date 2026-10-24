@@ -6,7 +6,7 @@
 import { cardData } from "@fyendal/cards";
 import type { CardCostSelection, CardView, PlayerView } from "@fyendal/shared";
 import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
-import { nameWithColour } from "./cards.js";
+import { describeCardData, nameWithColour } from "./cards.js";
 
 /** One rendered decision. `intents[i]` is the engine Intent behind numbered
  * entry `i + 1` of `text`: Intents that differ only in pitch order share one
@@ -42,18 +42,7 @@ function opponentReference(view: View, seat: Seat): string[] {
   return [...cardIds].map((cardId) => {
     const data = cardData[cardId];
     if (!data) return `${visible.find((card) => card.cardId === cardId)?.name ?? cardId}: no card data`;
-    const type = [...(data.classes ?? []), data.cardType].join(" ") + (data.subtypes?.length ? ` - ${data.subtypes.join(", ")}` : "");
-    const stats = [
-      ["cost", data.cost],
-      ["pitch", data.pitch],
-      ["attack", data.attack],
-      ["defense", data.defense],
-      ["life", data.life],
-      ["intellect", data.intellect],
-    ].flatMap(([label, value]) => (value === undefined ? [] : [`${label} ${value}`]));
-    const statsLine = stats.length > 0 ? ` ${stats.join(", ").replace(/^./, (first) => first.toUpperCase())}.` : "";
-    const text = data.text.trim().replace(/\.?\s*\n\s*/g, ". ");
-    return `${nameWithColour(data.name, data.pitch)}: ${type}.${statsLine}${text ? ` ${text}` : ""}`;
+    return describeCardData(data);
   });
 }
 

@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fyendal/cards": "workspace:*",
+    "@fyendal/shared": "workspace:*",
     "@tcg-htc/runner": "workspace:*"
   },
   "devDependencies": {
