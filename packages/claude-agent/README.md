@@ -2,6 +2,23 @@
 
 The Claude Agent: Claude plays a Seat through Claude Code in print mode, on the developer's subscription (ADR-0002).
 
+## The Claude Agent
+
+`claudeAgent(config, call, options?)` in `src/claudeAgent.ts` makes a runner `Agent` for one Seat: `config` is `{ seat, decklist, model, effort }`, `call` a `ClaudeCodeCall` (the real one or `fakeClaudeCode`), `options` the results directory and, for a resumed Game, the Plan notes to start from. The returned Agent also exposes `seat`, `config`, `systemPrompt` and the current `planNotes`.
+
+Every decision is one fresh call. The system prompt is built once in the factory and is byte-identical for the whole Game: the primer (`prompts/primer.md`), the Seat and its objective, a key to the card-text symbols, the answer format, and the Seat's own Decklist with full card text. The message is `renderDecision`'s text followed by the Seat's Plan notes under `PLAN_NOTES_HEADING`. The answer must match `ANSWER_SCHEMA`: `intent` (the number of a listed Intent), `reasoning` and `planNotes`, nothing else.
+
+| What comes back | What the Agent does |
+|---|---|
+| a listed number | the Decision's Intent is `renderDecision(...).intents[n - 1]`; notes over `PLAN_NOTES_LIMIT` (2,000) characters are cut and `notesCut` recorded |
+| a number out of range, or none | one retry whose message appends the problem; a second failure is a `DecisionFailure` with cause `invalid-answer` |
+| `refusal`, `timeout`, `failure` | one retry with the same message, then a `DecisionFailure` with that cause |
+| `rate-limit` | a `DecisionFailure` with cause `rate-limit` at once, so the Run can pause |
+
+A failure's `detail` starts "Seat N's Claude Agent (model, effort): ". Every Decision carries `measurements`: the model Claude Code reported, the effort, tokens, latency and cost summed over the decision's calls, `retries`, `firstAnswerInvalid` and `notesCut`.
+
+`src/claudeAgent.test.ts` drives all of this through whole Games against the random Agent with `fakeClaudeCode`, and holds the honesty test: with a Claude Agent in both Seats, no opponent hidden card appears in any system prompt or message sent.
+
 ## The Claude Code call
 
 `claudeCodeCall()` in `src/claudeCode.ts` is the one function that talks to Claude Code, and the seam tests fake with `fakeClaudeCode` (`src/fakeClaudeCode.ts`). A request is a system prompt, a user message, a JSON Schema, a config (`model` alias, `effort`) and the Run's results directory. The call spawns

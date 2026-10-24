@@ -1,12 +1,15 @@
 // The Claude Agent, driven through whole Games with the Claude Code call faked.
 import { cardData } from "@fyendal/cards";
+import type { CardView } from "@fyendal/shared";
 import {
   BRAVO_LIST_FILE,
   fixtureList,
   IRA_LIST_FILE,
+  opponentOf,
   pickDecklist,
   randomAgent,
   renderDecision,
+  replayGame,
   runGame,
   type Agent,
   type View,
@@ -276,4 +279,60 @@ describe("claudeAgent", () => {
     },
     GAME_TIMEOUT,
   );
+
+  it(
+    "never sends either Claude Agent an opponent's hidden card, in the system prompt or in any message",
+    async () => {
+      // The Agent-honesty test: the whole text each call sends, at every decision of a Game between two Claude Agents.
+      const fakes = [fakeClaudeCode(varied), fakeClaudeCode(varied)] as const;
+      const views: View[] = [];
+      const agents = ([0, 1] as const).map((seat) =>
+        recordingViews(claudeAgent({ seat, decklist: decklists[seat], model: "opus", effort: "medium" }, fakes[seat]), views),
+      ) as [Agent, Agent];
+
+      const { replay, decisions, outcome } = await runGame({ decklists, seed: SEED, startingSeat: 1, agents });
+
+      expect(outcome).toMatch(/^(win|draw)$/);
+      expect(decisions).toHaveLength(views.length);
+      expect(fakes[0].calls.length + fakes[1].calls.length).toBe(decisions.length);
+      const callsBySeat: [number, number] = [0, 0];
+      let secretsChecked = 0;
+      decisions.forEach(({ seat }, step) => {
+        const view = views[step]!;
+        // Every card revealed, at the moment of this decision.
+        const full = replayGame({ ...replay, intents: replay.intents.slice(0, step) }).players[opponentOf(seat)];
+        const hidden = [
+          ...full.hand,
+          ...(full.deck ?? []),
+          ...full.arsenal.filter((card) => card.faceDown),
+          ...full.graveyard.filter((card) => card.faceDown),
+          ...full.banish.filter((card) => card.faceDown),
+        ];
+        const shown = JSON.stringify(view);
+        const visibleNames = new Set([...shown.matchAll(/"cardId":"([^"]+)"/g)].map(([, id]) => cardData[id!]?.name));
+        // A card in the Agent's own Decklist is its own knowledge, even if the opponent holds a copy.
+        const ownNames = new Set(Object.values(decklistCards(seat)).map((id) => cardData[id]?.name));
+        const secrets = new Set(hidden.map(nameOf).filter((name) => !visibleNames.has(name) && !shown.includes(name) && !ownNames.has(name)));
+        const call = fakes[seat].calls[callsBySeat[seat]++]!;
+        for (const secret of secrets) {
+          expect(call.systemPrompt).not.toContain(secret);
+          expect(call.message).not.toContain(secret);
+        }
+        secretsChecked += secrets.size;
+      });
+      expect(secretsChecked).toBeGreaterThan(0);
+    },
+    /** Replays the Game up to every decision. */
+    3 * GAME_TIMEOUT,
+  );
 });
+
+/** Every printing id a Seat's Decklist holds. */
+function decklistCards(seat: 0 | 1): string[] {
+  const decklist = decklists[seat];
+  return [decklist.heroId, ...decklist.weaponIds, ...Object.values(decklist.equipment).filter((id): id is string => !!id), ...decklist.deck];
+}
+
+function nameOf(card: CardView): string {
+  return cardData[card.cardId]?.name ?? card.name ?? card.cardId;
+}

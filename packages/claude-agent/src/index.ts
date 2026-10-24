@@ -16,4 +16,17 @@ export {
   runClaudeCode,
   systemPromptFile,
 } from "./claudeCode.js";
-export { type FakeClaudeCode, type RecordedCall, fakeClaudeCode } from "./fakeClaudeCode.js";
+export { type FakeClaudeCode, type FakeScript, type RecordedCall, fakeClaudeCode } from "./fakeClaudeCode.js";
+export {
+  type ClaudeAgent,
+  type ClaudeAgentConfig,
+  type ClaudeAgentOptions,
+  ANSWER_SCHEMA,
+  MAX_RETRIES,
+  PLAN_NOTES_HEADING,
+  PLAN_NOTES_LIMIT,
+  PRIMER_FILE,
+  buildMessage,
+  buildSystemPrompt,
+  claudeAgent,
+} from "./claudeAgent.js";
