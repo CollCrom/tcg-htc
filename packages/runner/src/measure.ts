@@ -25,11 +25,12 @@ export interface GameMeasurements {
 
 /** Measures one decision from what the deciding Seat was shown. */
 export function measureDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): DecisionMeasurement {
+  const rendered = renderDecision(view, seat, legalIntents);
   return {
     seat,
     intents: legalIntents.length,
-    reorderFreeIntents: new Set(legalIntents.map((intent) => reorderFreeKey(intent, view))).size,
-    tokens: estimateTokens(renderDecision(view, seat, legalIntents)),
+    reorderFreeIntents: rendered.intents.length,
+    tokens: estimateTokens(rendered.text),
   };
 }
 
@@ -38,17 +39,4 @@ export function summarise(decisions: DecisionMeasurement[], durationMs: number):
   const decisionsPerSeat: [number, number] = [0, 0];
   for (const { seat } of decisions) decisionsPerSeat[seat]++;
   return { decisionsPerSeat, decisions, durationMs };
-}
-
-/** Identifies an Intent up to the order its cards are pitched in. A scripted
- * payment's `choose` option is keyed by the cards it pitches. */
-function reorderFreeKey(intent: Intent, view: View): string {
-  const byId = (a: number, b: number) => a - b;
-  if (intent.kind === "choose") {
-    const payment = view.pendingDecision?.resourcePayment?.options.find(({ optionId }) => optionId === intent.optionId);
-    if (payment) return JSON.stringify({ kind: "pay", pitchInstanceIds: [...payment.pitchInstanceIds].sort(byId) });
-  }
-  if ("pitchInstanceIds" in intent && intent.pitchInstanceIds)
-    return JSON.stringify({ ...intent, pitchInstanceIds: [...intent.pitchInstanceIds].sort(byId) });
-  return JSON.stringify(intent);
 }

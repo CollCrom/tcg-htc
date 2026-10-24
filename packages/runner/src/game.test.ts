@@ -157,7 +157,7 @@ describe("runGame", () => {
         const shown = JSON.stringify(view);
         const visibleNames = new Set([...shown.matchAll(/"cardId":"([^"]+)"/g)].map(([, id]) => cardData[id!]?.name));
         const secrets = new Set(hidden.map(nameOf).filter((name) => !visibleNames.has(name) && !shown.includes(name)));
-        const text = renderDecision(view, seat, legal);
+        const { text } = renderDecision(view, seat, legal);
         for (const secret of secrets) expect(text).not.toContain(secret);
         secretsChecked += secrets.size;
       }

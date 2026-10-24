@@ -8,10 +8,19 @@ import { nameWithColour } from "./cards.js";
 
 const LOG_LINES = 5;
 
+/** One rendered decision. `intents[i]` is the engine Intent behind numbered
+ * entry `i + 1` of `text`: Intents that differ only in pitch order share one
+ * entry, which stands for the first ordering the engine listed. */
+export interface RenderedDecision {
+  text: string;
+  intents: Intent[];
+}
+
 /** Renders a Seat's View and its legal Intents as text. */
-export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): string {
+export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): RenderedDecision {
   const names = cardNames(view);
-  return [
+  const intents = collapsePitchOrderings(legalIntents, view);
+  const text = [
     `Turn ${view.turn}, ${view.phase} phase. Seat ${view.activePlayer}'s turn; Seat ${view.priorityPlayer} has priority. You are Seat ${seat}.`,
     ...renderSeat(view.players[seat], "You"),
     ...renderSeat(view.players[opponentOf(seat)], "Opponent"),
@@ -19,8 +28,33 @@ export function renderDecision(view: View, seat: Seat, legalIntents: readonly In
     ...renderDecisionPrompt(view, seat),
     ...section("Recent log", view.log.slice(-LOG_LINES)),
     "Legal Intents:",
-    ...legalIntents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view)}`),
+    ...intents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view)}`),
   ].join("\n");
+  return { text, intents };
+}
+
+/** The legal Intents with each set of pitch orderings reduced to the first one listed. */
+function collapsePitchOrderings(legalIntents: readonly Intent[], view: View): Intent[] {
+  const seen = new Set<string>();
+  return legalIntents.filter((intent) => {
+    const key = reorderFreeKey(intent, view);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Identifies an Intent up to the order its cards are pitched in. A scripted
+ * payment's `choose` option is keyed by the cards it pitches. */
+function reorderFreeKey(intent: Intent, view: View): string {
+  const byId = (a: number, b: number) => a - b;
+  if (intent.kind === "choose") {
+    const payment = view.pendingDecision?.resourcePayment?.options.find(({ optionId }) => optionId === intent.optionId);
+    if (payment) return JSON.stringify({ kind: "pay", pitchInstanceIds: [...payment.pitchInstanceIds].sort(byId) });
+  }
+  if ("pitchInstanceIds" in intent && intent.pitchInstanceIds)
+    return JSON.stringify({ ...intent, pitchInstanceIds: [...intent.pitchInstanceIds].sort(byId) });
+  return JSON.stringify(intent);
 }
 
 /** An estimate of the tokens a text costs: its characters divided by 4. */
