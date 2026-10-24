@@ -29,6 +29,14 @@ describe("fakeClaudeCode", () => {
     ]);
   });
 
+  it("answers from a function of the request and the call index", async () => {
+    const call = fakeClaudeCode((request, index) => (request.message === "second" ? { kind: "refusal", detail: "no" } : answer(index)));
+    expect(await call(request("first"))).toEqual(answer(0));
+    expect(await call(request("second"))).toEqual({ kind: "refusal", detail: "no" });
+    expect(await call(request("third"))).toEqual(answer(2));
+    expect(call.calls.map(({ message }) => message)).toEqual(["first", "second", "third"]);
+  });
+
   it("throws when the script is exhausted", async () => {
     const call = fakeClaudeCode([answer(1)]);
     await call(request("first"));
