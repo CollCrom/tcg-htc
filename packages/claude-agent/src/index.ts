@@ -31,6 +31,7 @@ export {
   describeList,
 } from "./buildDecklist.js";
 export { legalPresentation } from "./scriptedBuild.js";
+export { SCRIPTED_USAGE, hash, listedEntries, scriptedAnswer } from "./scriptedPlay.js";
 export {
   type ClaudeAgent,
   type ClaudeAgentConfig,
@@ -76,6 +77,7 @@ export {
   type GameStatus,
   type Manifest,
   type ManifestGame,
+  type ResumeSuiteOptions,
   type RunConfig,
   type RunResult,
   type RunStatus,
@@ -87,8 +89,19 @@ export {
   planGames,
   readGameFiles,
   readManifest,
+  resumeHint,
+  resumeSuite,
   runSuite,
   writeManifest,
 } from "./run.js";
 export { type ExitCriteria, type ReportOptions, REPORT_TITLE, exitCriteria, modelsReported, renderReport, reproduceCommand, upstreamCommit } from "./report.js";
-export { type SuiteClaudeArgs, SUITE_USAGE, formatSeeds, parseSeeds, parseSuiteClaudeArgs, suiteRunDirName } from "./suiteClaudeArgs.js";
+export {
+  type SuiteClaudeArgs,
+  type SuiteResumeArgs,
+  type SuiteRunArgs,
+  SUITE_USAGE,
+  formatSeeds,
+  parseSeeds,
+  parseSuiteClaudeArgs,
+  suiteRunDirName,
+} from "./suiteClaudeArgs.js";

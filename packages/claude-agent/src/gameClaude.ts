@@ -49,6 +49,9 @@ if (result.outcome === "win") {
   console.log(`Seat ${result.winner} (${heroSlug(lists[result.winner].hero.name)}) wins in ${result.turns} turns, ${result.steps} decisions.`);
 } else if (result.outcome === "draw") {
   console.log(`Draw in ${result.turns} turns, ${result.steps} decisions.`);
+} else if (result.outcome === "paused") {
+  // A single Game has no resume; its file holds every Intent applied.
+  console.log(`paused on a rate limit at step ${result.step}: ${result.detail}`);
 } else {
   console.log(`${result.outcome} at step ${result.step}${"cause" in result && result.cause ? ` (${result.cause})` : ""}: ${result.detail}`);
 }
@@ -57,7 +60,7 @@ console.log(
     `latency ${(totals.latencyMs / 1000).toFixed(0)} s over ${totals.decisions} decisions; ${totals.retries} retries, ${totals.invalidFirstAnswers} invalid first answers.`,
 );
 console.log(`Game file: ${path}`);
-process.exitCode = isFailure(result) ? 1 : 0;
+process.exitCode = isFailure(result) ? 1 : result.outcome === "paused" ? 3 : 0;
 
 function describe({ model, effort }: GameClaudeArgs["configs"][number]): string {
   return `${model} at ${effort}`;
