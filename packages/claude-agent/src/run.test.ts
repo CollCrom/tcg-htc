@@ -104,4 +104,66 @@ describe("runSuite", () => {
     },
     RUN_TIMEOUT,
   );
+
+  /** The most Games `playing` at once, seen from inside decisions. */
+  async function mostPlaying(concurrency: number): Promise<number> {
+    let most = 0;
+    await runSuite({
+      config: config({ concurrency }),
+      runDir: tempRunDir(),
+      call: fakeClaudeCode(varied),
+      onDecision: (_record, _progress, { manifest }) => {
+        most = Math.max(most, manifest.games.filter(({ status }) => status === "playing").length);
+      },
+    });
+    return most;
+  }
+
+  it(
+    "plays at most `concurrency` Games at once: two by default, one when asked",
+    async () => {
+      expect(await mostPlaying(2)).toBe(2);
+      expect(await mostPlaying(1)).toBe(1);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "ends a Game over the decision cap as a stall, listed as failed with its seed and step, and still completes the Run",
+    async () => {
+      const runDir = tempRunDir();
+
+      const { manifest } = await runSuite({ config: config({ seeds: [3], maxSteps: 50 }), runDir, call: fakeClaudeCode(passing) });
+
+      expect(manifest.status).toBe("complete");
+      expect(manifest.games.map(({ id, status, steps, outcome }) => ({ id, status, steps, outcome }))).toEqual([
+        { id: "3-ira-first", status: "failed", steps: 50, outcome: { outcome: "stall", seed: 3, step: 50, detail: "Game exceeded 50 steps" } },
+        { id: "3-bravo-first", status: "failed", steps: 50, outcome: { outcome: "stall", seed: 3, step: 50, detail: "Game exceeded 50 steps" } },
+      ]);
+      expect(readFileSync(join(runDir, "report.md"), "utf8")).toContain("3-bravo-first");
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "records a Game whose call throws as failed with an error outcome carrying the message, and still completes the Run",
+    async () => {
+      const runDir = tempRunDir();
+      const call = fakeClaudeCode(() => {
+        throw new Error("spawn claude ENOENT");
+      });
+
+      const { manifest, gameFiles } = await runSuite({ config: config({ seeds: [4], concurrency: 1 }), runDir, call });
+
+      expect(manifest.status).toBe("complete");
+      for (const game of manifest.games) {
+        expect(game.status).toBe("failed");
+        expect(game.outcome).toEqual({ outcome: "error", seed: 4, step: 0, detail: "spawn claude ENOENT" });
+        expect(game.finishedAt).toBeDefined();
+      }
+      expect(gameFiles).toEqual({});
+      expect(existsSync(join(runDir, "report.md"))).toBe(true);
+    },
+    RUN_TIMEOUT,
+  );
 });

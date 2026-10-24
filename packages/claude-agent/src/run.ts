@@ -2,21 +2,13 @@
 // says which Games it holds and where each stands; it is rewritten on every
 // change so a pause or a crash can be picked up from it (#177). When every
 // Game is done the Run writes its report and marks itself complete.
-import {
-  BRAVO_LIST_FILE,
-  fixtureList,
-  IRA_LIST_FILE,
-  isFailure,
-  type DecisionProgress,
-  type DecisionRecord,
-  type GameOutcome,
-  type List,
-} from "@tcg-htc/runner";
+import { isFailure, type DecisionProgress, type DecisionRecord, type GameOutcome, type List } from "@tcg-htc/runner";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import type { Hero } from "./gameClaudeArgs.js";
 import { gameFileName, gameId, heroSlug, readGameFile, type GameFile } from "./gameFile.js";
+import { heroList } from "./heroLists.js";
 import { CLAUDE_MAX_DECISIONS, outcomeOf, playGame, type WrittenGameFile } from "./playGame.js";
 import { renderReport, upstreamCommit } from "./report.js";
 
@@ -98,11 +90,6 @@ export interface RunResult {
   gameFiles: Record<string, GameFile>;
   report: string;
   reportPath: string;
-}
-
-/** The List for a hero. */
-export function heroList(hero: Hero): List {
-  return fixtureList(hero === "ira" ? IRA_LIST_FILE : BRAVO_LIST_FILE);
 }
 
 /** The Run's Games, all pending: each seed with each List in Seat 0, the
