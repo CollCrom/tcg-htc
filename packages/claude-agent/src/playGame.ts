@@ -21,6 +21,10 @@ import { claudeAgent, type ClaudeAgent } from "./claudeAgent.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { agentTotals, gameFileName, writeGameFile, type GameFile, type GameFileSetup } from "./gameFile.js";
 
+/** Decisions after which a Game between Claude Agents is abandoned as a
+ * stall, so a runaway Game can't drain the subscription window. */
+export const CLAUDE_MAX_DECISIONS = 600;
+
 export interface PlayGameOptions {
   seed: number;
   /** The List in each Seat. Seat 0 takes the first turn. */
@@ -38,6 +42,8 @@ export interface PlayGameOptions {
   onDecision?: (record: DecisionRecord, progress: DecisionProgress, written: WrittenGameFile) => void;
   /** See `runGame`. */
   clock?: () => number;
+  /** The decision cap, `CLAUDE_MAX_DECISIONS` by default. */
+  maxSteps?: number;
 }
 
 export interface WrittenGameFile {
@@ -52,7 +58,7 @@ export interface PlayedGame extends WrittenGameFile {
 
 /** Plays one Game and returns its result with the final Game file. */
 export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
-  const { seed, lists, configs, call, runDir, decklistPicker = pickDecklist, onDecision, clock = () => performance.now() } = options;
+  const { seed, lists, configs, call, runDir, decklistPicker = pickDecklist, onDecision, clock = () => performance.now(), maxSteps = CLAUDE_MAX_DECISIONS } = options;
   const startingSeat: Seat = 0;
   const decklists = [decklistPicker(lists[0], seed), decklistPicker(lists[1], seed)] as const;
   const agents = ([0, 1] as const).map((seat) =>
@@ -78,6 +84,7 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     startingSeat,
     agents,
     clock,
+    maxSteps,
     onDecision: (record, progress) => {
       records.push(record);
       measured.push(measureDecision(record.seat, record.intents, { text: record.rendered, intents: [...progress.listed] }));

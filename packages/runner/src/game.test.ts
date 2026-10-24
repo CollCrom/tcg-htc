@@ -200,6 +200,23 @@ describe("runGame", () => {
   );
 
   it(
+    "caps a Game at the steps it is given instead of the default, ending it as a stall",
+    async () => {
+      const passing: Agent = (view, legal, rng) => {
+        const pass = legal.find((intent) => intent.kind === "pass");
+        return pass ? Promise.resolve({ intent: pass }) : randomAgent(view, legal, rng);
+      };
+
+      const result = await runGame({ decklists, seed: 7, startingSeat: 0, agents: [passing, passing], maxSteps: 40 });
+
+      expect(result).toMatchObject({ outcome: "stall", seed: 7, step: 40, steps: 40, detail: "Game exceeded 40 steps" });
+      expect(result.replay.intents).toHaveLength(40);
+      expect(result.decisions).toHaveLength(40);
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
     "reports an Intent the engine rejects as an error with its seed, step and the engine's message",
     async () => {
       let decisions = 0;
