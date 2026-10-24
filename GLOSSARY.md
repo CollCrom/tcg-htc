@@ -21,6 +21,14 @@ _Avoid_: Player (upstream's name for a Seat)
 The decision-maker occupying a Seat. It chooses an Intent from what it is shown and never sees the full game state.
 _Avoid_: Bot (reserved for upstream's scripted hero bots), AI
 
+**Claude Agent**:
+An Agent whose choice is made by a Claude model, shown only its Seat's rendered View, its legal Intents and its own Plan notes, afresh at every decision.
+_Avoid_: LLM, player
+
+**Decision**:
+What an Agent returns when asked to choose: an Intent, with the reasoning and Plan notes behind it when the Agent has them.
+_Avoid_: Response, answer (for a Decision)
+
 **View**:
 What one Seat is allowed to see of the game: its own hidden cards, plus everything public.
 _Avoid_: State (for a View; state is the full, unhidden game)
@@ -38,6 +46,10 @@ The saved account of one decision: the View the Agent was shown, the Intents it 
 **Intent**:
 A single choice an Agent makes when it has a decision, such as playing a card, pitching, blocking or passing.
 _Avoid_: Action, move
+
+**Run**:
+One invocation of a suite: its Games, their records and its status (running, paused or complete). A paused Run can be resumed.
+_Avoid_: Batch, session, run (for a single Game)
 
 ### Decks
 
