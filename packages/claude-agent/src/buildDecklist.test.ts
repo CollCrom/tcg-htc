@@ -146,3 +146,134 @@ describe("the Agent builds its Decklist", () => {
     GAME_TIMEOUT,
   );
 });
+
+describe("an invalid build", () => {
+  const short = (list: typeof lists[number]) => {
+    const presented = legalPresentation(list);
+    return { ...presented, deck: presented.deck.slice(0, 39) };
+  };
+
+  it(
+    "is retried once with the validation error, and a valid retry starts the Game",
+    async () => {
+      const fake = fakeClaudeCode((request, index) => (index === 1 ? built(short(lists[1])) : index === 2 ? built(legalPresentation(lists[1]), "fixed") : buildsThenPlays(request, index - (index > 2 ? 1 : 0))));
+
+      const played = await playGame({ seed: SEED, lists, configs, call: fake, runDir: tempRunDir() });
+
+      expect(played.result.outcome, JSON.stringify(played.result.outcome === "error" ? played.result.detail : "")).toMatch(/^(win|draw)$/);
+      expect(fake.calls[2]!.schema).toBe(DECKLIST_SCHEMA);
+      expect(fake.calls[2]!.systemPrompt).toBe(fake.calls[1]!.systemPrompt);
+      expect(fake.calls[2]!.message).toBe(
+        `${fake.calls[1]!.message}\n\nYour previous answer was not accepted. Answer again, fixing this problem:\nYour build is not legal: main deck must be exactly 40 cards for silver-age (39 presented)`,
+      );
+      const file = readGameFile(played.path);
+      expect(file.decklistDecisions[1]!.decision).toMatchObject({
+        reasoning: "fixed",
+        measurements: { retries: 1, firstAnswerInvalid: true, inputTokens: 200, latencyMs: 3000 },
+      });
+      expect(file.measurements.builds).toMatchObject({ decisions: 2, retries: 1, invalidFirstAnswers: 1, inputTokens: 300 });
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "twice ends the Game as an error before any Intent, recorded in a complete Game file with no play records",
+    async () => {
+      const fake = fakeClaudeCode((request, index) => (index === 0 ? built(short(lists[0])) : index === 1 ? built({ ...legalPresentation(lists[0]), weaponIds: [] }) : buildsThenPlays(request, index)));
+
+      const played = await playGame({ seed: SEED, lists, configs, call: fake, runDir: tempRunDir() });
+
+      expect(fake.calls).toHaveLength(2);
+      expect(played.result).toEqual({
+        outcome: "error",
+        cause: "invalid-answer",
+        seed: SEED,
+        step: 0,
+        detail: expect.stringMatching(/^Seat 0's Claude Agent \(opus, medium\): Your build is not legal: /),
+        turns: 0,
+        steps: 0,
+        measurements: { decisionsPerSeat: [0, 0], decisions: [], durationMs: expect.any(Number) },
+        decisions: [],
+      });
+      expect(played.agents).toBeUndefined();
+      const file = readGameFile(played.path);
+      expect(file).toEqual(played.file);
+      expect(file.status).toBe("complete");
+      expect(file.outcome).toEqual({ outcome: "error", cause: "invalid-answer", seed: SEED, step: 0, detail: played.result.detail });
+      expect(file.setup).toEqual({ seed: SEED, startingSeat: 0, lists: [lists[0].name, lists[1].name], heroes: ["Ira, Crimson Haze", "Bravo, Flattering Showman"], configs });
+      expect(file.systemPrompts).toBeUndefined();
+      expect(file.replay).toBeUndefined();
+      expect(file.decisions).toEqual([]);
+      expect(file.decklistDecisions).toHaveLength(1);
+      expect(file.decklistDecisions[0]).toMatchObject({
+        kind: "decklist",
+        seat: 0,
+        message: fake.calls[0]!.message,
+        decision: { cause: "invalid-answer", detail: played.result.detail, measurements: { retries: 1, firstAnswerInvalid: true, inputTokens: 200 } },
+      });
+      expect(file.measurements.builds).toMatchObject({ decisions: 1, retries: 1, invalidFirstAnswers: 1 });
+      expect(file.measurements.totals.decisions).toBe(0);
+    },
+    GAME_TIMEOUT,
+  );
+
+  for (const kind of ["refusal", "timeout", "failure"] as const) {
+    it(
+      `a ${kind} of the build call is retried once with the same message, then ends the Game with that cause`,
+      async () => {
+        const once = fakeClaudeCode((request, index) => (index === 0 ? { kind, detail: `${kind} detail` } : buildsThenPlays(request, index === 1 ? 0 : index - 1)));
+        const recovered = await playGame({ seed: SEED, lists, configs, call: once, runDir: tempRunDir() });
+        expect(recovered.result.outcome).toMatch(/^(win|draw)$/);
+        expect(once.calls[1]!.message).toBe(once.calls[0]!.message);
+        expect(recovered.file.decklistDecisions[0]!.decision).toMatchObject({ measurements: { retries: 1, firstAnswerInvalid: false, inputTokens: 100 } });
+
+        const twice = fakeClaudeCode([{ kind, detail: `${kind} detail` }, { kind, detail: `${kind} again` }]);
+        const failedGame = await playGame({ seed: SEED, lists, configs, call: twice, runDir: tempRunDir() });
+        expect(failedGame.result).toMatchObject({ outcome: "error", cause: kind, step: 0, detail: `Seat 0's Claude Agent (opus, medium): ${kind} again` });
+        expect(failedGame.file.decklistDecisions[0]!.decision).toMatchObject({ cause: kind, measurements: { retries: 1, inputTokens: 0 } });
+      },
+      GAME_TIMEOUT,
+    );
+  }
+
+  it(
+    "a rate limit ends the Game at once, without a retry",
+    async () => {
+      const fake = fakeClaudeCode((request, index) => (index === 1 ? { kind: "rate-limit", detail: "You've hit your limit" } : buildsThenPlays(request, index)));
+
+      const played = await playGame({ seed: SEED, lists, configs, call: fake, runDir: tempRunDir() });
+
+      expect(fake.calls).toHaveLength(2);
+      expect(played.result).toMatchObject({ outcome: "error", cause: "rate-limit", step: 0, detail: "Seat 1's Claude Agent (sonnet, low): You've hit your limit" });
+      expect(played.file.decklistDecisions).toHaveLength(2);
+      expect(played.file.decklistDecisions[0]!.decision).toMatchObject({ reasoning: "aggressive red build" });
+      expect(played.file.decklistDecisions[1]!.decision).toMatchObject({ cause: "rate-limit", measurements: { retries: 0 } });
+    },
+    GAME_TIMEOUT,
+  );
+});
+
+describe("the Decklist is built afresh", () => {
+  /** Builds legally whenever asked to, from the Seat the system prompt names; plays otherwise. */
+  const bySchema = (request: RecordedCall, index: number): CallResult =>
+    request.schema === DECKLIST_SCHEMA
+      ? built(legalPresentation(request.systemPrompt.includes("You are Seat 0.") ? lists[0] : lists[1]))
+      : answer(1 + (index % listedIntents(request)));
+
+  it(
+    "for every Game: two Games with the same seed and heroes make two separate build calls each",
+    async () => {
+      const fake = fakeClaudeCode(bySchema);
+      const first = await playGame({ seed: SEED, lists, configs, call: fake, runDir: tempRunDir() });
+      const firstCalls = fake.calls.length;
+
+      const second = await playGame({ seed: SEED, lists, configs, call: fake, runDir: tempRunDir() });
+
+      expect(first.result.outcome).toMatch(/^(win|draw)$/);
+      expect(second.result.outcome).toMatch(/^(win|draw)$/);
+      expect(fake.calls.map(({ schema }, i) => (schema === DECKLIST_SCHEMA ? i : -1)).filter((i) => i >= 0)).toEqual([0, 1, firstCalls, firstCalls + 1]);
+      expect(second.file.decklistDecisions).toEqual(first.file.decklistDecisions);
+    },
+    2 * GAME_TIMEOUT,
+  );
+});

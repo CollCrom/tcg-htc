@@ -94,6 +94,10 @@ export async function buildDecklist({ seat, list, opponentHero, config, call, re
       const presented = readPresentation(output);
       const result = validatePresentation(upstreamList, presented, list.format);
       if (!result.ok) return { ok: false, problem: `Your build is not legal: ${result.error}` };
+      // Upstream accepts empty weapon zones; a Game here starts with a weapon.
+      if (!presented.weaponIds.some((id) => cardData[id]?.cardType === "weapon")) {
+        return { ok: false, problem: "Your build is not legal: weaponIds must hold at least one weapon (an off-hand alone is not enough)" };
+      }
       return { ok: true, value: { presented, decklist: result.decklist, reasoning: text(field(output, "reasoning")) } };
     },
   });
