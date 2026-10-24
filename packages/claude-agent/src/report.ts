@@ -115,7 +115,7 @@ function setup(manifest: Manifest, { upstreamCommit, runDir }: ReportOptions): s
   return [
     `- **Engine:** fyendal.net at upstream commit \`${upstreamCommit}\`, vendored at \`vendor/fyendal.net\`.`,
     `- **Lists:** ${listLine}.`,
-    `- **Agents:** Claude Agents through Claude Code in print mode (ADR-0002): ${config.configs.map((seatConfig, seat) => `Seat ${seat} ${describeConfig(seatConfig)}`).join(", ")}. Each Seat's config stays with the Seat whichever List sits there. Every decision is one fresh call; Decklists are built before each Game.`,
+    `- **Agents:** Claude Agents through Claude Code in print mode (ADR-0002): ${config.configs.map((seatConfig, seat) => `Seat ${seat} ${describeConfig(seatConfig)}`).join(", ")}. Each Seat's config stays with the Seat whichever List sits there. Every decision is one fresh call.`,
     `- **Seeds:** ${seedsPhrase(config.seeds)}.`,
     `- **Seat orders:** each seed is played twice, once with ${heroTitle(first)} in Seat 0 and once with ${heroTitle(second)} in Seat 0. Seat 0 starts every Game, so each List goes first once per seed. That makes ${games.length} Games.`,
     `- **Decision cap:** ${config.maxSteps} decisions per Game; a Game over it ends as a stall.`,

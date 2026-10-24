@@ -22,6 +22,22 @@ export interface GameClaudeArgs {
   results: string;
 }
 
+/** The per-Seat model and effort flags, shared with the suite script. */
+export const CONFIG_OPTIONS = {
+  model0: { type: "string", default: DEFAULT_CONFIG.model },
+  effort0: { type: "string", default: DEFAULT_CONFIG.effort },
+  model1: { type: "string", default: DEFAULT_CONFIG.model },
+  effort1: { type: "string", default: DEFAULT_CONFIG.effort },
+} as const;
+
+/** Each Seat's config from the parsed per-Seat flags. */
+export function configsFrom(values: Record<keyof typeof CONFIG_OPTIONS, string>): readonly [ClaudeConfig, ClaudeConfig] {
+  return [
+    { model: oneOf("--model0", values.model0, MODELS), effort: oneOf("--effort0", values.effort0, EFFORTS) },
+    { model: oneOf("--model1", values.model1, MODELS), effort: oneOf("--effort1", values.effort1, EFFORTS) },
+  ];
+}
+
 export const USAGE =
   "pnpm game:claude [--seed <n>] [--first ira|bravo] [--model0 <alias>] [--effort0 <level>] [--model1 <alias>] [--effort1 <level>] [--results <dir>]";
 
@@ -33,10 +49,7 @@ export function parseGameClaudeArgs(args: readonly string[]): GameClaudeArgs {
     options: {
       seed: { type: "string", default: "1" },
       first: { type: "string", default: HEROES[0] },
-      model0: { type: "string", default: DEFAULT_CONFIG.model },
-      effort0: { type: "string", default: DEFAULT_CONFIG.effort },
-      model1: { type: "string", default: DEFAULT_CONFIG.model },
-      effort1: { type: "string", default: DEFAULT_CONFIG.effort },
+      ...CONFIG_OPTIONS,
       results: { type: "string", default: "results" },
     },
     allowPositionals: true,
@@ -48,15 +61,13 @@ export function parseGameClaudeArgs(args: readonly string[]): GameClaudeArgs {
   return {
     seed,
     first: oneOf("--first", values.first, HEROES),
-    configs: [
-      { model: oneOf("--model0", values.model0, MODELS), effort: oneOf("--effort0", values.effort0, EFFORTS) },
-      { model: oneOf("--model1", values.model1, MODELS), effort: oneOf("--effort1", values.effort1, EFFORTS) },
-    ],
+    configs: configsFrom(values),
     results: values.results,
   };
 }
 
-function oneOf<T extends string>(flag: string, value: string, allowed: readonly T[]): T {
+/** `value` if `allowed` holds it; otherwise throws a message naming the flag. */
+export function oneOf<T extends string>(flag: string, value: string, allowed: readonly T[]): T {
   if (!(allowed as readonly string[]).includes(value)) throw new Error(`${flag} must be one of ${allowed.join(", ")}, not ${value}`);
   return value as T;
 }

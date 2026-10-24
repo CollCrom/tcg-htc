@@ -42,15 +42,40 @@ export {
   readGameFile,
   writeGameFile,
 } from "./gameFile.js";
-export { type PlayedGame, type PlayGameOptions, type WrittenGameFile, outcomeOf, playGame, progressLine } from "./playGame.js";
+export { type PlayedGame, type PlayGameOptions, type WrittenGameFile, CLAUDE_MAX_DECISIONS, outcomeOf, playGame, progressLine } from "./playGame.js";
 export {
   type GameClaudeArgs,
   type Hero,
+  CONFIG_OPTIONS,
   DEFAULT_CONFIG,
   EFFORTS,
   HEROES,
   MODELS,
   USAGE,
+  configsFrom,
+  oneOf,
   parseGameClaudeArgs,
   runDirName,
 } from "./gameClaudeArgs.js";
+export { HERO_LIST_FILES, heroList, heroTitle } from "./heroLists.js";
+export {
+  type DecisionContext,
+  type GameStatus,
+  type Manifest,
+  type ManifestGame,
+  type RunConfig,
+  type RunResult,
+  type RunStatus,
+  type RunSuiteOptions,
+  DEFAULT_CONCURRENCY,
+  DEFAULT_SEEDS,
+  MANIFEST_FILE,
+  REPORT_FILE,
+  planGames,
+  readGameFiles,
+  readManifest,
+  runSuite,
+  writeManifest,
+} from "./run.js";
+export { type ExitCriteria, type ReportOptions, REPORT_TITLE, exitCriteria, modelsReported, renderReport, reproduceCommand, upstreamCommit } from "./report.js";
+export { type SuiteClaudeArgs, SUITE_USAGE, formatSeeds, parseSeeds, parseSuiteClaudeArgs, suiteRunDirName } from "./suiteClaudeArgs.js";

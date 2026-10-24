@@ -6,6 +6,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "game:claude": "tsx src/gameClaude.ts",
+    "suite:claude": "tsx src/suiteClaude.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
