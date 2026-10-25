@@ -24,7 +24,9 @@ const MID_GAME_STEP = 78;
 
 describe("renderDecision", () => {
   it("numbers one entry per Intent after collapsing pitch orderings, each resolving to an Intent the engine accepts", () => {
-    const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
+    // The state is rebuilt once: replaying it per Intent took 10 s on CI's runner.
+    const state = stateAt({ ...replay, intents: replay.intents.slice(0, MID_GAME_STEP) });
+    const { view, seat, legal } = decisionOf(state);
 
     const { text, intents, entries } = renderDecision(view, seat, legal);
 
@@ -35,7 +37,7 @@ describe("renderDecision", () => {
     expect(numberedEntries(text)).toEqual(entries.map((entry, i) => `${i + 1}. ${entry}`));
     for (const intent of intents) {
       expect(legal).toContainEqual(intent);
-      expect(() => stateAt({ ...replay, intents: [...replay.intents.slice(0, MID_GAME_STEP), intent] })).not.toThrow();
+      expect(applyIntent(state, seat, intent)).toMatchObject({ ok: true });
     }
     // The first ordering the engine lists is the one kept.
     expect(intents[0]).toEqual(legal[0]);
