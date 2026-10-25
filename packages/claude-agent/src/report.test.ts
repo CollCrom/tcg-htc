@@ -135,18 +135,18 @@ describe("renderReport", () => {
     expect(report).toContain("`pnpm suite:claude --model0 opus --effort0 medium --model1 sonnet --effort1 high --seeds 1-2 --concurrency 2`");
   });
 
-  it("tabulates the outcomes and one row per Game", () => {
+  it("tabulates the outcomes and one row per Game, with the models each Seat of that Game was played by", () => {
     expect(rows(report, "Results")).toEqual([
       "| Outcome | Games |",
       "| Win | 2 (Ira 0, Bravo 2) |",
       "| Draw | 0 |",
       "| Stall | 1 |",
       "| Error | 1 |",
-      "| Game | Seed | Seat order | Outcome | Winner | Decisions | Turns |",
-      "| `1-ira-first` | 1 | Ira (Seat 0) vs Bravo (Seat 1) | win | Bravo (Seat 1) | 4 | 10 |",
-      "| `1-bravo-first` | 1 | Bravo (Seat 0) vs Ira (Seat 1) | win | Bravo (Seat 0) | 2 | 8 |",
-      "| `2-ira-first` | 2 | Ira (Seat 0) vs Bravo (Seat 1) | stall at step 50 | - | 50 | 9 |",
-      "| `2-bravo-first` | 2 | Bravo (Seat 0) vs Ira (Seat 1) | error (invalid-answer) at step 7 | - | 8 | 3 |",
+      "| Game | Seed | Seat order | Outcome | Winner | Decisions | Turns | Models (Seat 0 / Seat 1) |",
+      "| `1-ira-first` | 1 | Ira (Seat 0) vs Bravo (Seat 1) | win | Bravo (Seat 1) | 4 | 10 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
+      "| `1-bravo-first` | 1 | Bravo (Seat 0) vs Ira (Seat 1) | win | Bravo (Seat 0) | 2 | 8 | `claude-opus-4-1-20260101` / `claude-sonnet-4-5` |",
+      "| `2-ira-first` | 2 | Ira (Seat 0) vs Bravo (Seat 1) | stall at step 50 | - | 50 | 9 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
+      "| `2-bravo-first` | 2 | Bravo (Seat 0) vs Ira (Seat 1) | error (invalid-answer) at step 7 | - | 8 | 3 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
     ]);
   });
 
@@ -227,7 +227,7 @@ describe("renderReport", () => {
       outcome: { outcome: "error", seed: 3, step: 0, detail: "spawn claude ENOENT" },
     };
     const report = renderReport({ ...manifest, games: [...games, unstarted] }, gameFiles, options);
-    expect(rows(report, "Results")).toContain("| `3-ira-first` | 3 | Ira (Seat 0) vs Bravo (Seat 1) | error at step 0 | - | 0 | - |");
+    expect(rows(report, "Results")).toContain("| `3-ira-first` | 3 | Ira (Seat 0) vs Bravo (Seat 1) | error at step 0 | - | 0 | - | - |");
     expect(rows(report, "Measurements")).toContain("| Decisions per Game | 16.0 | 50 |");
     expect(report).toContain("- `3-ira-first`: seed 3, Ira (Seat 0) vs Bravo (Seat 1), step 0, **error**: spawn claude ENOENT.");
     expect(rows(report, "Exit criteria")[2]).toBe(

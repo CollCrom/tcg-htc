@@ -75,7 +75,7 @@ export function renderReport(manifest: Manifest, gameFiles: Record<string, GameF
     "## Results",
     table(["Outcome", "Games"], outcomeRows(manifest)),
     table(
-      ["Game", "Seed", "Seat order", "Outcome", "Winner", "Decisions", "Turns"],
+      ["Game", "Seed", "Seat order", "Outcome", "Winner", "Decisions", "Turns", "Models (Seat 0 / Seat 1)"],
       games.map((game) => gameRow(game, config, gameFiles[game.id])),
     ),
     "## Measurements",
@@ -84,13 +84,7 @@ export function renderReport(manifest: Manifest, gameFiles: Record<string, GameF
     "### Models reported",
     table(
       ["Seat", "Config", "Models Claude Code reported"],
-      ([0, 1] as const).map((seat) => [
-        String(seat),
-        describeConfig(config.configs[seat]),
-        modelsReported(Object.values(gameFiles), seat)
-          .map((model) => `\`${model}\``)
-          .join(", ") || "-",
-      ]),
+      ([0, 1] as const).map((seat) => [String(seat), describeConfig(config.configs[seat]), modelsCell(modelsReported(Object.values(gameFiles), seat))]),
     ),
     "## Exit criteria",
     table(
@@ -172,7 +166,17 @@ function gameRow(game: ManifestGame, config: RunConfig, file: GameFile | undefin
     winner,
     decisions === undefined ? "-" : String(decisions),
     file?.turns === undefined ? "-" : String(file.turns),
+    file ? modelsPlayedBy(file) : "-",
   ];
+}
+
+/** The models Claude Code reported for each Seat of one Game, `Seat 0's / Seat 1's`. */
+function modelsPlayedBy(file: GameFile): string {
+  return ([0, 1] as const).map((seat) => modelsCell(modelsReported([file], seat))).join(" / ");
+}
+
+function modelsCell(models: string[]): string {
+  return models.map((model) => `\`${model}\``).join(", ") || "-";
 }
 
 function measurementRows(files: GameFile[]): string[][] {
