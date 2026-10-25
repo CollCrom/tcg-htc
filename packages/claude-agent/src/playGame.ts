@@ -20,6 +20,7 @@ import {
   type GameResult,
   type List,
   type Seat,
+  STOPPED_DETAIL,
 } from "@tcg-htc/runner";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -55,7 +56,8 @@ export interface PlayGameOptions {
   clock?: () => number;
   /** The decision cap, `CLAUDE_MAX_DECISIONS` by default. */
   maxSteps?: number;
-  /** See `runGame`: asked before every decision; true pauses the Game. */
+  /** Asked before each Decklist build and (see `runGame`) before every
+   * decision; true pauses the Game there, to be resumed from its file. */
   shouldStop?: () => boolean;
   /** The Game file of a paused (or interrupted) Game to carry on: its valid
    * Decklist builds are reused and only a Seat without one builds again; each
@@ -71,8 +73,8 @@ export interface WrittenGameFile {
 }
 
 /** A Game that never started because a Seat's Decklist build failed (the
- * error outcome at step 0) or hit a rate limit (paused at step 0), with no
- * replay and no play records. */
+ * error outcome at step 0), hit a rate limit or was stopped before a build
+ * (paused at step 0), with no replay and no play records. */
 export type UnplayedGame = (GameError | GamePause) & {
   turns: 0;
   steps: 0;
@@ -103,6 +105,24 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
   };
 
   const builds: DecklistDecisionRecord[] = [...(resumeFrom?.decklistDecisions ?? [])];
+  /** Ends the Game before it started, writing the file with the builds so far
+   * and no play records: complete with the error outcome for a failed build,
+   * paused (and resumable) for a rate limit or a stop before a build. */
+  const unplayed = (outcome: GameError | GamePause): PlayedGame => {
+    const paused = outcome.outcome === "paused";
+    const measurements = summarise([], earlierMs + clock() - started);
+    const file: GameFile = {
+      status: paused ? "paused" : "complete",
+      setup,
+      decklistDecisions: builds,
+      ...(paused ? {} : { outcome, turns: 0 }),
+      measurements: { ...measurements, ...totals([], builds) },
+      decisions: [],
+    };
+    writeGameFile(path, file);
+    return { result: { ...outcome, turns: 0, steps: 0, measurements, decisions: [] }, file, path };
+  };
+
   const built: Decklist[] = [];
   for (const seat of [0, 1] as const) {
     const saved = resumeFrom?.setup.decklists?.[seat] ?? validBuild(builds, seat);
@@ -114,6 +134,8 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
       built.push(decklistPicker(lists[seat], seed));
       continue;
     }
+    // A pausing Run starts no new call, builds included.
+    if (shouldStop?.()) return unplayed({ outcome: "paused", seed, step: 0, detail: STOPPED_DETAIL });
     const build = await buildDecklist({
       seat,
       list: lists[seat],
@@ -124,22 +146,8 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     });
     builds.push({ kind: "decklist", seat, ...build });
     if (failed(build.decision)) {
-      const { detail } = build.decision;
-      const outcome: GameError | GamePause =
-        build.decision.cause === "rate-limit"
-          ? { outcome: "paused", seed, step: 0, detail, cause: "rate-limit" }
-          : { outcome: "error", seed, step: 0, detail, cause: build.decision.cause };
-      const measurements = summarise([], earlierMs + clock() - started);
-      const file: GameFile = {
-        status: outcome.outcome === "paused" ? "paused" : "complete",
-        setup,
-        decklistDecisions: builds,
-        ...(outcome.outcome === "paused" ? {} : { outcome, turns: 0 }),
-        measurements: { ...measurements, ...totals([], builds) },
-        decisions: [],
-      };
-      writeGameFile(path, file);
-      return { result: { ...outcome, turns: 0, steps: 0, measurements, decisions: [] }, file, path };
+      const { detail, cause } = build.decision;
+      return unplayed(cause === "rate-limit" ? { outcome: "paused", seed, step: 0, detail, cause } : { outcome: "error", seed, step: 0, detail, cause });
     }
     built.push(build.decision.decklist);
   }

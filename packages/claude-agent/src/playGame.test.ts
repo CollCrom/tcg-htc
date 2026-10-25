@@ -401,6 +401,47 @@ describe("playGame pauses and resumes", () => {
   );
 
   it(
+    "stops before a Decklist build once `shouldStop` says so: one build call, a paused file holding it, and the resumed Game builds only the other Seat",
+    async () => {
+      const runDir = tempRunDir();
+      const fake = fakeClaudeCode(pure);
+
+      const stopped = await playGame({ seed: PAUSE_SEED, lists, configs, call: fake, runDir, shouldStop: () => fake.calls.length >= 1 });
+
+      expect(fake.calls).toHaveLength(1);
+      expect(fake.calls[0]!.schema).toBe(DECKLIST_SCHEMA);
+      expect(stopped.result).toMatchObject({ outcome: "paused", seed: PAUSE_SEED, step: 0, steps: 0, turns: 0, decisions: [] });
+      expect(stopped.result).not.toHaveProperty("cause");
+      expect(stopped.file.status).toBe("paused");
+      expect(stopped.file.outcome).toBeUndefined();
+      expect(stopped.file.setup.decklists).toBeUndefined();
+      expect(stopped.file.replay).toBeUndefined();
+      expect(stopped.file.decklistDecisions.map(({ seat, decision }) => ({ seat, failed: "cause" in decision }))).toEqual([{ seat: 0, failed: false }]);
+      expect(readGameFile(stopped.path)).toEqual(stopped.file);
+
+      const resuming = fakeClaudeCode(pure);
+      const resumed = await playGame({ seed: PAUSE_SEED, lists, configs, call: resuming, runDir, resumeFrom: readGameFile(stopped.path) });
+
+      const buildCalls = resuming.calls.filter(({ schema }) => schema === DECKLIST_SCHEMA);
+      expect(buildCalls).toHaveLength(1);
+      expect(buildCalls[0]!.systemPrompt).toContain("You are Seat 1.");
+      expect(resumed.file.status).toBe("complete");
+      expect(resumed.file.decklistDecisions.map(({ seat }) => seat)).toEqual([0, 1]);
+      const { file: wholeFile } = await uninterrupted();
+      expect(settled(resumed.file)).toEqual(settled(wholeFile));
+
+      // Already stopping before the first build: no call at all, and a paused file with no build to reuse.
+      const none = fakeClaudeCode(pure);
+      const atOnce = await playGame({ seed: PAUSE_SEED, lists, configs, call: none, runDir: tempRunDir(), shouldStop: () => true });
+      expect(none.calls).toHaveLength(0);
+      expect(atOnce.result).toMatchObject({ outcome: "paused", step: 0, steps: 0 });
+      expect(atOnce.file.status).toBe("paused");
+      expect(atOnce.file.decklistDecisions).toEqual([]);
+    },
+    2 * GAME_TIMEOUT,
+  );
+
+  it(
     "stops before the next decision once `shouldStop` says so, leaving a paused file the Game resumes from",
     async () => {
       const runDir = tempRunDir();
