@@ -53,18 +53,15 @@ export {
   agentTotals,
   gameFileName,
   gameId,
-  heroSlug,
   readGameFile,
   writeGameFile,
 } from "./gameFile.js";
 export { type PlayedGame, type PlayGameOptions, type UnplayedGame, type WrittenGameFile, CLAUDE_MAX_DECISIONS, outcomeOf, playGame, progressLine } from "./playGame.js";
 export {
   type GameClaudeArgs,
-  type Hero,
   CONFIG_OPTIONS,
   DEFAULT_CONFIG,
   EFFORTS,
-  HEROES,
   MODELS,
   USAGE,
   configsFrom,
@@ -72,7 +69,7 @@ export {
   parseGameClaudeArgs,
   runDirName,
 } from "./gameClaudeArgs.js";
-export { HERO_LIST_FILES, heroList, heroTitle, otherHero } from "./heroLists.js";
+export { type Hero, HERO_LIST_FILES, HEROES, heroList, heroOf, heroTitle, otherHero } from "./heroLists.js";
 export {
   type DecisionContext,
   type GameStatus,

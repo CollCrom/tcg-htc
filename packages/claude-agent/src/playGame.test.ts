@@ -71,7 +71,7 @@ function completeGame() {
       runDir,
       decklistPicker: pickDecklist,
       onDecision: (record, progress, written) => {
-        lines.push(progressLine(gameId(SEED, lists[0].hero.name), record, progress));
+        lines.push(progressLine(gameId(SEED, "ira"), record, progress));
         entries.push(progress.rendered.entries);
         if (progress.step < 2 || progress.step % 25 === 0) {
           snapshots.push({ step: progress.step, onDisk: readGameFile(written.path), handed: written.file });
@@ -96,8 +96,8 @@ describe("playGame", () => {
       const { played, runDir, snapshots } = await completeGame();
 
       expect(played.result.outcome, JSON.stringify(played.result.outcome === "error" ? played.result.detail : "")).toMatch(/^(win|draw)$/);
-      expect(played.path).toBe(join(runDir, gameFileName(SEED, lists[0].hero.name)));
-      expect(gameFileName(SEED, lists[0].hero.name)).toBe("game-31-ira-first.json");
+      expect(played.path).toBe(join(runDir, gameFileName(SEED, "ira")));
+      expect(gameFileName(SEED, "ira")).toBe("game-31-ira-first.json");
       expect(snapshots.length).toBeGreaterThan(2);
       for (const { step, onDisk, handed } of snapshots) {
         expect(onDisk).toEqual(handed);
@@ -240,7 +240,7 @@ describe("playGame", () => {
         decklistPicker: pickDecklist,
         onDecision: (record, progress) => {
           seen.push(record);
-          lines.push(progressLine(gameId(SEED, lists[1].hero.name), record, progress));
+          lines.push(progressLine(gameId(SEED, "bravo"), record, progress));
         },
       });
 

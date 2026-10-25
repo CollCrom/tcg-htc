@@ -29,6 +29,7 @@ import { buildDecklist } from "./buildDecklist.js";
 import { claudeAgent, type ClaudeAgent } from "./claudeAgent.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { agentTotals, gameFileName, writeGameFile, type DecklistDecisionRecord, type GameFile, type GameFileSetup } from "./gameFile.js";
+import { heroOf } from "./heroLists.js";
 
 /** Decisions after which a Game between Claude Agents is abandoned as a
  * stall, so a runaway Game can't drain the subscription window. */
@@ -92,7 +93,7 @@ export interface PlayedGame extends WrittenGameFile {
 export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
   const { seed, lists, configs, call, runDir, decklistPicker, onDecision, clock = () => performance.now(), maxSteps = CLAUDE_MAX_DECISIONS, shouldStop, resumeFrom } = options;
   const startingSeat: Seat = 0;
-  const path = join(runDir, gameFileName(seed, lists[0].hero.name));
+  const path = join(runDir, gameFileName(seed, heroOf(lists[0].hero.name)));
   const started = clock();
   /** Time already spent on the Game in earlier sittings. */
   const earlierMs = resumeFrom?.measurements.durationMs ?? 0;

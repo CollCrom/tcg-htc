@@ -1,7 +1,8 @@
 // The Claude suite script's flags, parsed apart from the script so they can be
 // tested without playing a Run.
 import { parseArgs } from "node:util";
-import { CONFIG_OPTIONS, configsFrom, HEROES } from "./gameClaudeArgs.js";
+import { CONFIG_OPTIONS, configsFrom } from "./gameClaudeArgs.js";
+import { HEROES } from "./heroLists.js";
 import { CLAUDE_MAX_DECISIONS } from "./playGame.js";
 import { DEFAULT_CONCURRENCY, DEFAULT_SEEDS, type RunConfig } from "./run.js";
 

@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { claudeCodeCall, describeConfig } from "./claudeCode.js";
 import { parseGameClaudeArgs, runDirName, USAGE, type GameClaudeArgs } from "./gameClaudeArgs.js";
-import { gameId, heroSlug } from "./gameFile.js";
+import { gameId } from "./gameFile.js";
 import { heroList, otherHero } from "./heroLists.js";
 import { playGame, progressLine } from "./playGame.js";
 
@@ -24,11 +24,12 @@ if (process.env.ANTHROPIC_API_KEY) {
   console.warn("ANTHROPIC_API_KEY is set. The Claude Code call strips it so the Game runs on the subscription (ADR-0002); unset it to be sure.");
 }
 
-const lists = [heroList(args.first), heroList(otherHero(args.first))] as const;
+const heroes = [args.first, otherHero(args.first)] as const;
+const lists = [heroList(heroes[0]), heroList(heroes[1])] as const;
 // pnpm runs a package script in the package directory and keeps the caller's in INIT_CWD.
 const runDir = join(resolve(process.env.INIT_CWD ?? process.cwd(), args.results), runDirName(new Date(), args.seed, args.first));
 mkdirSync(runDir, { recursive: true });
-const id = gameId(args.seed, lists[0].hero.name);
+const id = gameId(args.seed, args.first);
 
 console.log(`Game ${id}: ${lists[0].hero.name} (Seat 0, ${describeConfig(args.configs[0])}) vs ${lists[1].hero.name} (Seat 1, ${describeConfig(args.configs[1])})`);
 console.log(`Run directory: ${runDir}`);
@@ -45,7 +46,7 @@ const { result, path, file } = await playGame({
 const { totals } = file.measurements;
 console.log();
 if (result.outcome === "win") {
-  console.log(`Seat ${result.winner} (${heroSlug(lists[result.winner].hero.name)}) wins in ${result.turns} turns, ${result.steps} decisions.`);
+  console.log(`Seat ${result.winner} (${heroes[result.winner]}) wins in ${result.turns} turns, ${result.steps} decisions.`);
 } else if (result.outcome === "draw") {
   console.log(`Draw in ${result.turns} turns, ${result.steps} decisions.`);
 } else if (result.outcome === "paused") {

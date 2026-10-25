@@ -85,11 +85,11 @@ describe("runSuite", () => {
         onGame: (game, handed) => changes.push({ id: game.id, status: game.status, run: handed.status, onDisk: readManifest(runDir) }),
       });
 
-      expect(manifest.games.map(({ id, seed, first, file }) => ({ id, seed, first, file }))).toEqual([
-        { id: "1-ira-first", seed: 1, first: "ira", file: "game-1-ira-first.json" },
-        { id: "1-bravo-first", seed: 1, first: "bravo", file: "game-1-bravo-first.json" },
-        { id: "2-ira-first", seed: 2, first: "ira", file: "game-2-ira-first.json" },
-        { id: "2-bravo-first", seed: 2, first: "bravo", file: "game-2-bravo-first.json" },
+      expect(manifest.games.map(({ id, seed, heroes, file }) => ({ id, seed, heroes, file }))).toEqual([
+        { id: "1-ira-first", seed: 1, heroes: ["ira", "bravo"], file: "game-1-ira-first.json" },
+        { id: "1-bravo-first", seed: 1, heroes: ["bravo", "ira"], file: "game-1-bravo-first.json" },
+        { id: "2-ira-first", seed: 2, heroes: ["ira", "bravo"], file: "game-2-ira-first.json" },
+        { id: "2-bravo-first", seed: 2, heroes: ["bravo", "ira"], file: "game-2-bravo-first.json" },
       ]);
       expect(manifest.status).toBe("complete");
       expect(manifest.config).toEqual(config());

@@ -89,7 +89,7 @@ const fixtures: Fixture[] = [
 const games: ManifestGame[] = fixtures.map(({ seed, first, outcome, decisions }) => ({
   id: `${seed}-${first}-first`,
   seed,
-  first,
+  heroes: first === "ira" ? ["ira", "bravo"] : ["bravo", "ira"],
   status: outcome.outcome === "win" || outcome.outcome === "draw" ? "complete" : "failed",
   outcome,
   file: `game-${seed}-${first}-first.json`,
@@ -224,7 +224,7 @@ describe("renderReport", () => {
       ...games[3]!,
       id: "3-ira-first",
       seed: 3,
-      first: "ira",
+      heroes: ["ira", "bravo"],
       file: "game-3-ira-first.json",
       steps: 0,
       outcome: { outcome: "error", seed: 3, step: 0, detail: "spawn claude ENOENT" },
