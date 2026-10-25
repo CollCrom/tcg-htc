@@ -46,7 +46,9 @@ describe.skipIf(!live)("claude -p, live", () => {
       expect(result.kind).toBe("answer");
       if (result.kind !== "answer") return;
       expect(result.output).toEqual({ n: 7 });
-      if (result.turns !== undefined) expect(result.turns).toBeLessThanOrEqual(MAX_TURNS);
+      // The live result carries num_turns; two turns (the answer, then the StructuredOutput tool) must suffice.
+      expect(result.turns).toBeDefined();
+      expect(result.turns).toBeLessThanOrEqual(MAX_TURNS);
       for (const field of ["inputTokens", "cachedTokens", "outputTokens", "costUsd", "latencyMs"] as const) {
         expect(typeof result.usage[field]).toBe("number");
       }
