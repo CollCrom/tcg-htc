@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { DECKLIST_SCHEMA } from "./buildDecklist.js";
 import { PLAN_NOTES_HEADING } from "./claudeAgent.js";
-import type { CallResult, ClaudeConfig } from "./claudeCode.js";
+import type { CallResult, ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
 import { gameFileName, gameId, readGameFile, type GameFile } from "./gameFile.js";
 import { playGame, progressLine, type PlayedGame } from "./playGame.js";
@@ -152,7 +152,10 @@ describe("playGame", () => {
       expect(file.turns).toBe(result.turns);
       expect(file.decisions).toEqual(result.decisions);
       expect(file.decisions.map(({ decision }) => "planNotes" in decision && decision.planNotes)).toEqual(result.decisions.map((_, i) => `plan ${i}`));
-      expect(file.measurements).toMatchObject(result.measurements);
+      const { durationMs, ...measured } = result.measurements;
+      expect(file.measurements).toMatchObject(measured);
+      // The file's duration covers the whole sitting, of which runGame's play is a part.
+      expect(file.measurements.durationMs).toBeGreaterThanOrEqual(durationMs);
       const total = result.decisions.length;
       const perSeat = (seat: 0 | 1) => result.decisions.filter((record) => record.seat === seat).length;
       expect(file.measurements.totals).toEqual({
@@ -189,6 +192,37 @@ describe("playGame", () => {
         expect(text).toBe(entries[i % entries.length]);
         expect(chosen).toBeDefined();
       });
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "counts this sitting's Decklist builds in the Game's duration, in every write as it goes and in the final file alike",
+    async () => {
+      // A clock the calls drive: a build takes a second, a play decision 10 ms.
+      let now = 0;
+      const call: ClaudeCodeCall = async (request) => {
+        now += request.schema === DECKLIST_SCHEMA ? 1000 : 10;
+        return scriptedAnswer(lists, request);
+      };
+      const written: number[] = [];
+
+      const played = await playGame({
+        seed: SEED,
+        lists,
+        configs,
+        call,
+        runDir: tempRunDir(),
+        clock: () => now,
+        onDecision: (_record, _progress, { file }) => written.push(file.measurements.durationMs),
+      });
+
+      const result = playedResult(played);
+      expect(result.outcome).toMatch(/^(win|draw)$/);
+      expect(result.measurements.durationMs).toBe(10 * result.decisions.length);
+      expect(written).toEqual(result.decisions.map((_, i) => 2000 + 10 * (i + 1)));
+      expect(played.file.measurements.durationMs).toBe(2000 + result.measurements.durationMs);
+      expect(readGameFile(played.path).measurements.durationMs).toBe(written.at(-1));
     },
     GAME_TIMEOUT,
   );

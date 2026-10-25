@@ -188,7 +188,9 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     systemPrompts,
     replay: result.replay,
     ...(paused ? {} : { outcome: outcomeOf(result), turns: result.turns }),
-    measurements: { ...summarise(measured, earlierMs + result.measurements.durationMs), ...totals(records, builds) },
+    // As every in-progress write measures it: this sitting from its first
+    // build, not just runGame's part of it.
+    measurements: { ...summarise(measured, earlierMs + clock() - started), ...totals(records, builds) },
     decisions: records,
   };
   writeGameFile(path, file);
