@@ -5,8 +5,7 @@
 // await; its flags are parsed in suiteClaudeArgs.ts.
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { ClaudeConfig } from "./claudeCode.js";
-import { claudeCodeCall } from "./claudeCode.js";
+import { claudeCodeCall, describeConfig } from "./claudeCode.js";
 import { progressLine } from "./playGame.js";
 import { exitCriteria } from "./report.js";
 import { readManifest, resumeSuite, runSuite, type Manifest, type ManifestGame, type RunConfig, type RunSuiteOptions } from "./run.js";
@@ -86,10 +85,6 @@ function gameLine(game: ManifestGame): string {
 function describeRun(config: RunConfig): string {
   return (
     `${config.seeds.length * 2} Games, seeds ${config.seeds.join(", ")}, both seat orders; ` +
-    `Seat 0 ${describe(config.configs[0])}, Seat 1 ${describe(config.configs[1])}; ${config.concurrency} at a time, ${config.maxSteps} decisions per Game at most.`
+    `Seat 0 ${describeConfig(config.configs[0])}, Seat 1 ${describeConfig(config.configs[1])}; ${config.concurrency} at a time, ${config.maxSteps} decisions per Game at most.`
   );
-}
-
-function describe({ model, effort }: ClaudeConfig): string {
-  return `${model} at ${effort}`;
 }

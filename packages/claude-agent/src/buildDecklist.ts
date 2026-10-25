@@ -5,7 +5,7 @@
 import { cardData, validatePresentation } from "@fyendal/cards";
 import type { Decklist, PresentedDeck } from "@fyendal/shared";
 import {
-  describeCardData,
+  describeCardId,
   EQUIPMENT_SLOTS,
   toUpstreamList,
   type AgentMeasurements,
@@ -14,7 +14,7 @@ import {
   type ListCard,
   type Seat,
 } from "@tcg-htc/runner";
-import { ask, failed, field } from "./ask.js";
+import { ask, describeAgent, failed, field, textField } from "./ask.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { CARD_SYMBOLS_SECTION, primer } from "./prompt.js";
 
@@ -84,7 +84,7 @@ export async function buildDecklist({ seat, list, opponentHero, config, call, re
   const upstreamList = toUpstreamList(list);
   const asked = await ask({
     call,
-    who: `Seat ${seat}'s Claude Agent (${config.model}, ${config.effort})`,
+    who: describeAgent(seat, config),
     systemPrompt,
     message,
     schema: DECKLIST_SCHEMA,
@@ -98,15 +98,14 @@ export async function buildDecklist({ seat, list, opponentHero, config, call, re
       if (!presented.weaponIds.some((id) => cardData[id]?.cardType === "weapon")) {
         return { ok: false, problem: "Your build is not legal: weaponIds must hold at least one weapon (an off-hand alone is not enough)" };
       }
-      return { ok: true, value: { presented, decklist: result.decklist, reasoning: text(field(output, "reasoning")) } };
+      return { ok: true, value: { presented, decklist: result.decklist, reasoning: textField(output, "reasoning") } };
     },
   });
   if (failed(asked)) return { systemPrompt, message, decision: asked };
   return { systemPrompt, message, decision: { ...asked.value, measurements: asked.measurements } };
 }
 
-const text = (value: unknown): string => (typeof value === "string" ? value : "");
-const ids = (value: unknown): string[] => (Array.isArray(value) ? value.map((id) => text(id)) : []);
+const ids = (value: unknown): string[] => (Array.isArray(value) ? value.map((id) => (typeof id === "string" ? id : "")) : []);
 
 /** The answer's ids as upstream's validator takes them. Anything that isn't a
  * string id is dropped and fails validation as missing. */
@@ -150,18 +149,14 @@ export function buildDecklistSystemPrompt(seat: Seat, list: List): string {
  * equipment with the slots each piece fits, and the main-deck cards with
  * their copies. */
 export function describeList(list: List): string {
-  const describe = (cardId: string): string => {
-    const data = cardData[cardId];
-    return data ? describeCardData(data) : `${cardId}: no card data`;
-  };
   const copies = (card: ListCard): string => (card.count === 1 ? "" : `${card.count} copies: `);
   return [
-    `Hero: ${describe(list.hero.cardId)}`,
+    `Hero: ${describeCardId(list.hero.cardId)}`,
     "Weapon-zone cards:",
-    ...list.weapons.map((card) => `- [${card.cardId}] ${copies(card)}${describe(card.cardId)}`),
+    ...list.weapons.map((card) => `- [${card.cardId}] ${copies(card)}${describeCardId(card.cardId)}`),
     "Equipment:",
-    ...list.equipment.map((piece) => `- [${piece.cardId}] ${piece.slots.join(" or ")}: ${copies(piece)}${describe(piece.cardId)}`),
+    ...list.equipment.map((piece) => `- [${piece.cardId}] ${piece.slots.join(" or ")}: ${copies(piece)}${describeCardId(piece.cardId)}`),
     `Main-deck cards (${list.deck.reduce((total, card) => total + card.count, 0)} in the List; your deck takes 40):`,
-    ...list.deck.map((card) => `- [${card.cardId}] ${copies(card)}${describe(card.cardId)}`),
+    ...list.deck.map((card) => `- [${card.cardId}] ${copies(card)}${describeCardId(card.cardId)}`),
   ].join("\n");
 }

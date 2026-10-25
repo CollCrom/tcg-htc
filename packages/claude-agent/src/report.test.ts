@@ -175,8 +175,8 @@ describe("renderReport", () => {
       "| Invalid first answers | 1 |",
       "| Plan notes cut | 1 |",
       "| Seat | Config | Models Claude Code reported |",
-      "| 0 | `opus` at `medium` | `claude-opus-4-1`, `claude-opus-4-1-20260101` |",
-      "| 1 | `sonnet` at `high` | `claude-sonnet-4-5` |",
+      "| 0 | opus at medium | `claude-opus-4-1`, `claude-opus-4-1-20260101` |",
+      "| 1 | sonnet at high | `claude-sonnet-4-5` |",
     ]);
   });
 

@@ -13,11 +13,12 @@ export {
   STRIPPED_ENV,
   claudeCodeCall,
   classify,
+  describeConfig,
   runClaudeCode,
   systemPromptFile,
 } from "./claudeCode.js";
 export { type FakeClaudeCode, type FakeScript, type RecordedCall, fakeClaudeCode } from "./fakeClaudeCode.js";
-export { type Asked, type Question, type Read, MAX_RETRIES, PROBLEM_HEADING, ask, failed } from "./ask.js";
+export { type Asked, type Question, type Read, MAX_RETRIES, PROBLEM_HEADING, ask, describeAgent, failed, field, textField } from "./ask.js";
 export { CARD_SYMBOLS_SECTION, PRIMER_FILE, primer } from "./prompt.js";
 export {
   type BuildDecklistOptions,
@@ -71,7 +72,7 @@ export {
   parseGameClaudeArgs,
   runDirName,
 } from "./gameClaudeArgs.js";
-export { HERO_LIST_FILES, heroList, heroTitle } from "./heroLists.js";
+export { HERO_LIST_FILES, heroList, heroTitle, otherHero } from "./heroLists.js";
 export {
   type DecisionContext,
   type GameStatus,

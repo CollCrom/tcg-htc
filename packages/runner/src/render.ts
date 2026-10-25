@@ -6,7 +6,7 @@
 import { cardData } from "@fyendal/cards";
 import type { CardCostSelection, CardView, PlayerView } from "@fyendal/shared";
 import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
-import { describeCardData, nameWithColour } from "./cards.js";
+import { describeCardId, nameWithColour } from "./cards.js";
 
 /** One rendered decision. `intents[i]` is the engine Intent behind numbered
  * entry `i + 1` of `text`, whose wording (without its number) is `entries[i]`:
@@ -41,11 +41,7 @@ function opponentReference(view: View, seat: Seat): string[] {
   const opponent = view.players[opponentOf(seat)];
   const visible = cardsOf(view).filter((card) => card.owner === opponent.seat && !card.hidden && card.cardId);
   const cardIds = new Set([opponent.heroCardId, ...visible.map((card) => card.cardId)]);
-  return [...cardIds].map((cardId) => {
-    const data = cardData[cardId];
-    if (!data) return `${visible.find((card) => card.cardId === cardId)?.name ?? cardId}: no card data`;
-    return describeCardData(data);
-  });
+  return [...cardIds].map((cardId) => describeCardId(cardId, visible.find((card) => card.cardId === cardId)?.name));
 }
 
 /** Renders a Seat's View and its legal Intents as text. */

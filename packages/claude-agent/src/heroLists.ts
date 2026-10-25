@@ -10,6 +10,11 @@ export function heroList(hero: Hero): List {
   return fixtureList(HERO_LIST_FILES[hero]);
 }
 
+/** The other of the two heroes: the opponent of `hero`. */
+export function otherHero(hero: Hero): Hero {
+  return hero === "ira" ? "bravo" : "ira";
+}
+
 /** The hero's name as the report prints it: "ira" becomes "Ira". */
 export function heroTitle(hero: string): string {
   return hero.charAt(0).toUpperCase() + hero.slice(1);

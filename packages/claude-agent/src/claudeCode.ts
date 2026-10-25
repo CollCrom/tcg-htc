@@ -21,6 +21,11 @@ export interface ClaudeConfig {
   effort: Effort;
 }
 
+/** A config as the scripts and the report name it: `opus at medium`. */
+export function describeConfig({ model, effort }: ClaudeConfig): string {
+  return `${model} at ${effort}`;
+}
+
 /** One request to Claude Code. */
 export interface CallRequest {
   /** Replaces Claude Code's default system prompt. Written to a file under

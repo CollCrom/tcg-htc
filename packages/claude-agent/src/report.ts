@@ -4,7 +4,7 @@ import { isFailure, type DecisionRecord, type Seat } from "@tcg-htc/runner";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { ClaudeConfig } from "./claudeCode.js";
+import { describeConfig, type ClaudeConfig } from "./claudeCode.js";
 import type { Hero } from "./gameClaudeArgs.js";
 import type { GameFile } from "./gameFile.js";
 import { HERO_LIST_FILES, heroList, heroTitle } from "./heroLists.js";
@@ -122,10 +122,6 @@ function setup(manifest: Manifest, { upstreamCommit, runDir }: ReportOptions): s
 function seedsPhrase(seeds: readonly number[]): string {
   const flag = formatSeeds(seeds);
   return flag.includes("-") ? flag.replace("-", " to ") : flag.replace(/,/g, ", ");
-}
-
-function describeConfig({ model, effort }: ClaudeConfig): string {
-  return `\`${model}\` at \`${effort}\``;
 }
 
 function outcomeRows({ games, config }: Manifest): string[][] {
