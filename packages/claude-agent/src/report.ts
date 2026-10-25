@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describeConfig, type ClaudeConfig } from "./claudeCode.js";
 import type { GameFile } from "./gameFile.js";
 import { HERO_LIST_FILES, heroList, heroTitle, type Hero } from "./heroLists.js";
+import { describeOutcome } from "./playGame.js";
 import type { Manifest, ManifestGame, RunConfig } from "./run.js";
 import { formatSeeds } from "./suiteClaudeArgs.js";
 
@@ -145,18 +146,13 @@ function seatOrder(game: ManifestGame): string {
 
 function gameRow(game: ManifestGame, file: GameFile | undefined): string[] {
   const { outcome } = game;
-  const outcomeText = !outcome
-    ? game.status
-    : outcome.outcome === "win" || outcome.outcome === "draw"
-      ? outcome.outcome
-      : `${outcome.outcome}${outcome.outcome === "error" && outcome.cause ? ` (${outcome.cause})` : ""} at step ${outcome.step}`;
   const winner = outcome?.outcome === "win" ? `${heroTitle(heroInSeat(game, outcome.winner))} (Seat ${outcome.winner})` : "-";
   const decisions = file ? file.decisions.length : game.steps;
   return [
     `\`${game.id}\``,
     String(game.seed),
     seatOrder(game),
-    outcomeText,
+    outcome ? describeOutcome(outcome) : game.status,
     winner,
     decisions === undefined ? "-" : String(decisions),
     file?.turns === undefined ? "-" : String(file.turns),
@@ -223,9 +219,8 @@ export function modelsReported(files: GameFile[], seat: Seat): string[] {
 function failureEntry(game: ManifestGame, config: RunConfig): string {
   const { outcome } = game;
   if (!outcome || !isFailure(outcome)) return "";
-  const cause = outcome.outcome === "error" && outcome.cause ? ` (${outcome.cause})` : "";
   const detail = outcome.detail.replace(/\.?$/, ".");
-  return `- \`${game.id}\`: seed ${game.seed}, ${seatOrder(game)}, step ${outcome.step}, **${outcome.outcome}**${cause}: ${detail}\n  Reproduce: \`${reproduceCommand(game, config)}\``;
+  return `- \`${game.id}\`: seed ${game.seed}, ${seatOrder(game)}, **${describeOutcome(outcome)}**: ${detail}\n  Reproduce: \`${reproduceCommand(game, config)}\``;
 }
 
 function table(header: string[], rows: string[][]): string {

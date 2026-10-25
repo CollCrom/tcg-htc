@@ -6,7 +6,7 @@
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { claudeCodeCall, describeConfig } from "./claudeCode.js";
-import { progressLine } from "./playGame.js";
+import { describeOutcome, progressLine } from "./playGame.js";
 import { exitCriteria } from "./report.js";
 import { readManifest, resumeSuite, runSuite, type Manifest, type ManifestGame, type RunConfig, type RunSuiteOptions } from "./run.js";
 import { parseSuiteClaudeArgs, SUITE_USAGE, suiteRunDirName, type SuiteClaudeArgs } from "./suiteClaudeArgs.js";
@@ -74,11 +74,9 @@ function gameLine(game: ManifestGame): string {
     ? game.status === "playing" && game.steps !== undefined
       ? ` (stopped after ${game.steps} decisions)`
       : ""
-    : outcome.outcome === "win"
-      ? `: Seat ${outcome.winner} wins in ${game.steps} decisions`
-      : outcome.outcome === "draw"
-        ? `: draw in ${game.steps} decisions`
-        : `: ${outcome.outcome}${outcome.outcome === "error" && outcome.cause ? ` (${outcome.cause})` : ""} at step ${outcome.step}: ${outcome.detail}`;
+    : "detail" in outcome
+      ? `: ${describeOutcome(outcome)}: ${outcome.detail}`
+      : `: ${describeOutcome(outcome)} in ${game.steps} decisions`;
   return `game ${game.id} ${game.status}${what}`;
 }
 

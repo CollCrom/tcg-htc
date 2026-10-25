@@ -253,6 +253,23 @@ function totals(
   };
 }
 
+/** An outcome in one phrase, as the scripts and the report print it:
+ * `Seat 1 wins`, `draw`, `stall at step 50`, `error (invalid-answer) at
+ * step 7`, `paused (rate-limit) at step 3`. */
+export function describeOutcome(outcome: GameOutcome): string {
+  switch (outcome.outcome) {
+    case "win":
+      return `Seat ${outcome.winner} wins`;
+    case "draw":
+      return "draw";
+    case "stall":
+      return `stall at step ${outcome.step}`;
+    case "error":
+    case "paused":
+      return `${outcome.outcome}${outcome.cause ? ` (${outcome.cause})` : ""} at step ${outcome.step}`;
+  }
+}
+
 /** The outcome alone, without the rest of the result. */
 export function outcomeOf(result: GameOutcome): GameOutcome {
   switch (result.outcome) {

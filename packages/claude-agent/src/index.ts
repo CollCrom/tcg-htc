@@ -56,7 +56,7 @@ export {
   readGameFile,
   writeGameFile,
 } from "./gameFile.js";
-export { type PlayedGame, type PlayGameOptions, type UnplayedGame, type WrittenGameFile, CLAUDE_MAX_DECISIONS, outcomeOf, playGame, progressLine } from "./playGame.js";
+export { type PlayedGame, type PlayGameOptions, type UnplayedGame, type WrittenGameFile, CLAUDE_MAX_DECISIONS, describeOutcome, outcomeOf, playGame, progressLine } from "./playGame.js";
 export {
   type GameClaudeArgs,
   CONFIG_OPTIONS,

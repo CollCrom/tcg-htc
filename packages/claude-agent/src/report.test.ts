@@ -145,8 +145,8 @@ describe("renderReport", () => {
       "| Stall | 1 |",
       "| Error | 1 |",
       "| Game | Seed | Seat order | Outcome | Winner | Decisions | Turns | Models (Seat 0 / Seat 1) |",
-      "| `1-ira-first` | 1 | Ira (Seat 0) vs Bravo (Seat 1) | win | Bravo (Seat 1) | 4 | 10 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
-      "| `1-bravo-first` | 1 | Bravo (Seat 0) vs Ira (Seat 1) | win | Bravo (Seat 0) | 2 | 8 | `claude-opus-4-1-20260101` / `claude-sonnet-4-5` |",
+      "| `1-ira-first` | 1 | Ira (Seat 0) vs Bravo (Seat 1) | Seat 1 wins | Bravo (Seat 1) | 4 | 10 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
+      "| `1-bravo-first` | 1 | Bravo (Seat 0) vs Ira (Seat 1) | Seat 0 wins | Bravo (Seat 0) | 2 | 8 | `claude-opus-4-1-20260101` / `claude-sonnet-4-5` |",
       "| `2-ira-first` | 2 | Ira (Seat 0) vs Bravo (Seat 1) | stall at step 50 | - | 50 | 9 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
       "| `2-bravo-first` | 2 | Bravo (Seat 0) vs Ira (Seat 1) | error (invalid-answer) at step 7 | - | 8 | 3 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
     ]);
@@ -199,10 +199,10 @@ describe("renderReport", () => {
   it("lists every failing Game with its seed, seat order, step, outcome, cause, detail and the command that reproduces it", () => {
     const failures = report.split("## Failures and issues filed")[1]!.split("## Decisions")[0]!;
     expect(failures).toContain(
-      "- `2-ira-first`: seed 2, Ira (Seat 0) vs Bravo (Seat 1), step 50, **stall**: Game exceeded 50 steps.\n  Reproduce: `pnpm game:claude --seed 2 --first ira --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
+      "- `2-ira-first`: seed 2, Ira (Seat 0) vs Bravo (Seat 1), **stall at step 50**: Game exceeded 50 steps.\n  Reproduce: `pnpm game:claude --seed 2 --first ira --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
     );
     expect(failures).toContain(
-      "- `2-bravo-first`: seed 2, Bravo (Seat 0) vs Ira (Seat 1), step 7, **error** (invalid-answer): Seat 1's Claude Agent (sonnet, high): Your answer named Intent 9 but only 1 to 4 are listed.\n  Reproduce: `pnpm game:claude --seed 2 --first bravo --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
+      "- `2-bravo-first`: seed 2, Bravo (Seat 0) vs Ira (Seat 1), **error (invalid-answer) at step 7**: Seat 1's Claude Agent (sonnet, high): Your answer named Intent 9 but only 1 to 4 are listed.\n  Reproduce: `pnpm game:claude --seed 2 --first bravo --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
     );
     expect(reproduceCommand(games[2]!, manifestConfig)).toBe("pnpm game:claude --seed 2 --first ira --model0 opus --effort0 medium --model1 sonnet --effort1 high");
   });
@@ -232,7 +232,7 @@ describe("renderReport", () => {
     const report = renderReport({ ...manifest, games: [...games, unstarted] }, gameFiles, options);
     expect(rows(report, "Results")).toContain("| `3-ira-first` | 3 | Ira (Seat 0) vs Bravo (Seat 1) | error at step 0 | - | 0 | - | - |");
     expect(rows(report, "Measurements")).toContain("| Decisions per Game | 16.0 | 50 |");
-    expect(report).toContain("- `3-ira-first`: seed 3, Ira (Seat 0) vs Bravo (Seat 1), step 0, **error**: spawn claude ENOENT.");
+    expect(report).toContain("- `3-ira-first`: seed 3, Ira (Seat 0) vs Bravo (Seat 1), **error at step 0**: spawn claude ENOENT.");
     expect(rows(report, "Exit criteria")[2]).toBe(
       "| No Game ended on an Agent's fault (an error outcome with a Decision failure cause) | Fail: 1 Game (`2-bravo-first`, invalid-answer) |",
     );

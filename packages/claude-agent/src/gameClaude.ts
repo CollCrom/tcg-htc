@@ -9,7 +9,7 @@ import { claudeCodeCall, describeConfig } from "./claudeCode.js";
 import { parseGameClaudeArgs, runDirName, USAGE, type GameClaudeArgs } from "./gameClaudeArgs.js";
 import { gameId } from "./gameFile.js";
 import { heroList, otherHero } from "./heroLists.js";
-import { playGame, progressLine } from "./playGame.js";
+import { describeOutcome, playGame, progressLine } from "./playGame.js";
 
 let args: GameClaudeArgs;
 try {
@@ -45,15 +45,12 @@ const { result, path, file } = await playGame({
 
 const { totals } = file.measurements;
 console.log();
-if (result.outcome === "win") {
-  console.log(`Seat ${result.winner} (${heroes[result.winner]}) wins in ${result.turns} turns, ${result.steps} decisions.`);
-} else if (result.outcome === "draw") {
-  console.log(`Draw in ${result.turns} turns, ${result.steps} decisions.`);
-} else if (result.outcome === "paused") {
-  // A single Game has no resume; its file holds every Intent applied.
-  console.log(`paused on a rate limit at step ${result.step}: ${result.detail}`);
+if (result.outcome === "win" || result.outcome === "draw") {
+  const hero = result.outcome === "win" ? ` (${heroes[result.winner]})` : "";
+  console.log(`${describeOutcome(result)}${hero} in ${result.turns} turns, ${result.steps} decisions.`);
 } else {
-  console.log(`${result.outcome} at step ${result.step}${"cause" in result && result.cause ? ` (${result.cause})` : ""}: ${result.detail}`);
+  // A paused Game: a single Game has no resume, but its file holds every Intent applied.
+  console.log(`${describeOutcome(result)}: ${result.detail}`);
 }
 console.log(
   `Tokens: ${totals.inputTokens} in, ${totals.cachedTokens} cached, ${totals.outputTokens} out; cost estimate $${totals.costUsd.toFixed(2)}; ` +
