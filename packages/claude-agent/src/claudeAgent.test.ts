@@ -219,11 +219,11 @@ describe("claudeAgent", () => {
   }
 
   it(
-    "ends the Game at once with cause rate-limit, without a retry",
+    "pauses the Game at once with cause rate-limit, without a retry",
     async () => {
       const { fake, result, own } = await play(failingAt(1, { kind: "rate-limit", detail: "You've hit your limit" }));
 
-      expect(result).toMatchObject({ outcome: "error", cause: "rate-limit", detail: "Seat 0's Claude Agent (opus, medium): You've hit your limit" });
+      expect(result).toMatchObject({ outcome: "paused", cause: "rate-limit", detail: "Seat 0's Claude Agent (opus, medium): You've hit your limit" });
       expect(fake.calls).toHaveLength(2);
       expect(own[1]!.decision).toMatchObject({ cause: "rate-limit", measurements: { retries: 0 } });
     },

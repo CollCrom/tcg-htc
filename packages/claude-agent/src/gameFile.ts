@@ -10,11 +10,14 @@ import type { DecklistBuild } from "./buildDecklist.js";
 import type { ClaudeConfig } from "./claudeCode.js";
 
 export interface GameFile {
-  /** `playing` until the Game's outcome is known. */
-  status: "playing" | "complete";
+  /** `playing` while a decision is in flight; `paused` when the Game stopped
+   * between decisions (a rate limit, or the Run pausing) and can be resumed
+   * from this file; `complete` once the outcome is known. */
+  status: "playing" | "paused" | "complete";
   setup: GameFileSetup;
   /** Each Seat's Decklist build, Seat 0 first, before any play record. A
-   * failed build is the last: the Game ended there. */
+   * failed build is the last, and the Game ended there, unless it was a rate
+   * limit: then the Game paused, and the Seat's new build follows on resume. */
   decklistDecisions: readonly DecklistDecisionRecord[];
   /** Each Seat's play system prompt, identical for every decision of the
    * Game. Absent when a Decklist build failed and the Game never started. */
@@ -26,9 +29,11 @@ export interface GameFile {
   outcome?: GameOutcome;
   /** Known once the Game is complete. */
   turns?: number;
+  /** Over every sitting of the Game, when it was paused and resumed. */
   measurements: GameFileMeasurements;
-  /** One record per decision, in order. The last record of each Seat holds
-   * its latest Plan notes. */
+  /** One record per decision, in order. The last chosen Decision of each
+   * Seat holds its latest Plan notes; a rate-limit failure record marks where
+   * the Game paused, with no Intent applied for it. */
   decisions: readonly DecisionRecord[];
 }
 

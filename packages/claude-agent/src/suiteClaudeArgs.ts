@@ -5,17 +5,27 @@ import { CONFIG_OPTIONS, configsFrom, HEROES } from "./gameClaudeArgs.js";
 import { CLAUDE_MAX_DECISIONS } from "./playGame.js";
 import { DEFAULT_CONCURRENCY, DEFAULT_SEEDS, type RunConfig } from "./run.js";
 
-export interface SuiteClaudeArgs {
+/** A new Run from its flags, or a paused Run to resume. */
+export type SuiteClaudeArgs = SuiteRunArgs | SuiteResumeArgs;
+
+export interface SuiteRunArgs {
   config: RunConfig;
   /** The results directory, as given. */
   results: string;
+  resume?: undefined;
+}
+
+export interface SuiteResumeArgs {
+  /** The paused Run's directory, as given; its config comes from its manifest. */
+  resume: string;
 }
 
 export const SUITE_USAGE =
-  "pnpm suite:claude [--model0 <alias>] [--effort0 <level>] [--model1 <alias>] [--effort1 <level>] [--concurrency 2] [--seeds 1-5] [--results <dir>]";
+  "pnpm suite:claude [--model0 <alias>] [--effort0 <level>] [--model1 <alias>] [--effort1 <level>] [--concurrency 2] [--seeds 1-5] [--results <dir>]\n" +
+  "       pnpm suite:claude --resume <runDir>   (no other flag: the Run's config is in its manifest)";
 
 /** Parses the flags (`process.argv.slice(2)`). Throws a message naming the
- * flag at fault. `--resume <runDir>` is reserved for #177 and rejected. */
+ * flag at fault. */
 export function parseSuiteClaudeArgs(args: readonly string[]): SuiteClaudeArgs {
   const { values, positionals } = parseArgs({
     args: [...args],
@@ -30,7 +40,12 @@ export function parseSuiteClaudeArgs(args: readonly string[]): SuiteClaudeArgs {
     strict: true,
   });
   if (positionals.length > 0) throw new Error(`unexpected argument ${positionals.join(" ")}\nusage: ${SUITE_USAGE}`);
-  if (values.resume !== undefined) throw new Error("--resume is not implemented yet (#177)");
+  if (values.resume !== undefined) {
+    const others = args.filter((arg) => arg.startsWith("--") && !arg.startsWith("--resume"));
+    if (others.length > 0) throw new Error(`--resume takes no other flag; the Run's config is in its manifest (got ${others.join(" ")})`);
+    if (!values.resume) throw new Error("--resume needs the paused Run's directory");
+    return { resume: values.resume };
+  }
   const concurrency = Number(values.concurrency);
   if (!/^\d+$/.test(values.concurrency) || concurrency < 1) throw new Error(`--concurrency must be a whole number of at least 1, not ${values.concurrency}`);
   return {

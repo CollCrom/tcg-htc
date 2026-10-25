@@ -1,7 +1,8 @@
 // playGame: one Game between two Claude Agents, written to a Game file in the
 // Run's directory after every decision. Each Agent first builds its Decklist
 // from its List, knowing only the opponent's hero; the Game starts once both
-// builds are valid.
+// builds are valid. A rate limit, in a build or in play, pauses the Game
+// instead of ending it, and the Game resumes from its file.
 import type { Decklist } from "@fyendal/shared";
 import {
   isDecisionFailure,
@@ -15,6 +16,7 @@ import {
   type GameError,
   type GameMeasurements,
   type GameOutcome,
+  type GamePause,
   type GameResult,
   type List,
   type Seat,
@@ -53,6 +55,14 @@ export interface PlayGameOptions {
   clock?: () => number;
   /** The decision cap, `CLAUDE_MAX_DECISIONS` by default. */
   maxSteps?: number;
+  /** See `runGame`: asked before every decision; true pauses the Game. */
+  shouldStop?: () => boolean;
+  /** The Game file of a paused (or interrupted) Game to carry on: its valid
+   * Decklist builds are reused and only a Seat without one builds again; each
+   * Claude Agent starts from the Plan notes of its last chosen Decision; the
+   * saved Intents are replayed before play continues; the saved records are
+   * kept and the new ones appended. The file is rewritten at the same path. */
+  resumeFrom?: GameFile;
 }
 
 export interface WrittenGameFile {
@@ -60,14 +70,15 @@ export interface WrittenGameFile {
   path: string;
 }
 
-/** A Game that never started because a Seat's Decklist build failed: the
- * error outcome at step 0, with no replay and no play records. */
-export interface UnplayedGame extends GameError {
+/** A Game that never started because a Seat's Decklist build failed (the
+ * error outcome at step 0) or hit a rate limit (paused at step 0), with no
+ * replay and no play records. */
+export type UnplayedGame = (GameError | GamePause) & {
   turns: 0;
   steps: 0;
   measurements: GameMeasurements;
   decisions: readonly [];
-}
+};
 
 export interface PlayedGame extends WrittenGameFile {
   result: GameResult | UnplayedGame;
@@ -77,10 +88,12 @@ export interface PlayedGame extends WrittenGameFile {
 
 /** Plays one Game and returns its result with the final Game file. */
 export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
-  const { seed, lists, configs, call, runDir, decklistPicker, onDecision, clock = () => performance.now(), maxSteps = CLAUDE_MAX_DECISIONS } = options;
+  const { seed, lists, configs, call, runDir, decklistPicker, onDecision, clock = () => performance.now(), maxSteps = CLAUDE_MAX_DECISIONS, shouldStop, resumeFrom } = options;
   const startingSeat: Seat = 0;
   const path = join(runDir, gameFileName(seed, lists[0].hero.name));
   const started = clock();
+  /** Time already spent on the Game in earlier sittings. */
+  const earlierMs = resumeFrom?.measurements.durationMs ?? 0;
   const setup: GameFileSetup = {
     seed,
     startingSeat,
@@ -89,9 +102,14 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     configs,
   };
 
-  const builds: DecklistDecisionRecord[] = [];
+  const builds: DecklistDecisionRecord[] = [...(resumeFrom?.decklistDecisions ?? [])];
   const built: Decklist[] = [];
   for (const seat of [0, 1] as const) {
+    const saved = resumeFrom?.setup.decklists?.[seat] ?? validBuild(builds, seat);
+    if (saved) {
+      built.push(saved);
+      continue;
+    }
     if (decklistPicker) {
       built.push(decklistPicker(lists[seat], seed));
       continue;
@@ -106,14 +124,17 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     });
     builds.push({ kind: "decklist", seat, ...build });
     if (failed(build.decision)) {
-      const outcome: GameError = { outcome: "error", seed, step: 0, detail: build.decision.detail, cause: build.decision.cause };
-      const measurements = summarise([], clock() - started);
+      const { detail } = build.decision;
+      const outcome: GameError | GamePause =
+        build.decision.cause === "rate-limit"
+          ? { outcome: "paused", seed, step: 0, detail, cause: "rate-limit" }
+          : { outcome: "error", seed, step: 0, detail, cause: build.decision.cause };
+      const measurements = summarise([], earlierMs + clock() - started);
       const file: GameFile = {
-        status: "complete",
+        status: outcome.outcome === "paused" ? "paused" : "complete",
         setup,
         decklistDecisions: builds,
-        outcome,
-        turns: 0,
+        ...(outcome.outcome === "paused" ? {} : { outcome, turns: 0 }),
         measurements: { ...measurements, ...totals([], builds) },
         decisions: [],
       };
@@ -125,12 +146,13 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
   const decklists = built as unknown as readonly [Decklist, Decklist];
   setup.decklists = decklists;
 
+  const records: DecisionRecord[] = [...(resumeFrom?.decisions ?? [])];
+  const measured: DecisionMeasurement[] = [...(resumeFrom?.measurements.decisions ?? [])];
   const agents = ([0, 1] as const).map((seat) =>
-    claudeAgent({ seat, decklist: decklists[seat], ...configs[seat] }, call, { resultsDir: runDir }),
+    claudeAgent({ seat, decklist: decklists[seat], ...configs[seat] }, call, { resultsDir: runDir, planNotes: lastPlanNotes(records, seat) }),
   ) as unknown as readonly [ClaudeAgent, ClaudeAgent];
   const systemPrompts = [agents[0].systemPrompt, agents[1].systemPrompt] as const;
-  const records: DecisionRecord[] = [];
-  const measured: DecisionMeasurement[] = [];
+  const savedIntents = resumeFrom?.replay?.intents ?? [];
 
   const result = await runGame({
     decklists,
@@ -139,6 +161,8 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     agents,
     clock,
     maxSteps,
+    shouldStop,
+    resume: { intents: savedIntents },
     onDecision: (record, progress) => {
       records.push(record);
       measured.push(measureDecision(record.seat, record.intents, { text: record.rendered, intents: [...progress.listed] }));
@@ -148,7 +172,7 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
         decklistDecisions: builds,
         systemPrompts,
         replay: { decklists, seed, startingSeat, intents: [...progress.intents] },
-        measurements: { ...summarise([...measured], clock() - started), ...totals(records, builds) },
+        measurements: { ...summarise([...measured], earlierMs + clock() - started), ...totals(records, builds) },
         decisions: [...records],
       };
       writeGameFile(path, file);
@@ -156,19 +180,37 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     },
   });
 
+  const paused = result.outcome === "paused";
   const file: GameFile = {
-    status: "complete",
+    status: paused ? "paused" : "complete",
     setup,
     decklistDecisions: builds,
     systemPrompts,
     replay: result.replay,
-    outcome: outcomeOf(result),
-    turns: result.turns,
-    measurements: { ...result.measurements, ...totals(result.decisions, builds) },
-    decisions: result.decisions,
+    ...(paused ? {} : { outcome: outcomeOf(result), turns: result.turns }),
+    measurements: { ...summarise(measured, earlierMs + result.measurements.durationMs), ...totals(records, builds) },
+    decisions: records,
   };
   writeGameFile(path, file);
   return { result, file, path, agents };
+}
+
+/** The Seat's Decklist from its valid build record, if it has one. */
+function validBuild(builds: readonly DecklistDecisionRecord[], seat: Seat): Decklist | undefined {
+  for (const record of builds) {
+    if (record.seat === seat && !failed(record.decision)) return record.decision.decklist;
+  }
+  return undefined;
+}
+
+/** The Plan notes the Seat's Claude Agent held last: those of its last chosen
+ * Decision (a failure record carries none), or none. */
+function lastPlanNotes(records: readonly DecisionRecord[], seat: Seat): string {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const record = records[i]!;
+    if (record.seat === seat && !isDecisionFailure(record.decision)) return record.decision.planNotes ?? "";
+  }
+  return "";
 }
 
 /** The one line a Run prints per decision:
@@ -212,5 +254,7 @@ export function outcomeOf(result: GameOutcome): GameOutcome {
       return { outcome: "stall", seed: result.seed, step: result.step, detail: result.detail };
     case "error":
       return { outcome: "error", seed: result.seed, step: result.step, detail: result.detail, ...(result.cause ? { cause: result.cause } : {}) };
+    case "paused":
+      return { outcome: "paused", seed: result.seed, step: result.step, detail: result.detail, ...(result.cause ? { cause: result.cause } : {}) };
   }
 }

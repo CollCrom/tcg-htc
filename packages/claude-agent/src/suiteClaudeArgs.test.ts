@@ -36,7 +36,14 @@ describe("parseSuiteClaudeArgs", () => {
     });
   });
 
-  it("rejects a model or effort Claude Code doesn't have, a concurrency under one, bad seeds, a flag it doesn't know and --resume for now", () => {
+  it("reads --resume <runDir> alone, the Run's config coming from its manifest", () => {
+    expect(parseSuiteClaudeArgs(["--resume", "results/2026-10-24T09-05-30Z-suite"])).toEqual({ resume: "results/2026-10-24T09-05-30Z-suite" });
+    expect(() => parseSuiteClaudeArgs(["--resume", "results/some-run", "--seeds", "1-3"])).toThrow(/--resume.*--seeds/);
+    expect(() => parseSuiteClaudeArgs(["--concurrency", "1", "--resume", "results/some-run"])).toThrow(/--resume.*--concurrency/);
+    expect(() => parseSuiteClaudeArgs(["--resume"])).toThrow(/--resume/);
+  });
+
+  it("rejects a model or effort Claude Code doesn't have, a concurrency under one, bad seeds and a flag it doesn't know", () => {
     expect(() => parseSuiteClaudeArgs(["--model1", "gpt"])).toThrow(/--model1.*opus.*sonnet.*haiku.*fable/);
     expect(() => parseSuiteClaudeArgs(["--effort0", "extreme"])).toThrow(/--effort0.*low.*medium.*high.*xhigh.*max/);
     expect(() => parseSuiteClaudeArgs(["--concurrency", "0"])).toThrow(/--concurrency/);
@@ -45,7 +52,6 @@ describe("parseSuiteClaudeArgs", () => {
     expect(() => parseSuiteClaudeArgs(["--seeds", "5-1"])).toThrow(/--seeds/);
     expect(() => parseSuiteClaudeArgs(["--seat", "1"])).toThrow(/--seat/);
     expect(() => parseSuiteClaudeArgs(["extra"])).toThrow(/extra/);
-    expect(() => parseSuiteClaudeArgs(["--resume", "results/some-run"])).toThrow(/--resume.*not implemented yet/);
   });
 });
 
