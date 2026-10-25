@@ -6,11 +6,11 @@ The Claude Agent: Claude plays a Seat through Claude Code in print mode, on the 
 
 `claudeAgent(config, call, options?)` in `src/claudeAgent.ts` makes a runner `Agent` for one Seat: `config` is `{ seat, decklist, model, effort }`, `call` a `ClaudeCodeCall` (the real one or `fakeClaudeCode`), `options` the results directory and, for a resumed Game, the Plan notes to start from. The returned Agent also exposes `seat`, `config`, `systemPrompt` and the current `planNotes`.
 
-Every decision is one fresh call. The system prompt is built once in the factory and is byte-identical for the whole Game: the primer (`prompts/primer.md`), the Seat and its objective, a key to the card-text symbols, the answer format, and the Seat's own Decklist with full card text. The message is `renderDecision`'s text followed by the Seat's Plan notes under `PLAN_NOTES_HEADING`. The answer must match `ANSWER_SCHEMA`: `intent` (the number of a listed Intent), `reasoning` and `planNotes`, nothing else.
+Every decision is one fresh call. The system prompt is built once in the factory and is byte-identical for the whole Game: the primer (`prompts/primer.md`), the Seat and its objective, a key to the card-text symbols, the answer format, and the Seat's own Decklist with full card text. The message is the text of the `RenderedDecision` the runner hands every Agent (its fourth argument: the View rendered once by `renderDecision`, the same text the Decision record keeps) followed by the Seat's Plan notes under `PLAN_NOTES_HEADING`. The answer must match `ANSWER_SCHEMA`: `intent` (the number of a listed Intent), `reasoning` and `planNotes`, nothing else.
 
 | What comes back | What the Agent does |
 |---|---|
-| a listed number | the Decision's Intent is `renderDecision(...).intents[n - 1]`; notes over `PLAN_NOTES_LIMIT` (2,000) characters are cut and `notesCut` recorded |
+| a listed number | the Decision's Intent is the rendering's `intents[n - 1]`; notes over `PLAN_NOTES_LIMIT` (2,000) characters are cut and `notesCut` recorded |
 | a number out of range, or none | one retry whose message appends the problem; a second failure is a `DecisionFailure` with cause `invalid-answer` |
 | `refusal`, `timeout`, `failure` | one retry with the same message, then a `DecisionFailure` with that cause |
 | `rate-limit` | a `DecisionFailure` with cause `rate-limit` at once; the runner pauses the Game on it and the Run pauses (see "Pausing and resuming") |

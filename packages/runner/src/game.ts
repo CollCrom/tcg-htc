@@ -171,7 +171,7 @@ export async function runGame(options: RunGameOptions): Promise<GameResult> {
     const view = projectStateFor(state, seat);
     const rendered = renderDecision(view, seat, legal);
     measured.push(measureDecision(seat, legal, rendered));
-    const decision = await agents[seat](view, legal, rngs[seat]);
+    const decision = await agents[seat](view, legal, rngs[seat], rendered);
     const record: DecisionRecord = { seat, rendered: rendered.text, intents: legal, decision };
     decisions.push(record);
     const report = () => onDecision?.(record, { step: steps, turn: view.turn, intents, rendered });

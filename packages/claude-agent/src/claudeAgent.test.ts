@@ -1,7 +1,7 @@
 // The Claude Agent, driven through whole Games with the Claude Code call faked.
 // The honesty test (what the opponent's cards an Agent may see) is honesty.test.ts.
 import { cardData } from "@fyendal/cards";
-import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, pickDecklist, randomAgent, renderDecision, runGame, type Agent, type View } from "@tcg-htc/runner";
+import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, pickDecklist, randomAgent, runGame, type Agent, type RenderedDecision } from "@tcg-htc/runner";
 import { describe, expect, it } from "vitest";
 import type { CallResult } from "./claudeCode.js";
 import { ANSWER_SCHEMA, claudeAgent, PLAN_NOTES_HEADING, PLAN_NOTES_LIMIT } from "./claudeAgent.js";
@@ -28,11 +28,11 @@ const listedIntents = ({ message }: RecordedCall): number => listedEntries(messa
 /** Answers a different listed Intent each call, so the Game moves along. */
 const varied = (request: RecordedCall, index: number): CallResult => answer(1 + (index % listedIntents(request)));
 
-/** An Agent that keeps the Views it was handed, for checks that need them. */
-function recordingViews(agent: Agent, views: View[]): Agent {
-  return (view, legal, rng) => {
-    views.push(view);
-    return agent(view, legal, rng);
+/** An Agent that keeps the renderings it was handed, for checks that need them. */
+function recordingRenderings(agent: Agent, renderings: RenderedDecision[]): Agent {
+  return (view, legal, rng, rendered) => {
+    renderings.push(rendered);
+    return agent(view, legal, rng, rendered);
   };
 }
 
@@ -68,20 +68,20 @@ describe("claudeAgent", () => {
   );
 
   it(
-    "turns a valid answer into the engine Intent behind that number of the collapsed list",
+    "turns a valid answer into the engine Intent behind that number of the collapsed list it was handed",
     async () => {
       const fake = fakeClaudeCode(varied);
-      const views: View[] = [];
-      const agent = recordingViews(claudeAgent({ seat: 1, decklist: decklists[1], model: "sonnet", effort: "low" }, fake), views);
+      const renderings: RenderedDecision[] = [];
+      const agent = recordingRenderings(claudeAgent({ seat: 1, decklist: decklists[1], model: "sonnet", effort: "low" }, fake), renderings);
 
       const result = await runGame({ decklists, seed: SEED, startingSeat: 1, agents: [randomAgent, agent] });
 
       const own = result.decisions.filter(({ seat }) => seat === 1);
-      expect(own).toHaveLength(views.length);
+      expect(own).toHaveLength(renderings.length);
       let beyondFirst = 0;
       own.forEach((record, i) => {
         const chosen = 1 + (i % listedIntents(fake.calls[i]!));
-        const { intents } = renderDecision(views[i]!, 1, record.intents);
+        const { intents } = renderings[i]!;
         expect(intents).toHaveLength(listedIntents(fake.calls[i]!));
         expect(record.decision).toMatchObject({ intent: intents[chosen - 1] });
         if (chosen > 1) beyondFirst++;

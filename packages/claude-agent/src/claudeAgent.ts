@@ -5,7 +5,7 @@
 // and answers with one Intent number, its reasoning and new Plan notes.
 import { cardData } from "@fyendal/cards";
 import type { Decklist } from "@fyendal/shared";
-import { describeCardData, EQUIPMENT_SLOTS, renderDecision, type Agent, type Seat } from "@tcg-htc/runner";
+import { describeCardData, EQUIPMENT_SLOTS, type Agent, type Seat } from "@tcg-htc/runner";
 import { ask, failed, field, type Read } from "./ask.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { CARD_SYMBOLS_SECTION, primer } from "./prompt.js";
@@ -68,8 +68,8 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
   const who = `Seat ${seat}'s Claude Agent (${model}, ${effort})`;
   let planNotes = options.planNotes ?? "";
 
-  const agent: Agent = async (view, legalIntents) => {
-    const rendered = renderDecision(view, seat, legalIntents);
+  // The runner's rendering of the View is the message; its numbered entries map the answer back to an Intent.
+  const agent: Agent = async (_view, _legalIntents, _rng, rendered) => {
     const asked = await ask({
       call,
       who,
