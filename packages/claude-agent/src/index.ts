@@ -31,8 +31,7 @@ export {
   buildDecklistSystemPrompt,
   describeList,
 } from "./buildDecklist.js";
-export { legalPresentation } from "./scriptedBuild.js";
-export { SCRIPTED_USAGE, hash, listedEntries, scriptedAnswer } from "./scriptedPlay.js";
+// scriptedBuild.ts and scriptedPlay.ts are test scaffolding: tests import them by path.
 export {
   type ClaudeAgent,
   type ClaudeAgentConfig,
