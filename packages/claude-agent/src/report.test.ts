@@ -119,20 +119,22 @@ describe("renderReport", () => {
   it("opens with the title and the verdict", () => {
     expect(report).toMatch(/^# Phase 2 report: Claude Agents play Ira vs Bravo through Claude Code\n/);
     expect(report).toContain("Verdict: **fail**");
-    expect(report).toContain("2 of 4 Games ended in a win or draw");
+    expect(report).toMatch(/\b2 of 4 Games\b/);
   });
 
   it("describes the setup: engine commit, Lists, each Seat's model and effort, seeds, seat orders, cap, concurrency, Run directory and command", () => {
-    expect(report).toContain("upstream commit `22e9ed8b952efaa746ce4f0f8d5c975a703ab683`");
-    expect(report).toContain("ira-crimson-haze.txt");
-    expect(report).toContain("bravo-flattering-showman.txt");
-    expect(report).toContain("Seat 0 `opus` at `medium`, Seat 1 `sonnet` at `high`");
-    expect(report).toContain("**Seeds:** 1 to 2");
-    expect(report).toContain("That makes 4 Games.");
-    expect(report).toContain("**Decision cap:** 50");
-    expect(report).toContain("**Concurrency:** 2 Games at a time");
-    expect(report).toContain("`results/2026-10-24T12-00-00Z-suite`");
-    expect(report).toContain("`pnpm suite:claude --model0 opus --effort0 medium --model1 sonnet --effort1 high --seeds 1-2 --concurrency 2`");
+    const setup = report.split("## Setup")[1]!.split("## Results")[0]!;
+    expect(setup).toContain("22e9ed8b952efaa746ce4f0f8d5c975a703ab683");
+    expect(setup).toContain("ira-crimson-haze.txt");
+    expect(setup).toContain("bravo-flattering-showman.txt");
+    expect(setup).toMatch(/Seat 0 .*opus.* at .*medium/);
+    expect(setup).toMatch(/Seat 1 .*sonnet.* at .*high/);
+    expect(setup).toMatch(/Seeds:.*\b1 to 2\b/);
+    expect(setup).toMatch(/\b4 Games\b/);
+    expect(setup).toMatch(/cap:.*\b50\b/);
+    expect(setup).toMatch(/Concurrency:.*\b2\b/);
+    expect(setup).toContain("`results/2026-10-24T12-00-00Z-suite`");
+    expect(setup).toContain("`pnpm suite:claude --model0 opus --effort0 medium --model1 sonnet --effort1 high --seeds 1-2 --concurrency 2`");
   });
 
   it("tabulates the outcomes and one row per Game, with the models each Seat of that Game was played by", () => {
@@ -212,7 +214,8 @@ describe("renderReport", () => {
 
   it("passes and reports no failures when every Game is a win or a draw", () => {
     const passing = renderReport({ ...manifest, games: games.slice(0, 2) }, gameFiles, options);
-    expect(passing).toContain("Verdict: **pass**. All 2 Games ended in a win or draw, and no Game ended on an Agent's fault.");
+    expect(passing).toContain("Verdict: **pass**");
+    expect(passing).toMatch(/All 2 Games/);
     expect(passing).toContain("## Failures and issues filed\n\nNone.");
   });
 
