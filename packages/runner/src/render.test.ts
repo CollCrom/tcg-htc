@@ -26,12 +26,13 @@ describe("renderDecision", () => {
   it("numbers one entry per Intent after collapsing pitch orderings, each resolving to an Intent the engine accepts", () => {
     const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
 
-    const { text, intents } = renderDecision(view, seat, legal);
+    const { text, intents, entries } = renderDecision(view, seat, legal);
 
     expect(legal).toHaveLength(27);
     expect(intents).toHaveLength(18);
-    const entries = numberedEntries(text);
     expect(entries).toHaveLength(intents.length);
+    // `entries` is the wording behind each number, as the text lists it.
+    expect(numberedEntries(text)).toEqual(entries.map((entry, i) => `${i + 1}. ${entry}`));
     for (const intent of intents) {
       expect(legal).toContainEqual(intent);
       expect(() => stateAt({ ...replay, intents: [...replay.intents.slice(0, MID_GAME_STEP), intent] })).not.toThrow();
@@ -43,12 +44,12 @@ describe("renderDecision", () => {
   it("renders each Intent in plain language, naming its cards with their colours", () => {
     const { view, seat, legal } = decisionAt(replay, MID_GAME_STEP);
 
-    const entries = numberedEntries(renderDecision(view, seat, legal).text);
+    const { entries } = renderDecision(view, seat, legal);
 
-    expect(entries[0]).toBe("1. play Buckling Blow (blue), pitching Test of Might (red) and Clash of Might (blue)");
-    expect(entries).toContain("11. play Thunk (blue) from arsenal, pitching Buckling Blow (blue) and Clash of Might (blue)");
-    expect(entries).toContain("14. attack with Titan's Fist, pitching Buckling Blow (blue)");
-    expect(entries.at(-1)).toBe("18. pass (end your turn)");
+    expect(entries[0]).toBe("play Buckling Blow (blue), pitching Test of Might (red) and Clash of Might (blue)");
+    expect(entries[10]).toBe("play Thunk (blue) from arsenal, pitching Buckling Blow (blue) and Clash of Might (blue)");
+    expect(entries[13]).toBe("attack with Titan's Fist, pitching Buckling Blow (blue)");
+    expect(entries.at(-1)).toBe("pass (end your turn)");
   });
 
   it("shows every log line of the current turn and the previous turn, without printing tags", () => {
@@ -88,7 +89,7 @@ describe("renderDecision", () => {
   it("renders no Intent of the Game as JSON or raw field names", () => {
     let entriesChecked = 0;
     for (const { view, seat, legal } of decisions(replay)) {
-      for (const entry of numberedEntries(renderDecision(view, seat, legal).text)) {
+      for (const entry of renderDecision(view, seat, legal).entries) {
         expect(entry).not.toMatch(/[{}"]|Ids?\b|\bkind\b|optionId|instance/);
         entriesChecked++;
       }

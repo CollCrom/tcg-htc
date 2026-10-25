@@ -1,8 +1,8 @@
 // ask: one question to Claude Code, asked again once when the answer is not
 // accepted or the call fails, with the model's measurements summed over the
 // attempts. Both the Decklist build and every play decision go through it.
-import type { AgentMeasurements, DecisionFailure, DecisionFailureCause } from "@tcg-htc/runner";
-import type { CallRequest, CallResult, ClaudeCodeCall } from "./claudeCode.js";
+import type { AgentMeasurements, DecisionFailure, DecisionFailureCause, Seat } from "@tcg-htc/runner";
+import type { CallRequest, CallResult, ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 
 /** Calls made for one question after the first: one retry. */
 export const MAX_RETRIES = 1;
@@ -81,4 +81,15 @@ function readResult<T>(result: CallResult, read: (output: unknown) => Read<T>): 
 /** A field of a parsed answer, when the answer is an object. */
 export function field(output: unknown, name: string): unknown {
   return output && typeof output === "object" ? (output as Record<string, unknown>)[name] : undefined;
+}
+
+/** A string field of a parsed answer, or "" when it is missing or not a string. */
+export function textField(output: unknown, name: string): string {
+  const value = field(output, name);
+  return typeof value === "string" ? value : "";
+}
+
+/** How a failure's detail names a Seat's Claude Agent: `Seat 0's Claude Agent (opus, medium)`. */
+export function describeAgent(seat: Seat, { model, effort }: ClaudeConfig): string {
+  return `Seat ${seat}'s Claude Agent (${model}, ${effort})`;
 }

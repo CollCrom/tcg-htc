@@ -4,10 +4,11 @@
 // records), and the report reads its outcome and measurements.
 import type { Decklist } from "@fyendal/shared";
 import type { AgentMeasurements, DecisionRecord, GameMeasurements, GameOutcome, Replay, Seat } from "@tcg-htc/runner";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
 import type { DecklistBuild } from "./buildDecklist.js";
 import type { ClaudeConfig } from "./claudeCode.js";
+import type { Hero } from "./heroLists.js";
+import { writeAtomically } from "./writeAtomically.js";
 
 export interface GameFile {
   /** `playing` while a decision is in flight; `paused` when the Game stopped
@@ -84,21 +85,13 @@ export interface AgentTotals {
 
 /** The Game file's name within its Run directory: the seed and the hero in
  * Seat 0, which takes the first turn. */
-export function gameFileName(seed: number, firstHero: string): string {
-  return `game-${gameId(seed, firstHero)}.json`;
+export function gameFileName(seed: number, first: Hero): string {
+  return `game-${gameId(seed, first)}.json`;
 }
 
-/** What a progress line calls the Game: `<seed>-<hero>-first`. */
-export function gameId(seed: number, firstHero: string): string {
-  return `${seed}-${heroSlug(firstHero)}-first`;
-}
-
-/** "Ira, Crimson Haze" becomes "ira". */
-export function heroSlug(heroName: string): string {
-  return (heroName.split(",")[0] ?? heroName)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+/** What a progress line and the manifest call the Game: `<seed>-<hero>-first`. */
+export function gameId(seed: number, first: Hero): string {
+  return `${seed}-${first}-first`;
 }
 
 /** Sums the Agent measurements of `records`, play or build. */
@@ -130,13 +123,9 @@ export function agentTotals(records: readonly { decision: { measurements?: Agent
   return totals;
 }
 
-/** Writes the whole file atomically: to `<path>.tmp`, then renamed over
- * `path`, so a reader (or a crash) never sees a partial document. */
+/** Writes the whole file atomically (see `writeAtomically`), as compact JSON. */
 export function writeGameFile(path: string, file: GameFile): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const temp = `${path}.tmp`;
-  writeFileSync(temp, JSON.stringify(file));
-  renameSync(temp, path);
+  writeAtomically(path, JSON.stringify(file));
 }
 
 export function readGameFile(path: string): GameFile {

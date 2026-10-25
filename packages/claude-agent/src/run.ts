@@ -5,14 +5,14 @@
 // decision, and the manifest says how to resume. When every Game is done the
 // Run writes its report and marks itself complete.
 import { isFailure, type DecisionProgress, type DecisionRecord, type GameOutcome, type List } from "@tcg-htc/runner";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
-import type { Hero } from "./gameClaudeArgs.js";
-import { gameFileName, gameId, heroSlug, readGameFile, type GameFile } from "./gameFile.js";
-import { heroList } from "./heroLists.js";
+import { gameFileName, gameId, readGameFile, type GameFile } from "./gameFile.js";
+import { heroList, type Hero } from "./heroLists.js";
 import { CLAUDE_MAX_DECISIONS, outcomeOf, playGame, type WrittenGameFile } from "./playGame.js";
 import { renderReport, upstreamCommit } from "./report.js";
+import { writeAtomically } from "./writeAtomically.js";
 
 /** The Run's config, as the manifest keeps it. */
 export interface RunConfig {
@@ -40,8 +40,8 @@ export type GameStatus = "pending" | "playing" | "complete" | "failed";
 export interface ManifestGame {
   id: string;
   seed: number;
-  /** The hero in Seat 0, as a slug. */
-  first: string;
+  /** The hero in each Seat; Seat 0 takes the first turn. */
+  heroes: readonly [Hero, Hero];
   status: GameStatus;
   outcome?: GameOutcome;
   /** The Game file's name within the Run directory. */
@@ -110,14 +110,18 @@ export interface RunResult {
 /** The Run's Games, all pending: each seed with each List in Seat 0, the
  * first List first. */
 export function planGames(config: RunConfig): ManifestGame[] {
-  const heroes = config.lists.map((hero) => heroList(hero).hero.name);
+  const [first, second] = config.lists;
+  const orders: (readonly [Hero, Hero])[] = [
+    [first, second],
+    [second, first],
+  ];
   return config.seeds.flatMap((seed) =>
-    heroes.map((firstHero) => ({
-      id: gameId(seed, firstHero),
+    orders.map((heroes) => ({
+      id: gameId(seed, heroes[0]),
       seed,
-      first: heroSlug(firstHero),
+      heroes,
       status: "pending" as const,
-      file: gameFileName(seed, firstHero),
+      file: gameFileName(seed, heroes[0]),
     })),
   );
 }
@@ -152,7 +156,6 @@ export async function resumeSuite(options: ResumeSuiteOptions): Promise<RunResul
 async function play(manifest: Manifest, options: ResumeSuiteOptions): Promise<RunResult> {
   const { runDir, call, onDecision, onGame, now = () => new Date() } = options;
   const { config } = manifest;
-  const lists = config.lists.map(heroList) as unknown as readonly [List, List];
   const save = () => {
     manifest.updatedAt = now().toISOString();
     writeManifest(runDir, manifest);
@@ -194,8 +197,7 @@ async function play(manifest: Manifest, options: ResumeSuiteOptions): Promise<Ru
   };
 
   const playOne = async (game: ManifestGame): Promise<void> => {
-    const first = lists.find((list) => heroSlug(list.hero.name) === game.first)!;
-    const second = lists.find((list) => list !== first)!;
+    const lists: readonly [List, List] = [heroList(game.heroes[0]), heroList(game.heroes[1])];
     const path = join(runDir, game.file);
     const saved = existsSync(path) ? readGameFile(path) : undefined;
     try {
@@ -205,7 +207,7 @@ async function play(manifest: Manifest, options: ResumeSuiteOptions): Promise<Ru
       } else {
         const played = await playGame({
           seed: game.seed,
-          lists: [first, second],
+          lists,
           configs: config.configs,
           call,
           runDir,
@@ -265,14 +267,9 @@ export function readGameFiles(runDir: string, manifest: Manifest): Record<string
   return files;
 }
 
-/** Writes the manifest atomically: to `<path>.tmp`, then renamed over the old
- * one, so a reader never sees a partial document. */
+/** Writes the manifest atomically (see `writeAtomically`), indented. */
 export function writeManifest(runDir: string, manifest: Manifest): void {
-  mkdirSync(runDir, { recursive: true });
-  const path = join(runDir, MANIFEST_FILE);
-  const temp = `${path}.tmp`;
-  writeFileSync(temp, JSON.stringify(manifest, null, 2));
-  renameSync(temp, path);
+  writeAtomically(join(runDir, MANIFEST_FILE), JSON.stringify(manifest, null, 2));
 }
 
 export function readManifest(runDir: string): Manifest {

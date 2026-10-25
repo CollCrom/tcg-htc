@@ -1,5 +1,6 @@
 // Agents: the decision-makers occupying the Seats of a Game.
 import type { GameIntent, GameView } from "@fyendal/shared";
+import type { RenderedDecision } from "./render.js";
 
 /** A Seat, numbered 0 and 1 as in the engine. */
 export type Seat = 0 | 1;
@@ -65,9 +66,11 @@ export interface AgentMeasurements {
   costUsd?: number;
 }
 
-/** Chooses one of the legal Intents from its Seat's View. It is never handed
- * the full game state. */
-export type Agent = (view: View, legalIntents: readonly Intent[], rng: Rng) => Promise<Decision>;
+/** Chooses one of the legal Intents from its Seat's View. It is also handed
+ * the decision as the runner rendered it from that View (`renderDecision`),
+ * the same text the Decision record keeps, so an Agent that reads text need
+ * not render again. It is never handed the full game state. */
+export type Agent = (view: View, legalIntents: readonly Intent[], rng: Rng, rendered: RenderedDecision) => Promise<Decision>;
 
 /** Picks uniformly from the legal Intents. */
 export const randomAgent: Agent = async (_view, legalIntents, rng) => {

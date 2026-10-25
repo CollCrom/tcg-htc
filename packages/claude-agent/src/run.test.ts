@@ -10,6 +10,7 @@ import { fakeClaudeCode, type FakeScript, type RecordedCall } from "./fakeClaude
 import { heroList } from "./heroLists.js";
 import { readManifest, runSuite, type Manifest, type ManifestGame, type RunConfig } from "./run.js";
 import { legalPresentation } from "./scriptedBuild.js";
+import { listedEntries } from "./scriptedPlay.js";
 
 const RUN_TIMEOUT = 120_000;
 const configs: readonly [ClaudeConfig, ClaudeConfig] = [
@@ -20,10 +21,7 @@ const usage = { model: "claude-opus-4-1", inputTokens: 100, cachedTokens: 2000, 
 const answer = (intent: unknown): CallResult => ({ kind: "answer", output: { intent, reasoning: "fine", planNotes: "" }, turns: 2, usage });
 
 /** The numbered Intent entries a decision message lists, without their numbers. */
-function entriesOf({ message }: RecordedCall): string[] {
-  const lines = message.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).map((line) => line.replace(/^\d+\. /, ""));
-}
+const entriesOf = ({ message }: RecordedCall): string[] => listedEntries(message);
 
 const lists = [heroList("ira"), heroList("bravo")];
 
@@ -87,11 +85,11 @@ describe("runSuite", () => {
         onGame: (game, handed) => changes.push({ id: game.id, status: game.status, run: handed.status, onDisk: readManifest(runDir) }),
       });
 
-      expect(manifest.games.map(({ id, seed, first, file }) => ({ id, seed, first, file }))).toEqual([
-        { id: "1-ira-first", seed: 1, first: "ira", file: "game-1-ira-first.json" },
-        { id: "1-bravo-first", seed: 1, first: "bravo", file: "game-1-bravo-first.json" },
-        { id: "2-ira-first", seed: 2, first: "ira", file: "game-2-ira-first.json" },
-        { id: "2-bravo-first", seed: 2, first: "bravo", file: "game-2-bravo-first.json" },
+      expect(manifest.games.map(({ id, seed, heroes, file }) => ({ id, seed, heroes, file }))).toEqual([
+        { id: "1-ira-first", seed: 1, heroes: ["ira", "bravo"], file: "game-1-ira-first.json" },
+        { id: "1-bravo-first", seed: 1, heroes: ["bravo", "ira"], file: "game-1-bravo-first.json" },
+        { id: "2-ira-first", seed: 2, heroes: ["ira", "bravo"], file: "game-2-ira-first.json" },
+        { id: "2-bravo-first", seed: 2, heroes: ["bravo", "ira"], file: "game-2-bravo-first.json" },
       ]);
       expect(manifest.status).toBe("complete");
       expect(manifest.config).toEqual(config());

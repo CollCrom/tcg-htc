@@ -3,10 +3,9 @@
 // for the whole Game (primer, Seat, answer format, its own Decklist) and a
 // message that changes per decision (the rendered decision, its Plan notes),
 // and answers with one Intent number, its reasoning and new Plan notes.
-import { cardData } from "@fyendal/cards";
 import type { Decklist } from "@fyendal/shared";
-import { describeCardData, EQUIPMENT_SLOTS, renderDecision, type Agent, type Seat } from "@tcg-htc/runner";
-import { ask, failed, field, type Read } from "./ask.js";
+import { describeCardId, EQUIPMENT_SLOTS, type Agent, type Seat } from "@tcg-htc/runner";
+import { ask, describeAgent, failed, field, textField, type Read } from "./ask.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { CARD_SYMBOLS_SECTION, primer } from "./prompt.js";
 
@@ -16,6 +15,8 @@ export { PRIMER_FILE } from "./prompt.js";
 /** Plan notes longer than this are cut, and the cut recorded on the Decision. */
 export const PLAN_NOTES_LIMIT = 2_000;
 
+// "Answer" here is Claude Code's raw reply, before the Agent turns it into a
+// Decision; that is the sense the glossary's "answer (for a Decision)" keeps.
 /** What an answer must look like: the Intent number, reasoning, Plan notes. */
 export const ANSWER_SCHEMA = {
   type: "object",
@@ -63,11 +64,11 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
   const callConfig: ClaudeConfig = { model, effort };
   const resultsDir = options.resultsDir ?? "results";
   const systemPrompt = buildSystemPrompt(seat, decklist);
-  const who = `Seat ${seat}'s Claude Agent (${model}, ${effort})`;
+  const who = describeAgent(seat, callConfig);
   let planNotes = options.planNotes ?? "";
 
-  const agent: Agent = async (view, legalIntents) => {
-    const rendered = renderDecision(view, seat, legalIntents);
+  // The runner's rendering of the View is the message; its numbered entries map the answer back to an Intent.
+  const agent: Agent = async (_view, _legalIntents, _rng, rendered) => {
     const asked = await ask({
       call,
       who,
@@ -93,7 +94,8 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
   }) as ClaudeAgent;
 }
 
-/** The three fields of an answer, once it names a listed Intent. */
+/** The three fields of an answer (Claude Code's raw reply, not yet a
+ * Decision), once it names a listed Intent. */
 interface Answer {
   intent: number;
   reasoning: string;
@@ -102,14 +104,13 @@ interface Answer {
 
 function readAnswer(output: unknown, count: number): Read<Answer> {
   const intent = field(output, "intent");
-  const text = (value: unknown): string => (typeof value === "string" ? value : "");
   if (typeof intent !== "number" || !Number.isInteger(intent)) {
     return { ok: false, problem: `Your answer named no Intent number (got ${JSON.stringify(intent)}); answer with one of 1 to ${count}` };
   }
   if (intent < 1 || intent > count) {
     return { ok: false, problem: `Your answer named Intent ${intent} but only 1 to ${count} are listed` };
   }
-  return { ok: true, value: { intent, reasoning: text(field(output, "reasoning")), planNotes: text(field(output, "planNotes")) } };
+  return { ok: true, value: { intent, reasoning: textField(output, "reasoning"), planNotes: textField(output, "planNotes") } };
 }
 
 /** The per-decision message: the rendered decision, then the Plan notes. */
@@ -140,22 +141,18 @@ export function buildSystemPrompt(seat: Seat, decklist: Decklist): string {
 /** The Decklist with full card text: hero, weapons, equipment by slot, and
  * the Deck grouped by card with counts. */
 function describeDecklist(decklist: Decklist): string {
-  const describe = (cardId: string): string => {
-    const data = cardData[cardId];
-    return data ? describeCardData(data) : `${cardId}: no card data`;
-  };
   const counts = new Map<string, number>();
   for (const cardId of decklist.deck) counts.set(cardId, (counts.get(cardId) ?? 0) + 1);
   return [
-    `Hero: ${describe(decklist.heroId)}`,
+    `Hero: ${describeCardId(decklist.heroId)}`,
     "Weapons:",
-    ...decklist.weaponIds.map((cardId) => `- ${describe(cardId)}`),
+    ...decklist.weaponIds.map((cardId) => `- ${describeCardId(cardId)}`),
     "Equipment:",
     ...EQUIPMENT_SLOTS.flatMap((slot) => {
       const cardId = decklist.equipment[slot];
-      return cardId ? [`- ${slot}: ${describe(cardId)}`] : [];
+      return cardId ? [`- ${slot}: ${describeCardId(cardId)}`] : [];
     }),
     `Deck (${decklist.deck.length} cards):`,
-    ...[...counts].map(([cardId, count]) => `- ${count}x ${describe(cardId)}`),
+    ...[...counts].map(([cardId, count]) => `- ${count}x ${describeCardId(cardId)}`),
   ].join("\n");
 }

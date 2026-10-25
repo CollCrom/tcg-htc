@@ -4,8 +4,9 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { writeAtomically } from "./writeAtomically.js";
 
 /** A Claude Code model alias. What it maps to changes by the day, so the
  * answer's `usage.model` keeps the model Claude Code reports. */
@@ -18,6 +19,11 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 export interface ClaudeConfig {
   model: ModelAlias;
   effort: Effort;
+}
+
+/** A config as the scripts and the report name it: `opus at medium`. */
+export function describeConfig({ model, effort }: ClaudeConfig): string {
+  return `${model} at ${effort}`;
 }
 
 /** One request to Claude Code. */
@@ -99,7 +105,9 @@ export async function runClaudeCode(request: CallRequest, options: CallOptions =
   mkdirSync(cwd, { recursive: true });
   const promptFile = systemPromptFile(request.resultsDir, request.systemPrompt);
   if (!existsSync(promptFile) || readFileSync(promptFile, "utf8") !== request.systemPrompt) {
-    writeFileSync(promptFile, request.systemPrompt);
+    // Atomically: two Games with the same prompt can write it while a third
+    // `claude` reads it.
+    writeAtomically(promptFile, request.systemPrompt);
   }
   const args = [
     "-p",

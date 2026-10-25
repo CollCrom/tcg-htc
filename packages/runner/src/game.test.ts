@@ -45,9 +45,13 @@ describe("runGame", () => {
 
       expect(offers.map(({ seat }) => seat)).toEqual(expect.arrayContaining([0, 1]));
       for (const { seat, args } of offers) {
-        expect(args).toHaveLength(3);
-        const [view, legal] = args as Parameters<Agent>;
+        expect(args).toHaveLength(4);
+        const [view, legal, , rendered] = args as Parameters<Agent>;
         expect(view).not.toHaveProperty("rngState");
+        // The rendering is of this Seat's View, with the legal Intents behind its numbered entries.
+        expect(rendered.text).toContain(`You are Seat ${seat}`);
+        expect(rendered.entries).toHaveLength(rendered.intents.length);
+        for (const intent of rendered.intents) expect(legal).toContain(intent);
         expect(view.players[seat].deck).toBeUndefined();
         const opponent = view.players[opponentOf(seat)];
         expect(opponent.hand).toEqual([]);
@@ -88,9 +92,9 @@ describe("runGame", () => {
     "measures every decision: Seat, Intents offered and estimated tokens",
     async () => {
       const offered: number[] = [];
-      const counting: Agent = (view, legal, rng) => {
+      const counting: Agent = (view, legal, rng, rendered) => {
         offered.push(legal.length);
-        return randomAgent(view, legal, rng);
+        return randomAgent(view, legal, rng, rendered);
       };
       const { measurements, steps } = await runGame({ decklists, seed: 7, startingSeat: 0, agents: [counting, counting] });
 
@@ -124,9 +128,9 @@ describe("runGame", () => {
     "estimates tokens from a rendering more compact than the raw View",
     async () => {
       const sizes: number[] = [];
-      const sizing: Agent = (view, legal, rng) => {
+      const sizing: Agent = (view, legal, rng, rendered) => {
         sizes.push(JSON.stringify({ view, legal }).length / 4);
-        return randomAgent(view, legal, rng);
+        return randomAgent(view, legal, rng, rendered);
       };
       const { measurements } = await runGame({ decklists, seed: 9, startingSeat: 0, agents: [sizing, sizing] });
 
@@ -142,9 +146,9 @@ describe("runGame", () => {
       const offers: { step: number; seat: Seat; view: View }[] = [];
       const recording =
         (seat: Seat): Agent =>
-        (view, legal, rng) => {
+        (view, legal, rng, rendered) => {
           offers.push({ step: offers.length, seat, view });
-          return randomAgent(view, legal, rng);
+          return randomAgent(view, legal, rng, rendered);
         };
       const { replay, decisions } = await runGame({ decklists, seed: 10, startingSeat: 0, agents: [recording(0), recording(1)] });
 
@@ -187,9 +191,9 @@ describe("runGame", () => {
   it(
     "reports a Game that runs past the step cap as a stall with its seed",
     async () => {
-      const passing: Agent = (view, legal, rng) => {
+      const passing: Agent = (view, legal, rng, rendered) => {
         const pass = legal.find((intent) => intent.kind === "pass");
-        return pass ? Promise.resolve({ intent: pass }) : randomAgent(view, legal, rng);
+        return pass ? Promise.resolve({ intent: pass }) : randomAgent(view, legal, rng, rendered);
       };
 
       const result = await runGame({ decklists, seed: 7, startingSeat: 0, agents: [passing, passing] });
@@ -207,9 +211,9 @@ describe("runGame", () => {
   it(
     "caps a Game at the steps it is given instead of the default, ending it as a stall",
     async () => {
-      const passing: Agent = (view, legal, rng) => {
+      const passing: Agent = (view, legal, rng, rendered) => {
         const pass = legal.find((intent) => intent.kind === "pass");
-        return pass ? Promise.resolve({ intent: pass }) : randomAgent(view, legal, rng);
+        return pass ? Promise.resolve({ intent: pass }) : randomAgent(view, legal, rng, rendered);
       };
 
       const result = await runGame({ decklists, seed: 7, startingSeat: 0, agents: [passing, passing], maxSteps: 40 });
@@ -225,10 +229,10 @@ describe("runGame", () => {
     "reports an Intent the engine rejects as an error with its seed, step and the engine's message",
     async () => {
       let decisions = 0;
-      const illegalOnFourth: Agent = (view, legal, rng) =>
+      const illegalOnFourth: Agent = (view, legal, rng, rendered) =>
         ++decisions === 4
           ? Promise.resolve({ intent: { kind: "play-card", instanceId: -1, pitchInstanceIds: [] } })
-          : randomAgent(view, legal, rng);
+          : randomAgent(view, legal, rng, rendered);
 
       const result = await runGame({ decklists, seed: 8, startingSeat: 1, agents: [illegalOnFourth, illegalOnFourth] });
 
@@ -246,8 +250,8 @@ describe("runGame", () => {
       const offers: { seat: Seat; view: View; legal: readonly Intent[]; decision: Decision }[] = [];
       const recording =
         (seat: Seat): Agent =>
-        async (view, legal, rng) => {
-          const decision: Decision = { ...(await randomAgent(view, legal, rng)), reasoning: `decision ${offers.length}`, planNotes: "keep attacking" };
+        async (view, legal, rng, rendered) => {
+          const decision: Decision = { ...(await randomAgent(view, legal, rng, rendered)), reasoning: `decision ${offers.length}`, planNotes: "keep attacking" };
           offers.push({ seat, view, legal, decision });
           return decision;
         };
@@ -273,7 +277,7 @@ describe("runGame", () => {
     async () => {
       let decisions = 0;
       const failure: Decision = { cause: "timeout", detail: "Seat 1's Claude Agent (opus, medium) timed out" };
-      const failingOnFourth: Agent = (view, legal, rng) => (++decisions === 4 ? Promise.resolve(failure) : randomAgent(view, legal, rng));
+      const failingOnFourth: Agent = (view, legal, rng, rendered) => (++decisions === 4 ? Promise.resolve(failure) : randomAgent(view, legal, rng, rendered));
 
       const result = await runGame({ decklists, seed: 12, startingSeat: 1, agents: [failingOnFourth, failingOnFourth] });
 
@@ -292,7 +296,7 @@ describe("runGame", () => {
     async () => {
       let decisions = 0;
       const failure: Decision = { cause: "rate-limit", detail: "Seat 1's Claude Agent (opus, medium): You've hit your limit" };
-      const failingOnFourth: Agent = (view, legal, rng) => (++decisions === 4 ? Promise.resolve(failure) : randomAgent(view, legal, rng));
+      const failingOnFourth: Agent = (view, legal, rng, rendered) => (++decisions === 4 ? Promise.resolve(failure) : randomAgent(view, legal, rng, rendered));
 
       const result = await runGame({ decklists: iraVsBravo, seed: 12, startingSeat: 1, agents: [failingOnFourth, failingOnFourth] });
 
@@ -310,9 +314,9 @@ describe("runGame", () => {
     "pauses before a decision once `shouldStop` says so, with every applied Intent in the replay and no record for the decision not made",
     async () => {
       let decisions = 0;
-      const counting: Agent = (view, legal, rng) => {
+      const counting: Agent = (view, legal, rng, rendered) => {
         decisions++;
-        return randomAgent(view, legal, rng);
+        return randomAgent(view, legal, rng, rendered);
       };
 
       const result = await runGame({ decklists: iraVsBravo, seed: 13, startingSeat: 0, agents: [counting, counting], shouldStop: () => decisions >= 5 });
@@ -360,9 +364,9 @@ describe("runGame", () => {
     async () => {
       const seen: { record: DecisionRecord; progress: DecisionProgress; applied: number }[] = [];
       const views: View[] = [];
-      const recording: Agent = (view, legal, rng) => {
+      const recording: Agent = (view, legal, rng, rendered) => {
         views.push(view);
-        return randomAgent(view, legal, rng);
+        return randomAgent(view, legal, rng, rendered);
       };
 
       const result = await runGame({
@@ -381,11 +385,12 @@ describe("runGame", () => {
         expect(progress.turn).toBe(views[i]!.turn);
         expect(applied).toBe(i + 1);
         expect(progress.intents.slice(0, applied)).toEqual(result.replay.intents.slice(0, applied));
-        expect(progress.listed).toEqual(renderDecision(views[i]!, record.seat, record.intents).intents);
-        for (const intent of progress.listed) expect(record.intents).toContain(intent);
+        expect(progress.rendered).toEqual(renderDecision(views[i]!, record.seat, record.intents));
+        expect(progress.rendered.text).toBe(record.rendered);
+        for (const intent of progress.rendered.intents) expect(record.intents).toContain(intent);
       });
       // The random Agent picks from the raw list, so its choice can be a pitch ordering the numbered entries fold away.
-      expect(seen.some(({ record, progress }) => progress.listed.length < record.intents.length)).toBe(true);
+      expect(seen.some(({ record, progress }) => progress.rendered.intents.length < record.intents.length)).toBe(true);
       expect(seen.at(-1)!.progress.turn).toBe(result.turns);
     },
     GAME_TIMEOUT,
@@ -396,7 +401,7 @@ describe("runGame", () => {
     async () => {
       let decisions = 0;
       const failure: Decision = { cause: "timeout", detail: "Seat 0's Claude Agent (opus, medium): timed out" };
-      const failingOnThird: Agent = (view, legal, rng) => (++decisions === 3 ? Promise.resolve(failure) : randomAgent(view, legal, rng));
+      const failingOnThird: Agent = (view, legal, rng, rendered) => (++decisions === 3 ? Promise.resolve(failure) : randomAgent(view, legal, rng, rendered));
       const seen: { record: DecisionRecord; progress: DecisionProgress }[] = [];
 
       const result = await runGame({

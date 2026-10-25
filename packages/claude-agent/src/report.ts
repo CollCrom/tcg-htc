@@ -4,10 +4,10 @@ import { isFailure, type DecisionRecord, type Seat } from "@tcg-htc/runner";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { ClaudeConfig } from "./claudeCode.js";
-import type { Hero } from "./gameClaudeArgs.js";
+import { describeConfig, type ClaudeConfig } from "./claudeCode.js";
 import type { GameFile } from "./gameFile.js";
-import { HERO_LIST_FILES, heroList, heroTitle } from "./heroLists.js";
+import { HERO_LIST_FILES, heroList, heroTitle, type Hero } from "./heroLists.js";
+import { describeOutcome } from "./playGame.js";
 import type { Manifest, ManifestGame, RunConfig } from "./run.js";
 import { formatSeeds } from "./suiteClaudeArgs.js";
 
@@ -50,7 +50,7 @@ export function exitCriteria(manifest: Manifest): ExitCriteria {
 
 /** The single-Game command that plays a Run's Game again. */
 export function reproduceCommand(game: ManifestGame, config: RunConfig): string {
-  return `pnpm game:claude --seed ${game.seed} --first ${game.first}${configFlags(config.configs)}`;
+  return `pnpm game:claude --seed ${game.seed} --first ${game.heroes[0]}${configFlags(config.configs)}`;
 }
 
 function configFlags(configs: readonly [ClaudeConfig, ClaudeConfig]): string {
@@ -75,8 +75,8 @@ export function renderReport(manifest: Manifest, gameFiles: Record<string, GameF
     "## Results",
     table(["Outcome", "Games"], outcomeRows(manifest)),
     table(
-      ["Game", "Seed", "Seat order", "Outcome", "Winner", "Decisions", "Turns"],
-      games.map((game) => gameRow(game, config, gameFiles[game.id])),
+      ["Game", "Seed", "Seat order", "Outcome", "Winner", "Decisions", "Turns", "Models (Seat 0 / Seat 1)"],
+      games.map((game) => gameRow(game, gameFiles[game.id])),
     ),
     "## Measurements",
     table(["Measurement", "Average", "Maximum"], measurementRows(games.map(({ id }) => gameFiles[id]).filter((file): file is GameFile => !!file))),
@@ -84,13 +84,7 @@ export function renderReport(manifest: Manifest, gameFiles: Record<string, GameF
     "### Models reported",
     table(
       ["Seat", "Config", "Models Claude Code reported"],
-      ([0, 1] as const).map((seat) => [
-        String(seat),
-        describeConfig(config.configs[seat]),
-        modelsReported(Object.values(gameFiles), seat)
-          .map((model) => `\`${model}\``)
-          .join(", ") || "-",
-      ]),
+      ([0, 1] as const).map((seat) => [String(seat), describeConfig(config.configs[seat]), modelsCell(modelsReported(Object.values(gameFiles), seat))]),
     ),
     "## Exit criteria",
     table(
@@ -130,13 +124,9 @@ function seedsPhrase(seeds: readonly number[]): string {
   return flag.includes("-") ? flag.replace("-", " to ") : flag.replace(/,/g, ", ");
 }
 
-function describeConfig({ model, effort }: ClaudeConfig): string {
-  return `\`${model}\` at \`${effort}\``;
-}
-
 function outcomeRows({ games, config }: Manifest): string[][] {
   const count = (kind: string) => games.filter(({ outcome }) => outcome?.outcome === kind).length;
-  const winsFor = (hero: Hero) => games.filter((game) => game.outcome?.outcome === "win" && heroInSeat(game, config, game.outcome.winner) === hero).length;
+  const winsFor = (hero: Hero) => games.filter((game) => game.outcome?.outcome === "win" && heroInSeat(game, game.outcome.winner) === hero).length;
   return [
     ["Win", `${count("win")} (${config.lists.map((hero) => `${heroTitle(hero)} ${winsFor(hero)}`).join(", ")})`],
     ["Draw", String(count("draw"))],
@@ -145,34 +135,38 @@ function outcomeRows({ games, config }: Manifest): string[][] {
   ];
 }
 
-/** The hero in a Seat of a Game: Seat 0 holds `first`, Seat 1 the other List. */
-function heroInSeat(game: ManifestGame, config: RunConfig, seat: Seat): string {
-  if (seat === 0) return game.first;
-  return config.lists.find((hero) => hero !== game.first) ?? config.lists[1];
+/** The hero in a Seat of a Game, as its manifest entry recorded it. */
+function heroInSeat(game: ManifestGame, seat: Seat): Hero {
+  return game.heroes[seat];
 }
 
-function seatOrder(game: ManifestGame, config: RunConfig): string {
-  return `${heroTitle(heroInSeat(game, config, 0))} (Seat 0) vs ${heroTitle(heroInSeat(game, config, 1))} (Seat 1)`;
+function seatOrder(game: ManifestGame): string {
+  return `${heroTitle(heroInSeat(game, 0))} (Seat 0) vs ${heroTitle(heroInSeat(game, 1))} (Seat 1)`;
 }
 
-function gameRow(game: ManifestGame, config: RunConfig, file: GameFile | undefined): string[] {
+function gameRow(game: ManifestGame, file: GameFile | undefined): string[] {
   const { outcome } = game;
-  const outcomeText = !outcome
-    ? game.status
-    : outcome.outcome === "win" || outcome.outcome === "draw"
-      ? outcome.outcome
-      : `${outcome.outcome}${outcome.outcome === "error" && outcome.cause ? ` (${outcome.cause})` : ""} at step ${outcome.step}`;
-  const winner = outcome?.outcome === "win" ? `${heroTitle(heroInSeat(game, config, outcome.winner))} (Seat ${outcome.winner})` : "-";
+  const winner = outcome?.outcome === "win" ? `${heroTitle(heroInSeat(game, outcome.winner))} (Seat ${outcome.winner})` : "-";
   const decisions = file ? file.decisions.length : game.steps;
   return [
     `\`${game.id}\``,
     String(game.seed),
-    seatOrder(game, config),
-    outcomeText,
+    seatOrder(game),
+    outcome ? describeOutcome(outcome) : game.status,
     winner,
     decisions === undefined ? "-" : String(decisions),
     file?.turns === undefined ? "-" : String(file.turns),
+    file ? modelsPlayedBy(file) : "-",
   ];
+}
+
+/** The models Claude Code reported for each Seat of one Game, `Seat 0's / Seat 1's`. */
+function modelsPlayedBy(file: GameFile): string {
+  return ([0, 1] as const).map((seat) => modelsCell(modelsReported([file], seat))).join(" / ");
+}
+
+function modelsCell(models: string[]): string {
+  return models.map((model) => `\`${model}\``).join(", ") || "-";
 }
 
 function measurementRows(files: GameFile[]): string[][] {
@@ -225,9 +219,8 @@ export function modelsReported(files: GameFile[], seat: Seat): string[] {
 function failureEntry(game: ManifestGame, config: RunConfig): string {
   const { outcome } = game;
   if (!outcome || !isFailure(outcome)) return "";
-  const cause = outcome.outcome === "error" && outcome.cause ? ` (${outcome.cause})` : "";
   const detail = outcome.detail.replace(/\.?$/, ".");
-  return `- \`${game.id}\`: seed ${game.seed}, ${seatOrder(game, config)}, step ${outcome.step}, **${outcome.outcome}**${cause}: ${detail}\n  Reproduce: \`${reproduceCommand(game, config)}\``;
+  return `- \`${game.id}\`: seed ${game.seed}, ${seatOrder(game)}, **${describeOutcome(outcome)}**: ${detail}\n  Reproduce: \`${reproduceCommand(game, config)}\``;
 }
 
 function table(header: string[], rows: string[][]): string {

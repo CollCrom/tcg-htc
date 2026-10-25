@@ -12,7 +12,7 @@ import {
 import type { Decklist, GameView } from "@fyendal/shared";
 import { isDecisionFailure, type Agent, type Decision, type DecisionFailureCause, type Intent, type Rng, type Seat } from "./agent.js";
 import { measureDecision, summarise, type DecisionMeasurement, type GameMeasurements } from "./measure.js";
-import { renderDecision } from "./render.js";
+import { renderDecision, type RenderedDecision } from "./render.js";
 
 /** Steps after which a Game is abandoned. */
 export const MAX_STEPS = 5_000;
@@ -57,9 +57,10 @@ export interface DecisionProgress {
   turn: number;
   /** Every Intent applied so far, this decision's included when it was. */
   intents: readonly Intent[];
-  /** The Intents behind the numbered entries of the record's `rendered` text
-   * (`renderDecision`'s `intents`), so a chosen Intent resolves to its entry. */
-  listed: readonly Intent[];
+  /** The decision as rendered for the Agent: the record's `rendered` text
+   * with the Intents and wording behind its numbered entries, so a chosen
+   * Intent resolves to its entry. */
+  rendered: RenderedDecision;
 }
 
 /** How a Game ended. A stall or an error is returned rather than thrown, with
@@ -170,10 +171,10 @@ export async function runGame(options: RunGameOptions): Promise<GameResult> {
     const view = projectStateFor(state, seat);
     const rendered = renderDecision(view, seat, legal);
     measured.push(measureDecision(seat, legal, rendered));
-    const decision = await agents[seat](view, legal, rngs[seat]);
+    const decision = await agents[seat](view, legal, rngs[seat], rendered);
     const record: DecisionRecord = { seat, rendered: rendered.text, intents: legal, decision };
     decisions.push(record);
-    const report = () => onDecision?.(record, { step: steps, turn: view.turn, intents, listed: rendered.intents });
+    const report = () => onDecision?.(record, { step: steps, turn: view.turn, intents, rendered });
     if (isDecisionFailure(decision)) {
       failure =
         decision.cause === "rate-limit"

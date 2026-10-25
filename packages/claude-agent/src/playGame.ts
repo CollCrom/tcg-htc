@@ -20,6 +20,7 @@ import {
   type GameResult,
   type List,
   type Seat,
+  STOPPED_DETAIL,
 } from "@tcg-htc/runner";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -28,6 +29,7 @@ import { buildDecklist } from "./buildDecklist.js";
 import { claudeAgent, type ClaudeAgent } from "./claudeAgent.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { agentTotals, gameFileName, writeGameFile, type DecklistDecisionRecord, type GameFile, type GameFileSetup } from "./gameFile.js";
+import { heroOf } from "./heroLists.js";
 
 /** Decisions after which a Game between Claude Agents is abandoned as a
  * stall, so a runaway Game can't drain the subscription window. */
@@ -55,7 +57,8 @@ export interface PlayGameOptions {
   clock?: () => number;
   /** The decision cap, `CLAUDE_MAX_DECISIONS` by default. */
   maxSteps?: number;
-  /** See `runGame`: asked before every decision; true pauses the Game. */
+  /** Asked before each Decklist build and (see `runGame`) before every
+   * decision; true pauses the Game there, to be resumed from its file. */
   shouldStop?: () => boolean;
   /** The Game file of a paused (or interrupted) Game to carry on: its valid
    * Decklist builds are reused and only a Seat without one builds again; each
@@ -71,8 +74,8 @@ export interface WrittenGameFile {
 }
 
 /** A Game that never started because a Seat's Decklist build failed (the
- * error outcome at step 0) or hit a rate limit (paused at step 0), with no
- * replay and no play records. */
+ * error outcome at step 0), hit a rate limit or was stopped before a build
+ * (paused at step 0), with no replay and no play records. */
 export type UnplayedGame = (GameError | GamePause) & {
   turns: 0;
   steps: 0;
@@ -90,7 +93,7 @@ export interface PlayedGame extends WrittenGameFile {
 export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
   const { seed, lists, configs, call, runDir, decklistPicker, onDecision, clock = () => performance.now(), maxSteps = CLAUDE_MAX_DECISIONS, shouldStop, resumeFrom } = options;
   const startingSeat: Seat = 0;
-  const path = join(runDir, gameFileName(seed, lists[0].hero.name));
+  const path = join(runDir, gameFileName(seed, heroOf(lists[0].hero.name)));
   const started = clock();
   /** Time already spent on the Game in earlier sittings. */
   const earlierMs = resumeFrom?.measurements.durationMs ?? 0;
@@ -103,6 +106,24 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
   };
 
   const builds: DecklistDecisionRecord[] = [...(resumeFrom?.decklistDecisions ?? [])];
+  /** Ends the Game before it started, writing the file with the builds so far
+   * and no play records: complete with the error outcome for a failed build,
+   * paused (and resumable) for a rate limit or a stop before a build. */
+  const unplayed = (outcome: GameError | GamePause): PlayedGame => {
+    const paused = outcome.outcome === "paused";
+    const measurements = summarise([], earlierMs + clock() - started);
+    const file: GameFile = {
+      status: paused ? "paused" : "complete",
+      setup,
+      decklistDecisions: builds,
+      ...(paused ? {} : { outcome, turns: 0 }),
+      measurements: { ...measurements, ...totals([], builds) },
+      decisions: [],
+    };
+    writeGameFile(path, file);
+    return { result: { ...outcome, turns: 0, steps: 0, measurements, decisions: [] }, file, path };
+  };
+
   const built: Decklist[] = [];
   for (const seat of [0, 1] as const) {
     const saved = resumeFrom?.setup.decklists?.[seat] ?? validBuild(builds, seat);
@@ -114,6 +135,8 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
       built.push(decklistPicker(lists[seat], seed));
       continue;
     }
+    // A pausing Run starts no new call, builds included.
+    if (shouldStop?.()) return unplayed({ outcome: "paused", seed, step: 0, detail: STOPPED_DETAIL });
     const build = await buildDecklist({
       seat,
       list: lists[seat],
@@ -124,22 +147,8 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     });
     builds.push({ kind: "decklist", seat, ...build });
     if (failed(build.decision)) {
-      const { detail } = build.decision;
-      const outcome: GameError | GamePause =
-        build.decision.cause === "rate-limit"
-          ? { outcome: "paused", seed, step: 0, detail, cause: "rate-limit" }
-          : { outcome: "error", seed, step: 0, detail, cause: build.decision.cause };
-      const measurements = summarise([], earlierMs + clock() - started);
-      const file: GameFile = {
-        status: outcome.outcome === "paused" ? "paused" : "complete",
-        setup,
-        decklistDecisions: builds,
-        ...(outcome.outcome === "paused" ? {} : { outcome, turns: 0 }),
-        measurements: { ...measurements, ...totals([], builds) },
-        decisions: [],
-      };
-      writeGameFile(path, file);
-      return { result: { ...outcome, turns: 0, steps: 0, measurements, decisions: [] }, file, path };
+      const { detail, cause } = build.decision;
+      return unplayed(cause === "rate-limit" ? { outcome: "paused", seed, step: 0, detail, cause } : { outcome: "error", seed, step: 0, detail, cause });
     }
     built.push(build.decision.decklist);
   }
@@ -165,7 +174,7 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     resume: { intents: savedIntents },
     onDecision: (record, progress) => {
       records.push(record);
-      measured.push(measureDecision(record.seat, record.intents, { text: record.rendered, intents: [...progress.listed] }));
+      measured.push(measureDecision(record.seat, record.intents, progress.rendered));
       const file: GameFile = {
         status: "playing",
         setup,
@@ -188,7 +197,9 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     systemPrompts,
     replay: result.replay,
     ...(paused ? {} : { outcome: outcomeOf(result), turns: result.turns }),
-    measurements: { ...summarise(measured, earlierMs + result.measurements.durationMs), ...totals(records, builds) },
+    // As every in-progress write measures it: this sitting from its first
+    // build, not just runGame's part of it.
+    measurements: { ...summarise(measured, earlierMs + clock() - started), ...totals(records, builds) },
     decisions: records,
   };
   writeGameFile(path, file);
@@ -222,14 +233,13 @@ export function progressLine(id: string, record: DecisionRecord, progress: Decis
   return `game ${id} step ${progress.step} turn ${progress.turn} seat ${record.seat}: ${what} (${decision.measurements?.latencyMs ?? 0} ms)`;
 }
 
-/** The text of the numbered entry the record's Intent stands behind. */
-function chosenEntry(record: DecisionRecord, progress: DecisionProgress): string {
+/** The wording of the numbered entry the record's Intent stands behind, or
+ * the Intent itself when no entry does (a pitch ordering the entries fold away). */
+function chosenEntry(record: DecisionRecord, { rendered }: DecisionProgress): string {
   if (isDecisionFailure(record.decision)) return "";
   const { intent } = record.decision;
-  const index = progress.listed.findIndex((listed) => listed === intent || isDeepStrictEqual(listed, intent));
-  const lines = record.rendered.split("\n");
-  const entry = lines[lines.indexOf("Legal Intents:") + 1 + index];
-  return index >= 0 && entry ? entry.replace(/^\d+\. /, "") : JSON.stringify(intent);
+  const index = rendered.intents.findIndex((listed) => listed === intent || isDeepStrictEqual(listed, intent));
+  return rendered.entries[index] ?? JSON.stringify(intent);
 }
 
 function totals(
@@ -241,6 +251,23 @@ function totals(
     totals: agentTotals(records),
     builds: agentTotals(builds),
   };
+}
+
+/** An outcome in one phrase, as the scripts and the report print it:
+ * `Seat 1 wins`, `draw`, `stall at step 50`, `error (invalid-answer) at
+ * step 7`, `paused (rate-limit) at step 3`. */
+export function describeOutcome(outcome: GameOutcome): string {
+  switch (outcome.outcome) {
+    case "win":
+      return `Seat ${outcome.winner} wins`;
+    case "draw":
+      return "draw";
+    case "stall":
+      return `stall at step ${outcome.step}`;
+    case "error":
+    case "paused":
+      return `${outcome.outcome}${outcome.cause ? ` (${outcome.cause})` : ""} at step ${outcome.step}`;
+  }
 }
 
 /** The outcome alone, without the rest of the result. */

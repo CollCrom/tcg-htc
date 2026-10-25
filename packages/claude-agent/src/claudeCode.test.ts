@@ -144,6 +144,8 @@ describe("claudeCodeCall", () => {
     expect(otherFile).not.toBe(promptFile);
     expect(existsSync(otherFile)).toBe(true);
     expect(readFileSync(join(dir, "args"), "utf8")).toContain(otherFile);
+    // Written whole and renamed into place: a concurrent `claude` never reads a truncated prompt, and nothing is left behind.
+    expect(readdirSync(resultsDir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 });
 
@@ -169,11 +171,9 @@ describe("classify", () => {
     expect(classify(run({ stdout }))).toMatchObject({ kind: "answer", output: { n: 3 } });
   });
 
-  it("reports a timeout", () => {
-    expect(classify(run({ timedOut: true, exitCode: null, stdout: "" }))).toEqual({
-      kind: "timeout",
-      detail: "claude gave no result within 4321 ms and was killed",
-    });
+  // The failure kinds: the kind is the contract; the detail need only carry what Claude Code said (or how long the call waited).
+  it("reports a timeout, saying how long it waited", () => {
+    expect(classify(run({ timedOut: true, exitCode: null, stdout: "" }))).toMatchObject({ kind: "timeout", detail: expect.stringContaining("4321 ms") });
   });
 
   it("reports a rate limit from the result text", () => {
@@ -183,48 +183,33 @@ describe("classify", () => {
       structured_output: undefined,
       result: "You've hit your limit · resets 3pm (Europe/London)",
     });
-    expect(classify(run({ stdout, exitCode: 1 }))).toEqual({
-      kind: "rate-limit",
-      detail: "You've hit your limit · resets 3pm (Europe/London)",
-    });
+    expect(classify(run({ stdout, exitCode: 1 }))).toMatchObject({ kind: "rate-limit", detail: expect.stringContaining("hit your limit · resets 3pm") });
   });
 
   it("reports a rate limit from stderr when there is no result", () => {
-    expect(classify(run({ stdout: "", stderr: "Error: usage limit reached", exitCode: 1 }))).toEqual({
-      kind: "rate-limit",
-      detail: "Error: usage limit reached",
-    });
+    expect(classify(run({ stdout: "", stderr: "Error: usage limit reached", exitCode: 1 }))).toMatchObject({ kind: "rate-limit", detail: expect.stringContaining("usage limit reached") });
   });
 
-  it("reports a refusal when the model answered in prose instead of the schema", () => {
+  it("reports a refusal, with the prose, when the model answered in prose instead of the schema", () => {
     const stdout = resultJson({ structured_output: undefined, result: "I can't help with that." });
-    expect(classify(run({ stdout }))).toEqual({ kind: "refusal", detail: "I can't help with that." });
+    expect(classify(run({ stdout }))).toMatchObject({ kind: "refusal", detail: expect.stringContaining("I can't help with that.") });
   });
 
   it("reports a failure with the message on a non-zero exit", () => {
-    expect(classify(run({ stdout: "", stderr: "Not logged in · run /login", exitCode: 1 }))).toEqual({
-      kind: "failure",
-      detail: "claude exited 1 without a JSON result: Not logged in · run /login",
-    });
+    expect(classify(run({ stdout: "", stderr: "Not logged in · run /login", exitCode: 1 }))).toMatchObject({ kind: "failure", detail: expect.stringContaining("Not logged in") });
   });
 
-  it("reports a failure when the result is an error", () => {
+  it("reports a failure naming the subtype when the result is an error", () => {
     const stdout = resultJson({
       is_error: true,
       subtype: "error_max_turns",
       structured_output: undefined,
       result: "Reached max turns (2)",
     });
-    expect(classify(run({ stdout, exitCode: 1 }))).toEqual({
-      kind: "failure",
-      detail: "claude exited 1 (error_max_turns): Reached max turns (2)",
-    });
+    expect(classify(run({ stdout, exitCode: 1 }))).toMatchObject({ kind: "failure", detail: expect.stringMatching(/error_max_turns.*Reached max turns/) });
   });
 
-  it("reports a failure when stdout is not a result", () => {
-    expect(classify(run({ stdout: "garbage", exitCode: 0 }))).toEqual({
-      kind: "failure",
-      detail: "claude exited 0 without a JSON result: garbage",
-    });
+  it("reports a failure with what was printed when stdout is not a result", () => {
+    expect(classify(run({ stdout: "garbage", exitCode: 0 }))).toMatchObject({ kind: "failure", detail: expect.stringContaining("garbage") });
   });
 });

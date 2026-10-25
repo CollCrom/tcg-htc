@@ -2,10 +2,7 @@
 // tested without playing a Game.
 import { parseArgs } from "node:util";
 import type { ClaudeConfig, Effort, ModelAlias } from "./claudeCode.js";
-
-/** The heroes a Game can be played between, by the name the flags use. */
-export const HEROES = ["ira", "bravo"] as const;
-export type Hero = (typeof HEROES)[number];
+import { HEROES, type Hero } from "./heroLists.js";
 
 export const MODELS: readonly ModelAlias[] = ["opus", "sonnet", "haiku", "fable"];
 export const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];

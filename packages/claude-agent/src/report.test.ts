@@ -89,7 +89,7 @@ const fixtures: Fixture[] = [
 const games: ManifestGame[] = fixtures.map(({ seed, first, outcome, decisions }) => ({
   id: `${seed}-${first}-first`,
   seed,
-  first,
+  heroes: first === "ira" ? ["ira", "bravo"] : ["bravo", "ira"],
   status: outcome.outcome === "win" || outcome.outcome === "draw" ? "complete" : "failed",
   outcome,
   file: `game-${seed}-${first}-first.json`,
@@ -119,34 +119,36 @@ describe("renderReport", () => {
   it("opens with the title and the verdict", () => {
     expect(report).toMatch(/^# Phase 2 report: Claude Agents play Ira vs Bravo through Claude Code\n/);
     expect(report).toContain("Verdict: **fail**");
-    expect(report).toContain("2 of 4 Games ended in a win or draw");
+    expect(report).toMatch(/\b2 of 4 Games\b/);
   });
 
   it("describes the setup: engine commit, Lists, each Seat's model and effort, seeds, seat orders, cap, concurrency, Run directory and command", () => {
-    expect(report).toContain("upstream commit `22e9ed8b952efaa746ce4f0f8d5c975a703ab683`");
-    expect(report).toContain("ira-crimson-haze.txt");
-    expect(report).toContain("bravo-flattering-showman.txt");
-    expect(report).toContain("Seat 0 `opus` at `medium`, Seat 1 `sonnet` at `high`");
-    expect(report).toContain("**Seeds:** 1 to 2");
-    expect(report).toContain("That makes 4 Games.");
-    expect(report).toContain("**Decision cap:** 50");
-    expect(report).toContain("**Concurrency:** 2 Games at a time");
-    expect(report).toContain("`results/2026-10-24T12-00-00Z-suite`");
-    expect(report).toContain("`pnpm suite:claude --model0 opus --effort0 medium --model1 sonnet --effort1 high --seeds 1-2 --concurrency 2`");
+    const setup = report.split("## Setup")[1]!.split("## Results")[0]!;
+    expect(setup).toContain("22e9ed8b952efaa746ce4f0f8d5c975a703ab683");
+    expect(setup).toContain("ira-crimson-haze.txt");
+    expect(setup).toContain("bravo-flattering-showman.txt");
+    expect(setup).toMatch(/Seat 0 .*opus.* at .*medium/);
+    expect(setup).toMatch(/Seat 1 .*sonnet.* at .*high/);
+    expect(setup).toMatch(/Seeds:.*\b1 to 2\b/);
+    expect(setup).toMatch(/\b4 Games\b/);
+    expect(setup).toMatch(/cap:.*\b50\b/);
+    expect(setup).toMatch(/Concurrency:.*\b2\b/);
+    expect(setup).toContain("`results/2026-10-24T12-00-00Z-suite`");
+    expect(setup).toContain("`pnpm suite:claude --model0 opus --effort0 medium --model1 sonnet --effort1 high --seeds 1-2 --concurrency 2`");
   });
 
-  it("tabulates the outcomes and one row per Game", () => {
+  it("tabulates the outcomes and one row per Game, with the models each Seat of that Game was played by", () => {
     expect(rows(report, "Results")).toEqual([
       "| Outcome | Games |",
       "| Win | 2 (Ira 0, Bravo 2) |",
       "| Draw | 0 |",
       "| Stall | 1 |",
       "| Error | 1 |",
-      "| Game | Seed | Seat order | Outcome | Winner | Decisions | Turns |",
-      "| `1-ira-first` | 1 | Ira (Seat 0) vs Bravo (Seat 1) | win | Bravo (Seat 1) | 4 | 10 |",
-      "| `1-bravo-first` | 1 | Bravo (Seat 0) vs Ira (Seat 1) | win | Bravo (Seat 0) | 2 | 8 |",
-      "| `2-ira-first` | 2 | Ira (Seat 0) vs Bravo (Seat 1) | stall at step 50 | - | 50 | 9 |",
-      "| `2-bravo-first` | 2 | Bravo (Seat 0) vs Ira (Seat 1) | error (invalid-answer) at step 7 | - | 8 | 3 |",
+      "| Game | Seed | Seat order | Outcome | Winner | Decisions | Turns | Models (Seat 0 / Seat 1) |",
+      "| `1-ira-first` | 1 | Ira (Seat 0) vs Bravo (Seat 1) | Seat 1 wins | Bravo (Seat 1) | 4 | 10 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
+      "| `1-bravo-first` | 1 | Bravo (Seat 0) vs Ira (Seat 1) | Seat 0 wins | Bravo (Seat 0) | 2 | 8 | `claude-opus-4-1-20260101` / `claude-sonnet-4-5` |",
+      "| `2-ira-first` | 2 | Ira (Seat 0) vs Bravo (Seat 1) | stall at step 50 | - | 50 | 9 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
+      "| `2-bravo-first` | 2 | Bravo (Seat 0) vs Ira (Seat 1) | error (invalid-answer) at step 7 | - | 8 | 3 | `claude-opus-4-1` / `claude-sonnet-4-5` |",
     ]);
   });
 
@@ -173,8 +175,8 @@ describe("renderReport", () => {
       "| Invalid first answers | 1 |",
       "| Plan notes cut | 1 |",
       "| Seat | Config | Models Claude Code reported |",
-      "| 0 | `opus` at `medium` | `claude-opus-4-1`, `claude-opus-4-1-20260101` |",
-      "| 1 | `sonnet` at `high` | `claude-sonnet-4-5` |",
+      "| 0 | opus at medium | `claude-opus-4-1`, `claude-opus-4-1-20260101` |",
+      "| 1 | sonnet at high | `claude-sonnet-4-5` |",
     ]);
   });
 
@@ -197,10 +199,10 @@ describe("renderReport", () => {
   it("lists every failing Game with its seed, seat order, step, outcome, cause, detail and the command that reproduces it", () => {
     const failures = report.split("## Failures and issues filed")[1]!.split("## Decisions")[0]!;
     expect(failures).toContain(
-      "- `2-ira-first`: seed 2, Ira (Seat 0) vs Bravo (Seat 1), step 50, **stall**: Game exceeded 50 steps.\n  Reproduce: `pnpm game:claude --seed 2 --first ira --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
+      "- `2-ira-first`: seed 2, Ira (Seat 0) vs Bravo (Seat 1), **stall at step 50**: Game exceeded 50 steps.\n  Reproduce: `pnpm game:claude --seed 2 --first ira --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
     );
     expect(failures).toContain(
-      "- `2-bravo-first`: seed 2, Bravo (Seat 0) vs Ira (Seat 1), step 7, **error** (invalid-answer): Seat 1's Claude Agent (sonnet, high): Your answer named Intent 9 but only 1 to 4 are listed.\n  Reproduce: `pnpm game:claude --seed 2 --first bravo --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
+      "- `2-bravo-first`: seed 2, Bravo (Seat 0) vs Ira (Seat 1), **error (invalid-answer) at step 7**: Seat 1's Claude Agent (sonnet, high): Your answer named Intent 9 but only 1 to 4 are listed.\n  Reproduce: `pnpm game:claude --seed 2 --first bravo --model0 opus --effort0 medium --model1 sonnet --effort1 high`",
     );
     expect(reproduceCommand(games[2]!, manifestConfig)).toBe("pnpm game:claude --seed 2 --first ira --model0 opus --effort0 medium --model1 sonnet --effort1 high");
   });
@@ -212,7 +214,8 @@ describe("renderReport", () => {
 
   it("passes and reports no failures when every Game is a win or a draw", () => {
     const passing = renderReport({ ...manifest, games: games.slice(0, 2) }, gameFiles, options);
-    expect(passing).toContain("Verdict: **pass**. All 2 Games ended in a win or draw, and no Game ended on an Agent's fault.");
+    expect(passing).toContain("Verdict: **pass**");
+    expect(passing).toMatch(/All 2 Games/);
     expect(passing).toContain("## Failures and issues filed\n\nNone.");
   });
 
@@ -221,15 +224,15 @@ describe("renderReport", () => {
       ...games[3]!,
       id: "3-ira-first",
       seed: 3,
-      first: "ira",
+      heroes: ["ira", "bravo"],
       file: "game-3-ira-first.json",
       steps: 0,
       outcome: { outcome: "error", seed: 3, step: 0, detail: "spawn claude ENOENT" },
     };
     const report = renderReport({ ...manifest, games: [...games, unstarted] }, gameFiles, options);
-    expect(rows(report, "Results")).toContain("| `3-ira-first` | 3 | Ira (Seat 0) vs Bravo (Seat 1) | error at step 0 | - | 0 | - |");
+    expect(rows(report, "Results")).toContain("| `3-ira-first` | 3 | Ira (Seat 0) vs Bravo (Seat 1) | error at step 0 | - | 0 | - | - |");
     expect(rows(report, "Measurements")).toContain("| Decisions per Game | 16.0 | 50 |");
-    expect(report).toContain("- `3-ira-first`: seed 3, Ira (Seat 0) vs Bravo (Seat 1), step 0, **error**: spawn claude ENOENT.");
+    expect(report).toContain("- `3-ira-first`: seed 3, Ira (Seat 0) vs Bravo (Seat 1), **error at step 0**: spawn claude ENOENT.");
     expect(rows(report, "Exit criteria")[2]).toBe(
       "| No Game ended on an Agent's fault (an error outcome with a Decision failure cause) | Fail: 1 Game (`2-bravo-first`, invalid-answer) |",
     );

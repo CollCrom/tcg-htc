@@ -6,14 +6,16 @@
 import { cardData } from "@fyendal/cards";
 import type { CardCostSelection, CardView, PlayerView } from "@fyendal/shared";
 import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
-import { describeCardData, nameWithColour } from "./cards.js";
+import { describeCardId, nameWithColour } from "./cards.js";
 
 /** One rendered decision. `intents[i]` is the engine Intent behind numbered
- * entry `i + 1` of `text`: Intents that differ only in pitch order share one
- * entry, which stands for the first ordering the engine listed. */
+ * entry `i + 1` of `text`, whose wording (without its number) is `entries[i]`:
+ * Intents that differ only in pitch order share one entry, which stands for
+ * the first ordering the engine listed. */
 export interface RenderedDecision {
   text: string;
   intents: Intent[];
+  entries: string[];
 }
 
 /** The log lines of the current turn and the turn before it. The engine logs
@@ -39,17 +41,14 @@ function opponentReference(view: View, seat: Seat): string[] {
   const opponent = view.players[opponentOf(seat)];
   const visible = cardsOf(view).filter((card) => card.owner === opponent.seat && !card.hidden && card.cardId);
   const cardIds = new Set([opponent.heroCardId, ...visible.map((card) => card.cardId)]);
-  return [...cardIds].map((cardId) => {
-    const data = cardData[cardId];
-    if (!data) return `${visible.find((card) => card.cardId === cardId)?.name ?? cardId}: no card data`;
-    return describeCardData(data);
-  });
+  return [...cardIds].map((cardId) => describeCardId(cardId, visible.find((card) => card.cardId === cardId)?.name));
 }
 
 /** Renders a Seat's View and its legal Intents as text. */
 export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): RenderedDecision {
   const names = namesOf(view);
   const intents = collapsePitchOrderings(legalIntents, view);
+  const entries = intents.map((intent) => renderIntent(intent, names, view, seat));
   const text = [
     `Turn ${view.turn}, ${view.phase} phase. Seat ${view.activePlayer}'s turn; Seat ${view.priorityPlayer} has priority. You are Seat ${seat}.`,
     ...renderSeat(view.players[seat], "You"),
@@ -59,9 +58,9 @@ export function renderDecision(view: View, seat: Seat, legalIntents: readonly In
     ...section("Log, previous turn and this turn", recentTurns(view)),
     ...section("Opponent's cards you can see", opponentReference(view, seat)),
     "Legal Intents:",
-    ...intents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view, seat)}`),
+    ...entries.map((entry, i) => `${i + 1}. ${entry}`),
   ].join("\n");
-  return { text, intents };
+  return { text, intents, entries };
 }
 
 /** The legal Intents with each set of pitch orderings reduced to the first one listed. */

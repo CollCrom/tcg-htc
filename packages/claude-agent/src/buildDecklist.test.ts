@@ -12,6 +12,7 @@ import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
 import { readGameFile } from "./gameFile.js";
 import { playGame } from "./playGame.js";
 import { legalPresentation } from "./scriptedBuild.js";
+import { listedEntries } from "./scriptedPlay.js";
 
 const SEED = 41;
 const GAME_TIMEOUT = 60_000;
@@ -32,10 +33,7 @@ const answer = (intent: unknown): CallResult => ({
   usage,
 });
 
-function listedIntents({ message }: RecordedCall): number {
-  const lines = message.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).length;
-}
+const listedIntents = ({ message }: RecordedCall): number => listedEntries(message).length;
 
 /** Builds legally at the first two calls, then answers a different listed Intent each call. */
 const buildsThenPlays = (request: RecordedCall, index: number): CallResult =>

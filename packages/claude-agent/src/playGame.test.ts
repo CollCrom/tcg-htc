@@ -9,11 +9,11 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { DECKLIST_SCHEMA } from "./buildDecklist.js";
 import { PLAN_NOTES_HEADING } from "./claudeAgent.js";
-import type { CallResult, ClaudeConfig } from "./claudeCode.js";
+import type { CallResult, ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
 import { gameFileName, gameId, readGameFile, type GameFile } from "./gameFile.js";
 import { playGame, progressLine, type PlayedGame } from "./playGame.js";
-import { scriptedAnswer } from "./scriptedPlay.js";
+import { listedEntries, scriptedAnswer } from "./scriptedPlay.js";
 
 const SEED = 31;
 const GAME_TIMEOUT = 60_000;
@@ -32,10 +32,7 @@ const answer = (intent: unknown, planNotes = "keep pressure on"): CallResult => 
 });
 
 /** How many Intents a decision message lists. */
-function listedIntents({ message }: RecordedCall): number {
-  const lines = message.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).length;
-}
+const listedIntents = ({ message }: RecordedCall): number => listedEntries(message).length;
 
 /** Answers a different listed Intent each call, so the Game moves along. */
 const varied = (request: RecordedCall, index: number): CallResult => answer(1 + (index % listedIntents(request)), `plan ${index}`);
@@ -57,13 +54,15 @@ interface Snapshot {
   handed: GameFile;
 }
 
-let completed: Promise<{ played: PlayedGame; runDir: string; snapshots: Snapshot[]; lines: string[] }> | undefined;
+let completed: Promise<{ played: PlayedGame; runDir: string; snapshots: Snapshot[]; lines: string[]; entries: string[][] }> | undefined;
 /** One complete Game, played once and shared by the tests that read its file. */
 function completeGame() {
   completed ??= (async () => {
     const runDir = tempRunDir();
     const snapshots: Snapshot[] = [];
     const lines: string[] = [];
+    /** The numbered entries each decision offered. */
+    const entries: string[][] = [];
     const played = await playGame({
       seed: SEED,
       lists,
@@ -72,13 +71,14 @@ function completeGame() {
       runDir,
       decklistPicker: pickDecklist,
       onDecision: (record, progress, written) => {
-        lines.push(progressLine(gameId(SEED, lists[0].hero.name), record, progress));
+        lines.push(progressLine(gameId(SEED, "ira"), record, progress));
+        entries.push(progress.rendered.entries);
         if (progress.step < 2 || progress.step % 25 === 0) {
           snapshots.push({ step: progress.step, onDisk: readGameFile(written.path), handed: written.file });
         }
       },
     });
-    return { played, runDir, snapshots, lines };
+    return { played, runDir, snapshots, lines, entries };
   })();
   return completed;
 }
@@ -89,12 +89,6 @@ function playedResult(played: PlayedGame): GameResult {
   return played.result;
 }
 
-/** The numbered Intent entries of a rendered decision, without their numbers. */
-function entriesOf(rendered: string): string[] {
-  const lines = rendered.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).map((line) => line.replace(/^\d+\. /, ""));
-}
-
 describe("playGame", () => {
   it(
     "writes the Game file after the first decision and rewrites it after every decision",
@@ -102,8 +96,8 @@ describe("playGame", () => {
       const { played, runDir, snapshots } = await completeGame();
 
       expect(played.result.outcome, JSON.stringify(played.result.outcome === "error" ? played.result.detail : "")).toMatch(/^(win|draw)$/);
-      expect(played.path).toBe(join(runDir, gameFileName(SEED, lists[0].hero.name)));
-      expect(gameFileName(SEED, lists[0].hero.name)).toBe("game-31-ira-first.json");
+      expect(played.path).toBe(join(runDir, gameFileName(SEED, "ira")));
+      expect(gameFileName(SEED, "ira")).toBe("game-31-ira-first.json");
       expect(snapshots.length).toBeGreaterThan(2);
       for (const { step, onDisk, handed } of snapshots) {
         expect(onDisk).toEqual(handed);
@@ -152,7 +146,10 @@ describe("playGame", () => {
       expect(file.turns).toBe(result.turns);
       expect(file.decisions).toEqual(result.decisions);
       expect(file.decisions.map(({ decision }) => "planNotes" in decision && decision.planNotes)).toEqual(result.decisions.map((_, i) => `plan ${i}`));
-      expect(file.measurements).toMatchObject(result.measurements);
+      const { durationMs, ...measured } = result.measurements;
+      expect(file.measurements).toMatchObject(measured);
+      // The file's duration covers the whole sitting, of which runGame's play is a part.
+      expect(file.measurements.durationMs).toBeGreaterThanOrEqual(durationMs);
       const total = result.decisions.length;
       const perSeat = (seat: 0 | 1) => result.decisions.filter((record) => record.seat === seat).length;
       expect(file.measurements.totals).toEqual({
@@ -175,20 +172,52 @@ describe("playGame", () => {
   it(
     "renders one progress line per decision: Game, step, turn, Seat, the chosen Intent's text and the latency",
     async () => {
-      const { played, lines } = await completeGame();
+      const { played, lines, entries: offered } = await completeGame();
 
       expect(lines).toHaveLength(played.result.decisions.length);
       lines.forEach((line, i) => {
         const record = played.result.decisions[i]!;
         const chosen = (record.decision as DecisionChoice).intent;
-        const entries = entriesOf(record.rendered);
+        const entries = offered[i]!;
         const text = line.slice(line.indexOf(": ") + 2, line.lastIndexOf(" ("));
         expect(line).toMatch(new RegExp(`^game 31-ira-first step ${i} turn \\d+ seat ${record.seat}: .+ \\(1500 ms\\)$`));
         expect(entries).toContain(text);
-        // The chosen entry is the one whose number the fake answered: 1 + (i % entries).
+        // The chosen entry is the one whose number the fake answered: 1 + (i % entries); the message listed the same entries.
         expect(text).toBe(entries[i % entries.length]);
+        expect(listedEntries(record.rendered)).toEqual(entries);
         expect(chosen).toBeDefined();
       });
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "counts this sitting's Decklist builds in the Game's duration, in every write as it goes and in the final file alike",
+    async () => {
+      // A clock the calls drive: a build takes a second, a play decision 10 ms.
+      let now = 0;
+      const call: ClaudeCodeCall = async (request) => {
+        now += request.schema === DECKLIST_SCHEMA ? 1000 : 10;
+        return scriptedAnswer(lists, request);
+      };
+      const written: number[] = [];
+
+      const played = await playGame({
+        seed: SEED,
+        lists,
+        configs,
+        call,
+        runDir: tempRunDir(),
+        clock: () => now,
+        onDecision: (_record, _progress, { file }) => written.push(file.measurements.durationMs),
+      });
+
+      const result = playedResult(played);
+      expect(result.outcome).toMatch(/^(win|draw)$/);
+      expect(result.measurements.durationMs).toBe(10 * result.decisions.length);
+      expect(written).toEqual(result.decisions.map((_, i) => 2000 + 10 * (i + 1)));
+      expect(played.file.measurements.durationMs).toBe(2000 + result.measurements.durationMs);
+      expect(readGameFile(played.path).measurements.durationMs).toBe(written.at(-1));
     },
     GAME_TIMEOUT,
   );
@@ -211,7 +240,7 @@ describe("playGame", () => {
         decklistPicker: pickDecklist,
         onDecision: (record, progress) => {
           seen.push(record);
-          lines.push(progressLine(gameId(SEED, lists[1].hero.name), record, progress));
+          lines.push(progressLine(gameId(SEED, "bravo"), record, progress));
         },
       });
 
@@ -362,6 +391,47 @@ describe("playGame pauses and resumes", () => {
       expect(resumed.file.measurements.builds.decisions).toBe(3);
       const { file: wholeFile } = await uninterrupted();
       expect(settled(resumed.file)).toEqual(settled(wholeFile));
+    },
+    2 * GAME_TIMEOUT,
+  );
+
+  it(
+    "stops before a Decklist build once `shouldStop` says so: one build call, a paused file holding it, and the resumed Game builds only the other Seat",
+    async () => {
+      const runDir = tempRunDir();
+      const fake = fakeClaudeCode(pure);
+
+      const stopped = await playGame({ seed: PAUSE_SEED, lists, configs, call: fake, runDir, shouldStop: () => fake.calls.length >= 1 });
+
+      expect(fake.calls).toHaveLength(1);
+      expect(fake.calls[0]!.schema).toBe(DECKLIST_SCHEMA);
+      expect(stopped.result).toMatchObject({ outcome: "paused", seed: PAUSE_SEED, step: 0, steps: 0, turns: 0, decisions: [] });
+      expect(stopped.result).not.toHaveProperty("cause");
+      expect(stopped.file.status).toBe("paused");
+      expect(stopped.file.outcome).toBeUndefined();
+      expect(stopped.file.setup.decklists).toBeUndefined();
+      expect(stopped.file.replay).toBeUndefined();
+      expect(stopped.file.decklistDecisions.map(({ seat, decision }) => ({ seat, failed: "cause" in decision }))).toEqual([{ seat: 0, failed: false }]);
+      expect(readGameFile(stopped.path)).toEqual(stopped.file);
+
+      const resuming = fakeClaudeCode(pure);
+      const resumed = await playGame({ seed: PAUSE_SEED, lists, configs, call: resuming, runDir, resumeFrom: readGameFile(stopped.path) });
+
+      const buildCalls = resuming.calls.filter(({ schema }) => schema === DECKLIST_SCHEMA);
+      expect(buildCalls).toHaveLength(1);
+      expect(buildCalls[0]!.systemPrompt).toContain("You are Seat 1.");
+      expect(resumed.file.status).toBe("complete");
+      expect(resumed.file.decklistDecisions.map(({ seat }) => seat)).toEqual([0, 1]);
+      const { file: wholeFile } = await uninterrupted();
+      expect(settled(resumed.file)).toEqual(settled(wholeFile));
+
+      // Already stopping before the first build: no call at all, and a paused file with no build to reuse.
+      const none = fakeClaudeCode(pure);
+      const atOnce = await playGame({ seed: PAUSE_SEED, lists, configs, call: none, runDir: tempRunDir(), shouldStop: () => true });
+      expect(none.calls).toHaveLength(0);
+      expect(atOnce.result).toMatchObject({ outcome: "paused", step: 0, steps: 0 });
+      expect(atOnce.file.status).toBe("paused");
+      expect(atOnce.file.decklistDecisions).toEqual([]);
     },
     2 * GAME_TIMEOUT,
   );

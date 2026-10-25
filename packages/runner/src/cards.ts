@@ -1,4 +1,5 @@
 // Card facts shared by List loading, Decklist presentation and rendering.
+import { cardData } from "@fyendal/cards";
 import type { CardData, EquipmentSlot } from "@fyendal/shared";
 
 /** The equipment slots, one piece each in a Decklist. Upstream keeps its own
@@ -37,4 +38,11 @@ export function describeCardData(data: CardData): string {
   const statsLine = stats.length > 0 ? ` ${stats.join(", ").replace(/^./, (first) => first.toUpperCase())}.` : "";
   const text = data.text.trim().replace(/\.?\s*\n\s*/g, ". ");
   return `${nameWithColour(data.name, data.pitch)}: ${type}.${statsLine}${text ? ` ${text}` : ""}`;
+}
+
+/** `describeCardData` for the card with this printing id, or `<name>: no card
+ * data` when upstream has none for it (`name` defaults to the id). */
+export function describeCardId(cardId: string, name: string = cardId): string {
+  const data = cardData[cardId];
+  return data ? describeCardData(data) : `${name}: no card data`;
 }
