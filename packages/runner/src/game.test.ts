@@ -381,11 +381,12 @@ describe("runGame", () => {
         expect(progress.turn).toBe(views[i]!.turn);
         expect(applied).toBe(i + 1);
         expect(progress.intents.slice(0, applied)).toEqual(result.replay.intents.slice(0, applied));
-        expect(progress.listed).toEqual(renderDecision(views[i]!, record.seat, record.intents).intents);
-        for (const intent of progress.listed) expect(record.intents).toContain(intent);
+        expect(progress.rendered).toEqual(renderDecision(views[i]!, record.seat, record.intents));
+        expect(progress.rendered.text).toBe(record.rendered);
+        for (const intent of progress.rendered.intents) expect(record.intents).toContain(intent);
       });
       // The random Agent picks from the raw list, so its choice can be a pitch ordering the numbered entries fold away.
-      expect(seen.some(({ record, progress }) => progress.listed.length < record.intents.length)).toBe(true);
+      expect(seen.some(({ record, progress }) => progress.rendered.intents.length < record.intents.length)).toBe(true);
       expect(seen.at(-1)!.progress.turn).toBe(result.turns);
     },
     GAME_TIMEOUT,

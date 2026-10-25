@@ -16,15 +16,13 @@ import type { CallResult } from "./claudeCode.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
 import { playGame } from "./playGame.js";
 import { legalPresentation } from "./scriptedBuild.js";
+import { listedEntries } from "./scriptedPlay.js";
 
 const SEED = 21;
 const lists = [fixtureList(BRAVO_LIST_FILE), fixtureList(IRA_LIST_FILE)] as const;
 const usage = { model: "claude-opus-4-1", inputTokens: 100, cachedTokens: 2000, outputTokens: 40, costUsd: 0.01, latencyMs: 1500 };
 
-function listedIntents({ message }: RecordedCall): number {
-  const lines = message.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).length;
-}
+const listedIntents = ({ message }: RecordedCall): number => listedEntries(message).length;
 
 /** Builds legally for the Seat the system prompt names; plays a different listed Intent each call. */
 const script = (request: RecordedCall, index: number): CallResult =>

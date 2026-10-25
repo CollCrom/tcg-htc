@@ -12,7 +12,10 @@ import { legalPresentation } from "./scriptedBuild.js";
 
 export const SCRIPTED_USAGE: Usage = { model: "claude-opus-4-1", inputTokens: 100, cachedTokens: 2000, outputTokens: 40, costUsd: 0.01, latencyMs: 1500 };
 
-/** The numbered Intent entries a decision message lists, without their numbers. */
+/** The numbered Intent entries a decision message lists, without their
+ * numbers. A fake stands where Claude Code does and sees only the message
+ * text, so this is the one place a test reads the entries back out of it;
+ * code that has the `RenderedDecision` reads its `entries` instead. */
 export function listedEntries(message: string): string[] {
   const lines = message.split("\n");
   return lines

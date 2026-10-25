@@ -9,11 +9,13 @@ import { opponentOf, type Intent, type Seat, type View } from "./agent.js";
 import { describeCardData, nameWithColour } from "./cards.js";
 
 /** One rendered decision. `intents[i]` is the engine Intent behind numbered
- * entry `i + 1` of `text`: Intents that differ only in pitch order share one
- * entry, which stands for the first ordering the engine listed. */
+ * entry `i + 1` of `text`, whose wording (without its number) is `entries[i]`:
+ * Intents that differ only in pitch order share one entry, which stands for
+ * the first ordering the engine listed. */
 export interface RenderedDecision {
   text: string;
   intents: Intent[];
+  entries: string[];
 }
 
 /** The log lines of the current turn and the turn before it. The engine logs
@@ -50,6 +52,7 @@ function opponentReference(view: View, seat: Seat): string[] {
 export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): RenderedDecision {
   const names = namesOf(view);
   const intents = collapsePitchOrderings(legalIntents, view);
+  const entries = intents.map((intent) => renderIntent(intent, names, view, seat));
   const text = [
     `Turn ${view.turn}, ${view.phase} phase. Seat ${view.activePlayer}'s turn; Seat ${view.priorityPlayer} has priority. You are Seat ${seat}.`,
     ...renderSeat(view.players[seat], "You"),
@@ -59,9 +62,9 @@ export function renderDecision(view: View, seat: Seat, legalIntents: readonly In
     ...section("Log, previous turn and this turn", recentTurns(view)),
     ...section("Opponent's cards you can see", opponentReference(view, seat)),
     "Legal Intents:",
-    ...intents.map((intent, i) => `${i + 1}. ${renderIntent(intent, names, view, seat)}`),
+    ...entries.map((entry, i) => `${i + 1}. ${entry}`),
   ].join("\n");
-  return { text, intents };
+  return { text, intents, entries };
 }
 
 /** The legal Intents with each set of pitch orderings reduced to the first one listed. */

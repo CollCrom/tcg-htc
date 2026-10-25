@@ -10,6 +10,7 @@ import { fakeClaudeCode, type FakeScript, type RecordedCall } from "./fakeClaude
 import { heroList } from "./heroLists.js";
 import { readManifest, runSuite, type Manifest, type ManifestGame, type RunConfig } from "./run.js";
 import { legalPresentation } from "./scriptedBuild.js";
+import { listedEntries } from "./scriptedPlay.js";
 
 const RUN_TIMEOUT = 120_000;
 const configs: readonly [ClaudeConfig, ClaudeConfig] = [
@@ -20,10 +21,7 @@ const usage = { model: "claude-opus-4-1", inputTokens: 100, cachedTokens: 2000, 
 const answer = (intent: unknown): CallResult => ({ kind: "answer", output: { intent, reasoning: "fine", planNotes: "" }, turns: 2, usage });
 
 /** The numbered Intent entries a decision message lists, without their numbers. */
-function entriesOf({ message }: RecordedCall): string[] {
-  const lines = message.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).map((line) => line.replace(/^\d+\. /, ""));
-}
+const entriesOf = ({ message }: RecordedCall): string[] => listedEntries(message);
 
 const lists = [heroList("ira"), heroList("bravo")];
 

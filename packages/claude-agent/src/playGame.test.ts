@@ -13,7 +13,7 @@ import type { CallResult, ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
 import { gameFileName, gameId, readGameFile, type GameFile } from "./gameFile.js";
 import { playGame, progressLine, type PlayedGame } from "./playGame.js";
-import { scriptedAnswer } from "./scriptedPlay.js";
+import { listedEntries, scriptedAnswer } from "./scriptedPlay.js";
 
 const SEED = 31;
 const GAME_TIMEOUT = 60_000;
@@ -32,10 +32,7 @@ const answer = (intent: unknown, planNotes = "keep pressure on"): CallResult => 
 });
 
 /** How many Intents a decision message lists. */
-function listedIntents({ message }: RecordedCall): number {
-  const lines = message.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).length;
-}
+const listedIntents = ({ message }: RecordedCall): number => listedEntries(message).length;
 
 /** Answers a different listed Intent each call, so the Game moves along. */
 const varied = (request: RecordedCall, index: number): CallResult => answer(1 + (index % listedIntents(request)), `plan ${index}`);
@@ -57,13 +54,15 @@ interface Snapshot {
   handed: GameFile;
 }
 
-let completed: Promise<{ played: PlayedGame; runDir: string; snapshots: Snapshot[]; lines: string[] }> | undefined;
+let completed: Promise<{ played: PlayedGame; runDir: string; snapshots: Snapshot[]; lines: string[]; entries: string[][] }> | undefined;
 /** One complete Game, played once and shared by the tests that read its file. */
 function completeGame() {
   completed ??= (async () => {
     const runDir = tempRunDir();
     const snapshots: Snapshot[] = [];
     const lines: string[] = [];
+    /** The numbered entries each decision offered. */
+    const entries: string[][] = [];
     const played = await playGame({
       seed: SEED,
       lists,
@@ -73,12 +72,13 @@ function completeGame() {
       decklistPicker: pickDecklist,
       onDecision: (record, progress, written) => {
         lines.push(progressLine(gameId(SEED, lists[0].hero.name), record, progress));
+        entries.push(progress.rendered.entries);
         if (progress.step < 2 || progress.step % 25 === 0) {
           snapshots.push({ step: progress.step, onDisk: readGameFile(written.path), handed: written.file });
         }
       },
     });
-    return { played, runDir, snapshots, lines };
+    return { played, runDir, snapshots, lines, entries };
   })();
   return completed;
 }
@@ -87,12 +87,6 @@ function completeGame() {
 function playedResult(played: PlayedGame): GameResult {
   if (!("replay" in played.result)) throw new Error("the Game never started");
   return played.result;
-}
-
-/** The numbered Intent entries of a rendered decision, without their numbers. */
-function entriesOf(rendered: string): string[] {
-  const lines = rendered.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).map((line) => line.replace(/^\d+\. /, ""));
 }
 
 describe("playGame", () => {
@@ -178,18 +172,19 @@ describe("playGame", () => {
   it(
     "renders one progress line per decision: Game, step, turn, Seat, the chosen Intent's text and the latency",
     async () => {
-      const { played, lines } = await completeGame();
+      const { played, lines, entries: offered } = await completeGame();
 
       expect(lines).toHaveLength(played.result.decisions.length);
       lines.forEach((line, i) => {
         const record = played.result.decisions[i]!;
         const chosen = (record.decision as DecisionChoice).intent;
-        const entries = entriesOf(record.rendered);
+        const entries = offered[i]!;
         const text = line.slice(line.indexOf(": ") + 2, line.lastIndexOf(" ("));
         expect(line).toMatch(new RegExp(`^game 31-ira-first step ${i} turn \\d+ seat ${record.seat}: .+ \\(1500 ms\\)$`));
         expect(entries).toContain(text);
-        // The chosen entry is the one whose number the fake answered: 1 + (i % entries).
+        // The chosen entry is the one whose number the fake answered: 1 + (i % entries); the message listed the same entries.
         expect(text).toBe(entries[i % entries.length]);
+        expect(listedEntries(record.rendered)).toEqual(entries);
         expect(chosen).toBeDefined();
       });
     },

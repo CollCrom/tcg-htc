@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { CallResult } from "./claudeCode.js";
 import { ANSWER_SCHEMA, claudeAgent, PLAN_NOTES_HEADING, PLAN_NOTES_LIMIT } from "./claudeAgent.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
+import { listedEntries } from "./scriptedPlay.js";
 
 const SEED = 21;
 const decklists = [pickDecklist(fixtureList(IRA_LIST_FILE), SEED), pickDecklist(fixtureList(BRAVO_LIST_FILE), SEED)] as const;
@@ -22,10 +23,7 @@ const answer = (intent: unknown, planNotes = "keep pressure on", reasoning = "th
 });
 
 /** How many Intents a decision message lists. */
-function listedIntents({ message }: RecordedCall): number {
-  const lines = message.split("\n");
-  return lines.slice(lines.indexOf("Legal Intents:") + 1).filter((line) => /^\d+\. /.test(line)).length;
-}
+const listedIntents = ({ message }: RecordedCall): number => listedEntries(message).length;
 
 /** Answers a different listed Intent each call, so the Game moves along. */
 const varied = (request: RecordedCall, index: number): CallResult => answer(1 + (index % listedIntents(request)));

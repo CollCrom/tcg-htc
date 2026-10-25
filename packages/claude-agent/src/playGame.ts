@@ -173,7 +173,7 @@ export async function playGame(options: PlayGameOptions): Promise<PlayedGame> {
     resume: { intents: savedIntents },
     onDecision: (record, progress) => {
       records.push(record);
-      measured.push(measureDecision(record.seat, record.intents, { text: record.rendered, intents: [...progress.listed] }));
+      measured.push(measureDecision(record.seat, record.intents, progress.rendered));
       const file: GameFile = {
         status: "playing",
         setup,
@@ -232,14 +232,13 @@ export function progressLine(id: string, record: DecisionRecord, progress: Decis
   return `game ${id} step ${progress.step} turn ${progress.turn} seat ${record.seat}: ${what} (${decision.measurements?.latencyMs ?? 0} ms)`;
 }
 
-/** The text of the numbered entry the record's Intent stands behind. */
-function chosenEntry(record: DecisionRecord, progress: DecisionProgress): string {
+/** The wording of the numbered entry the record's Intent stands behind, or
+ * the Intent itself when no entry does (a pitch ordering the entries fold away). */
+function chosenEntry(record: DecisionRecord, { rendered }: DecisionProgress): string {
   if (isDecisionFailure(record.decision)) return "";
   const { intent } = record.decision;
-  const index = progress.listed.findIndex((listed) => listed === intent || isDeepStrictEqual(listed, intent));
-  const lines = record.rendered.split("\n");
-  const entry = lines[lines.indexOf("Legal Intents:") + 1 + index];
-  return index >= 0 && entry ? entry.replace(/^\d+\. /, "") : JSON.stringify(intent);
+  const index = rendered.intents.findIndex((listed) => listed === intent || isDeepStrictEqual(listed, intent));
+  return rendered.entries[index] ?? JSON.stringify(intent);
 }
 
 function totals(
