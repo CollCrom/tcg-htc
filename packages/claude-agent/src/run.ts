@@ -5,7 +5,7 @@
 // decision, and the manifest says how to resume. When every Game is done the
 // Run writes its report and marks itself complete.
 import { isFailure, type DecisionProgress, type DecisionRecord, type GameOutcome, type List } from "@tcg-htc/runner";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import type { Hero } from "./gameClaudeArgs.js";
@@ -13,6 +13,7 @@ import { gameFileName, gameId, heroSlug, readGameFile, type GameFile } from "./g
 import { heroList } from "./heroLists.js";
 import { CLAUDE_MAX_DECISIONS, outcomeOf, playGame, type WrittenGameFile } from "./playGame.js";
 import { renderReport, upstreamCommit } from "./report.js";
+import { writeAtomically } from "./writeAtomically.js";
 
 /** The Run's config, as the manifest keeps it. */
 export interface RunConfig {
@@ -265,14 +266,9 @@ export function readGameFiles(runDir: string, manifest: Manifest): Record<string
   return files;
 }
 
-/** Writes the manifest atomically: to `<path>.tmp`, then renamed over the old
- * one, so a reader never sees a partial document. */
+/** Writes the manifest atomically (see `writeAtomically`), indented. */
 export function writeManifest(runDir: string, manifest: Manifest): void {
-  mkdirSync(runDir, { recursive: true });
-  const path = join(runDir, MANIFEST_FILE);
-  const temp = `${path}.tmp`;
-  writeFileSync(temp, JSON.stringify(manifest, null, 2));
-  renameSync(temp, path);
+  writeAtomically(join(runDir, MANIFEST_FILE), JSON.stringify(manifest, null, 2));
 }
 
 export function readManifest(runDir: string): Manifest {

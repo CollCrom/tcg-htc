@@ -4,10 +4,10 @@
 // records), and the report reads its outcome and measurements.
 import type { Decklist } from "@fyendal/shared";
 import type { AgentMeasurements, DecisionRecord, GameMeasurements, GameOutcome, Replay, Seat } from "@tcg-htc/runner";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
 import type { DecklistBuild } from "./buildDecklist.js";
 import type { ClaudeConfig } from "./claudeCode.js";
+import { writeAtomically } from "./writeAtomically.js";
 
 export interface GameFile {
   /** `playing` while a decision is in flight; `paused` when the Game stopped
@@ -130,13 +130,9 @@ export function agentTotals(records: readonly { decision: { measurements?: Agent
   return totals;
 }
 
-/** Writes the whole file atomically: to `<path>.tmp`, then renamed over
- * `path`, so a reader (or a crash) never sees a partial document. */
+/** Writes the whole file atomically (see `writeAtomically`), as compact JSON. */
 export function writeGameFile(path: string, file: GameFile): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const temp = `${path}.tmp`;
-  writeFileSync(temp, JSON.stringify(file));
-  renameSync(temp, path);
+  writeAtomically(path, JSON.stringify(file));
 }
 
 export function readGameFile(path: string): GameFile {

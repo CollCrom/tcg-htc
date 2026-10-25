@@ -144,6 +144,8 @@ describe("claudeCodeCall", () => {
     expect(otherFile).not.toBe(promptFile);
     expect(existsSync(otherFile)).toBe(true);
     expect(readFileSync(join(dir, "args"), "utf8")).toContain(otherFile);
+    // Written whole and renamed into place: a concurrent `claude` never reads a truncated prompt, and nothing is left behind.
+    expect(readdirSync(resultsDir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 });
 
