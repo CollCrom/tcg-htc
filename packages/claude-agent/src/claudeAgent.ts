@@ -16,6 +16,8 @@ export { PRIMER_FILE } from "./prompt.js";
 /** Plan notes longer than this are cut, and the cut recorded on the Decision. */
 export const PLAN_NOTES_LIMIT = 2_000;
 
+// "Answer" here is Claude Code's raw reply, before the Agent turns it into a
+// Decision; that is the sense the glossary's "answer (for a Decision)" keeps.
 /** What an answer must look like: the Intent number, reasoning, Plan notes. */
 export const ANSWER_SCHEMA = {
   type: "object",
@@ -93,7 +95,8 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
   }) as ClaudeAgent;
 }
 
-/** The three fields of an answer, once it names a listed Intent. */
+/** The three fields of an answer (Claude Code's raw reply, not yet a
+ * Decision), once it names a listed Intent. */
 interface Answer {
   intent: number;
   reasoning: string;
