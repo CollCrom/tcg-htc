@@ -10,6 +10,8 @@ Name things in code, tests and issues with the terms in `GLOSSARY.md`. `pnpm che
 
 Tests go through the public seams named in the spec, such as List loading and `runGame`, and check behaviour a caller can see. Don't test internal helpers, the shape of the Game loop or the exact wording of rendered text. If something can only be tested by reaching inside, the seam is wrong; raise it instead of working around it.
 
+The one agreed exception is the rendered decision: its text is the contract a Claude Agent reads a decision from (spec #167), so `render.test.ts` pins one rendering as a snapshot plus a few entry assertions. Everything else about rendered text stays untested for exact wording: assert the numbers and the phrase that carries the meaning, not the sentence around it.
+
 ## Keep the Agent's view honest
 
 Anything handed to an Agent must be derived from its own Seat's View, never from the full game state, even when the full state is in scope and would be convenient. This covers the rendered text, the legal Intents and anything carried between decisions.
