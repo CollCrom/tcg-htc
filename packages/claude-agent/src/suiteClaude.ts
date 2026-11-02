@@ -1,14 +1,15 @@
 // pnpm suite:claude: the Phase 2 suite, ten Games between two Claude Agents on
 // the Ira and Bravo Lists through the real Claude Code call, played as one Run
 // under results/ that ends in its report. A rate limit pauses the Run (exit
-// code 3) and `--resume <runDir>` carries it on. A script with top-level
+// code 3) and `--resume <runDir>` carries it on, `--retry-failed` playing on
+// the Games that failed at an Agent's fault as well. A script with top-level
 // await; its flags are parsed in suiteClaudeArgs.ts.
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { claudeCodeCall, describeConfig } from "./claudeCode.js";
 import { describeOutcome, progressLine } from "./playGame.js";
 import { exitCriteria } from "./report.js";
-import { readManifest, resumeSuite, runSuite, type Manifest, type ManifestGame, type RunConfig, type RunSuiteOptions } from "./run.js";
+import { readManifest, resumeSuite, retriable, runSuite, type Manifest, type ManifestGame, type RunConfig, type RunSuiteOptions } from "./run.js";
 import { parseSuiteClaudeArgs, SUITE_USAGE, suiteRunDirName, type SuiteClaudeArgs } from "./suiteClaudeArgs.js";
 
 /** The exit code of a Run that paused on a rate limit. */
@@ -40,9 +41,12 @@ if (args.resume !== undefined) {
   const runDir = resolve(callerDir, args.resume);
   const paused = readManifest(runDir);
   const left = paused.games.filter(({ status }) => status === "pending" || status === "playing");
+  const retrying = args.retryFailed ? paused.games.filter(retriable) : [];
   console.log(`Resuming the Run in ${runDir}: ${describeRun(paused.config)}`);
-  console.log(`${left.length} of ${paused.games.length} Games left${paused.pausedAt ? `; paused ${paused.pausedAt}` : ""}${paused.pauseDetail ? ` on: ${paused.pauseDetail}` : ""}.`);
-  result = await resumeSuite({ runDir, ...printing });
+  console.log(
+    `${left.length} of ${paused.games.length} Games left${retrying.length > 0 ? `, and ${retrying.length} failed at an Agent's fault to play on` : ""}${paused.pausedAt ? `; paused ${paused.pausedAt}` : ""}${paused.pauseDetail ? ` on: ${paused.pauseDetail}` : ""}.`,
+  );
+  result = await resumeSuite({ runDir, retryFailed: args.retryFailed, ...printing });
 } else {
   const { config } = args;
   const runDir = join(resolve(callerDir, args.results), suiteRunDirName(new Date()));

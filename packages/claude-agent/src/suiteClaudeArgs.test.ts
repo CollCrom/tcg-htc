@@ -37,7 +37,10 @@ describe("parseSuiteClaudeArgs", () => {
   });
 
   it("reads --resume <runDir> alone, the Run's config coming from its manifest", () => {
-    expect(parseSuiteClaudeArgs(["--resume", "results/2026-10-24T09-05-30Z-suite"])).toEqual({ resume: "results/2026-10-24T09-05-30Z-suite" });
+    expect(parseSuiteClaudeArgs(["--resume", "results/2026-10-24T09-05-30Z-suite"])).toEqual({ resume: "results/2026-10-24T09-05-30Z-suite", retryFailed: false });
+    expect(parseSuiteClaudeArgs(["--resume", "results/some-run", "--retry-failed"])).toEqual({ resume: "results/some-run", retryFailed: true });
+    expect(() => parseSuiteClaudeArgs(["--retry-failed"])).toThrow(/--retry-failed.*--resume/);
+    expect(() => parseSuiteClaudeArgs(["--retry-failed", "--seeds", "1"])).toThrow(/--retry-failed.*--resume/);
     expect(() => parseSuiteClaudeArgs(["--resume", "results/some-run", "--seeds", "1-3"])).toThrow(/--resume.*--seeds/);
     expect(() => parseSuiteClaudeArgs(["--concurrency", "1", "--resume", "results/some-run"])).toThrow(/--resume.*--concurrency/);
     expect(() => parseSuiteClaudeArgs(["--resume"])).toThrow(/--resume/);

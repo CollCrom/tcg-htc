@@ -95,8 +95,18 @@ export interface DecisionContext {
   manifest: Manifest;
 }
 
-/** Everything but `config`, which a resumed Run reads from its manifest. */
-export type ResumeSuiteOptions = Omit<RunSuiteOptions, "config">;
+/** Everything but `config`, which a resumed Run reads from its manifest. With
+ * `retryFailed`, the Games that failed at an Agent's fault are played on too
+ * (see `retriable`), a complete Run included. */
+export type ResumeSuiteOptions = Omit<RunSuiteOptions, "config"> & { retryFailed?: boolean };
+
+/** Whether a failed Game is one `retryFailed` plays on: its outcome is an
+ * error with a Decision failure cause (a call that failed, was refused, timed
+ * out or answered badly past its retries), so its Game file holds a Game the
+ * Agents can carry on. A stall or an Intent the engine rejected stays failed. */
+export function retriable(game: ManifestGame): boolean {
+  return game.status === "failed" && game.outcome?.outcome === "error" && game.outcome.cause !== undefined;
+}
 
 export interface RunResult {
   manifest: Manifest;
@@ -140,12 +150,23 @@ export async function runSuite(options: RunSuiteOptions): Promise<RunResult> {
 
 /** Resumes the Run in `runDir` from its manifest: `complete` and `failed`
  * Games are left alone, `pending` ones are played, and `playing` ones carry on
- * from their Game files (a Game file already complete settles its Game). The
- * Run is marked running, pauses again on another rate limit, and writes its
- * report when it completes. Throws if the Run is already complete. */
+ * from their Game files (a Game file already won or drawn settles its Game).
+ * With `retryFailed`, each `retriable` failed Game goes back to `playing`
+ * (`pending` when it has no Game file) and carries on the same way, its
+ * failure record kept. The Run is marked running, pauses again on another
+ * rate limit, and writes its report when it completes. Throws if the Run is
+ * already complete, unless `retryFailed` finds a Game to retry. */
 export async function resumeSuite(options: ResumeSuiteOptions): Promise<RunResult> {
   const manifest = readManifest(options.runDir);
-  if (manifest.status === "complete") throw new Error(`the Run in ${options.runDir} is complete; there is nothing to resume`);
+  const retrying = options.retryFailed ? manifest.games.filter(retriable) : [];
+  if (manifest.status === "complete" && retrying.length === 0) {
+    throw new Error(`the Run in ${options.runDir} is complete; there is nothing to resume${options.retryFailed ? ": no Game failed at an Agent's fault" : ""}`);
+  }
+  for (const game of retrying) {
+    game.status = existsSync(join(options.runDir, game.file)) ? "playing" : "pending";
+    delete game.outcome;
+    delete game.finishedAt;
+  }
   manifest.status = "running";
   delete manifest.pausedAt;
   delete manifest.resumeHint;
@@ -201,8 +222,9 @@ async function play(manifest: Manifest, options: ResumeSuiteOptions): Promise<Ru
     const path = join(runDir, game.file);
     const saved = existsSync(path) ? readGameFile(path) : undefined;
     try {
-      if (saved?.status === "complete" && saved.outcome) {
-        // Written before the manifest could record it.
+      if (saved?.status === "complete" && saved.outcome && !isFailure(saved.outcome)) {
+        // Won or drawn before the manifest could record it. A failed file is
+        // played on: a retried Game's, or one whose failure the manifest missed.
         settle(game, saved.outcome, saved.replay?.intents.length ?? 0);
       } else {
         const played = await playGame({
