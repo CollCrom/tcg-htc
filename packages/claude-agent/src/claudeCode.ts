@@ -184,9 +184,9 @@ export interface ProcessRun {
   latencyMs: number;
 }
 
-/** Text Claude Code prints when the subscription's usage window is spent. The
- * live run refines it. */
-export const RATE_LIMIT_PATTERN = /hit your limit|usage limit|rate[ _-]?limit/i;
+/** Text Claude Code prints when the subscription's usage window is spent. Seen
+ * live: "You've hit your 5-hour limit · resets 12:40pm (America/New_York)". */
+export const RATE_LIMIT_PATTERN = /hit your .*limit|usage limit|rate[ _-]?limit/i;
 
 /** Turns a process run into a CallResult. Pure, so tests drive it without
  * spawning anything. */
