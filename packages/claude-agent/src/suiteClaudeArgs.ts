@@ -19,11 +19,13 @@ export interface SuiteRunArgs {
 export interface SuiteResumeArgs {
   /** The paused Run's directory, as given; its config comes from its manifest. */
   resume: string;
+  /** Play on the Games that failed at an Agent's fault as well. */
+  retryFailed: boolean;
 }
 
 export const SUITE_USAGE =
   "pnpm suite:claude [--model0 <alias>] [--effort0 <level>] [--model1 <alias>] [--effort1 <level>] [--concurrency 2] [--seeds 1-5] [--results <dir>]\n" +
-  "       pnpm suite:claude --resume <runDir>   (no other flag: the Run's config is in its manifest)";
+  "       pnpm suite:claude --resume <runDir> [--retry-failed]   (no other flag: the Run's config is in its manifest)";
 
 /** Parses the flags (`process.argv.slice(2)`). Throws a message naming the
  * flag at fault. */
@@ -36,17 +38,19 @@ export function parseSuiteClaudeArgs(args: readonly string[]): SuiteClaudeArgs {
       seeds: { type: "string", default: formatSeeds(DEFAULT_SEEDS) },
       results: { type: "string", default: "results" },
       resume: { type: "string" },
+      "retry-failed": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: true,
   });
   if (positionals.length > 0) throw new Error(`unexpected argument ${positionals.join(" ")}\nusage: ${SUITE_USAGE}`);
   if (values.resume !== undefined) {
-    const others = args.filter((arg) => arg.startsWith("--") && !arg.startsWith("--resume"));
+    const others = args.filter((arg) => arg.startsWith("--") && !arg.startsWith("--resume") && arg !== "--retry-failed");
     if (others.length > 0) throw new Error(`--resume takes no other flag; the Run's config is in its manifest (got ${others.join(" ")})`);
     if (!values.resume) throw new Error("--resume needs the paused Run's directory");
-    return { resume: values.resume };
+    return { resume: values.resume, retryFailed: values["retry-failed"] };
   }
+  if (values["retry-failed"]) throw new Error("--retry-failed goes with --resume <runDir>: it plays on the Games of that Run that failed at an Agent's fault");
   const concurrency = Number(values.concurrency);
   if (!/^\d+$/.test(values.concurrency) || concurrency < 1) throw new Error(`--concurrency must be a whole number of at least 1, not ${values.concurrency}`);
   return {

@@ -39,12 +39,18 @@ afterAll(() => {
 
 /** What a Game file holds that doesn't depend on when, or in how many
  * sittings, the Game was played: everything but the measurements, without
- * the rate-limit records a pause leaves behind. */
+ * the failure records a pause or a retried failure leaves behind. */
 function settled(file: GameFile) {
   const { measurements: _measurements, decisions, decklistDecisions, ...rest } = file;
-  const kept = <T extends { decision: object }>(records: readonly T[]) => records.filter(({ decision }) => !("cause" in decision && decision.cause === "rate-limit"));
+  const kept = <T extends { decision: object }>(records: readonly T[]) => records.filter(({ decision }) => !("cause" in decision));
   return { ...rest, decisions: kept(decisions), decklistDecisions: kept(decklistDecisions) };
 }
+
+/** `pure`, but calls `at` and `at + 1` (0-based) of this fake fail, so a
+ * decision or a build fails with its one retry; a Game in a Run of one at a
+ * time then fails at an Agent's fault. */
+const brokenAt = (at: number) => (request: RecordedCall, index: number): CallResult =>
+  index === at || index === at + 1 ? { kind: "failure", detail: `claude exited 1: broken at call ${index}` } : pure(request);
 
 /** The Game files of a Run, by id, read from disk. */
 function filesOf(runDir: string, manifest: Manifest): Record<string, GameFile> {
@@ -235,4 +241,81 @@ describe("a paused Run resumes", () => {
 
     await expect(resumeSuite({ runDir, call: fakeClaudeCode(pure) })).rejects.toThrow(/complete/);
   }, RUN_TIMEOUT);
+});
+
+describe("a Run resumed with retryFailed", () => {
+  it(
+    "plays on a Game that failed at an Agent's fault mid-play from its file, with no build call, to the same final Game file as the uninterrupted Run, and writes the report",
+    async () => {
+      const runDir = tempRunDir();
+      const broken = await runSuite({ config: config({ seeds: [1], concurrency: 1 }), runDir, call: fakeClaudeCode(brokenAt(24)) });
+      expect(broken.manifest.status).toBe("complete");
+      const [failed, other] = broken.manifest.games;
+      expect(failed).toMatchObject({ status: "failed", outcome: { outcome: "error", cause: "failure" } });
+      expect(other!.status).toBe("complete");
+      const failedFile = readGameFile(join(runDir, failed!.file));
+      expect(failedFile.status).toBe("complete");
+      expect(failedFile.outcome?.outcome).toBe("error");
+      expect(existsSync(join(runDir, "report.md"))).toBe(true);
+
+      await expect(resumeSuite({ runDir, call: fakeClaudeCode(pure) })).rejects.toThrow(/complete/);
+
+      const fake = fakeClaudeCode(pure);
+      const statuses: { id: string; status: string }[] = [];
+      const retried = await resumeSuite({ runDir, call: fake, retryFailed: true, onGame: (game) => statuses.push({ id: game.id, status: game.status }) });
+
+      const { manifest } = retried;
+      expect(manifest.status).toBe("complete");
+      expect(manifest.games.map(({ status }) => status)).toEqual(["complete", "complete"]);
+      expect(manifest.games[0]!.outcome?.outcome).toMatch(/^(win|draw)$/);
+      expect(statuses).toEqual([
+        { id: failed!.id, status: "playing" },
+        { id: failed!.id, status: "complete" },
+      ]);
+      expect(fake.calls.filter(({ schema }) => schema === DECKLIST_SCHEMA)).toHaveLength(0);
+      expect(readManifest(runDir)).toEqual(manifest);
+      expect(retried.reportPath).toBe(join(runDir, "report.md"));
+      const file = retried.gameFiles[failed!.id]!;
+      expect(file.decisions.slice(0, failedFile.decisions.length)).toEqual(failedFile.decisions);
+      expect(file.decisions.length).toBeGreaterThan(failedFile.decisions.length);
+      expect(file.measurements.decisions).toHaveLength(file.decisions.length);
+      const { gameFiles: wholeFiles } = await uninterrupted();
+      for (const game of manifest.games) expect(settled(retried.gameFiles[game.id]!), game.id).toEqual(settled(wholeFiles[game.id]!));
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "builds again for a Game that failed in a Decklist build, and leaves a stalled Game failed",
+    async () => {
+      const runDir = tempRunDir();
+      const broken = await runSuite({ config: config({ seeds: [1], concurrency: 1 }), runDir, call: fakeClaudeCode(brokenAt(0)) });
+      expect(broken.manifest.games.map(({ status, steps }) => ({ status, steps }))).toEqual([
+        { status: "failed", steps: 0 },
+        { status: "complete", steps: expect.any(Number) },
+      ]);
+
+      const fake = fakeClaudeCode(pure);
+      const retried = await resumeSuite({ runDir, call: fake, retryFailed: true });
+
+      expect(retried.manifest.status).toBe("complete");
+      expect(retried.manifest.games.map(({ status }) => status)).toEqual(["complete", "complete"]);
+      const builds = fake.calls.filter(({ schema }) => schema === DECKLIST_SCHEMA);
+      expect(builds.map(({ systemPrompt }) => /You are Seat (\d)/.exec(systemPrompt)![1])).toEqual(["0", "1"]);
+      const file = retried.gameFiles[retried.manifest.games[0]!.id]!;
+      expect(file.decklistDecisions.map(({ seat, decision }) => ({ seat, failed: "cause" in decision }))).toEqual([
+        { seat: 0, failed: true },
+        { seat: 0, failed: false },
+        { seat: 1, failed: false },
+      ]);
+      const { gameFiles: wholeFiles } = await uninterrupted();
+      for (const game of retried.manifest.games) expect(settled(retried.gameFiles[game.id]!), game.id).toEqual(settled(wholeFiles[game.id]!));
+
+      const stalledDir = tempRunDir();
+      const stalled = await runSuite({ config: config({ seeds: [1], concurrency: 1, maxSteps: 20 }), runDir: stalledDir, call: fakeClaudeCode(pure) });
+      expect(stalled.manifest.games.every(({ outcome }) => outcome?.outcome === "stall")).toBe(true);
+      await expect(resumeSuite({ runDir: stalledDir, call: fakeClaudeCode(pure), retryFailed: true })).rejects.toThrow(/complete/);
+    },
+    RUN_TIMEOUT,
+  );
 });
