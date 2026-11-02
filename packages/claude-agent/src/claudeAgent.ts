@@ -4,7 +4,7 @@
 // message that changes per decision (the rendered decision, its Plan notes),
 // and answers with one Intent number, its reasoning and new Plan notes.
 import type { Decklist } from "@fyendal/shared";
-import { describeCardId, EQUIPMENT_SLOTS, type Agent, type Seat } from "@tcg-htc/runner";
+import { describeCardId, EQUIPMENT_SLOTS, type Agent, type AgentMeasurements, type Seat } from "@tcg-htc/runner";
 import { ask, describeAgent, failed, field, textField, type Read } from "./ask.js";
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { CARD_SYMBOLS_SECTION, primer } from "./prompt.js";
@@ -37,6 +37,12 @@ export const ANSWER_SCHEMA = {
  * applied it rather than lose the Game to a call it had no say in. The
  * failure's detail follows. A decision with a choice still fails. */
 export const UNANSWERED_REASONING = "Applied the only listed Intent without an answer; the call was refused.";
+
+/** What stands in for the Plan notes when a refusal outlasted its retries
+ * with them: the notes are the one thing a Seat sends again at every
+ * decision, so notes the safeguards flag would be refused for the rest of the
+ * Game. Asked once more without them, an answer's new notes replace them. */
+export const NOTES_DROPPED = "(Your Plan notes were left out of this message: the call was refused with them. Write new ones.)";
 
 /** The heading the message puts the Seat's Plan notes under. */
 export const PLAN_NOTES_HEADING = "Your Plan notes, from your last decision:";
@@ -75,16 +81,22 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
 
   // The runner's rendering of the View is the message; its numbered entries map the answer back to an Intent.
   const agent: Agent = async (_view, _legalIntents, _rng, rendered) => {
-    const asked = await ask({
-      call,
-      who,
-      systemPrompt,
-      message: buildMessage(rendered.text, planNotes),
-      schema: ANSWER_SCHEMA,
-      config: callConfig,
-      resultsDir,
-      read: (output) => readAnswer(output, rendered.intents.length),
-    });
+    const question = (notes: string) =>
+      ask({
+        call,
+        who,
+        systemPrompt,
+        message: buildMessage(rendered.text, notes),
+        schema: ANSWER_SCHEMA,
+        config: callConfig,
+        resultsDir,
+        read: (output) => readAnswer(output, rendered.intents.length),
+      });
+    let asked = await question(planNotes);
+    if (failed(asked) && asked.cause === "refusal" && planNotes !== "") {
+      const again = await question(NOTES_DROPPED);
+      asked = { ...again, measurements: overAttempts(asked.measurements ?? {}, again.measurements ?? {}) };
+    }
     if (failed(asked)) {
       const measurements = { ...asked.measurements, notesCut: false };
       if (asked.cause === "refusal" && rendered.intents.length === 1) {
@@ -104,6 +116,25 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
     systemPrompt: { value: systemPrompt, enumerable: true },
     planNotes: { get: () => planNotes, enumerable: true },
   }) as ClaudeAgent;
+}
+
+/** The measurements of a question asked twice, `second` after `first` was
+ * refused: sums, the retries counting the second question's first call, the
+ * model the last to answer. */
+function overAttempts(first: AgentMeasurements, second: AgentMeasurements): AgentMeasurements {
+  const sum = (key: "inputTokens" | "cachedTokens" | "outputTokens" | "latencyMs" | "costUsd") => (first[key] ?? 0) + (second[key] ?? 0);
+  return {
+    ...first,
+    ...second,
+    model: second.model ?? first.model,
+    inputTokens: sum("inputTokens"),
+    cachedTokens: sum("cachedTokens"),
+    outputTokens: sum("outputTokens"),
+    latencyMs: sum("latencyMs"),
+    costUsd: sum("costUsd"),
+    retries: (first.retries ?? 0) + 1 + (second.retries ?? 0),
+    firstAnswerInvalid: first.firstAnswerInvalid ?? false,
+  };
 }
 
 /** The three fields of an answer (Claude Code's raw reply, not yet a

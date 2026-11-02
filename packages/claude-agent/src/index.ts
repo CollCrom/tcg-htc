@@ -37,6 +37,7 @@ export {
   type ClaudeAgentConfig,
   type ClaudeAgentOptions,
   ANSWER_SCHEMA,
+  NOTES_DROPPED,
   PLAN_NOTES_HEADING,
   PLAN_NOTES_LIMIT,
   UNANSWERED_REASONING,

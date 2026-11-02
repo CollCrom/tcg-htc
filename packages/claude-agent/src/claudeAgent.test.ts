@@ -4,7 +4,7 @@ import { cardData } from "@fyendal/cards";
 import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, pickDecklist, randomAgent, runGame, type Agent, type RenderedDecision } from "@tcg-htc/runner";
 import { describe, expect, it } from "vitest";
 import type { CallResult } from "./claudeCode.js";
-import { ANSWER_SCHEMA, claudeAgent, PLAN_NOTES_HEADING, PLAN_NOTES_LIMIT, UNANSWERED_REASONING } from "./claudeAgent.js";
+import { ANSWER_SCHEMA, claudeAgent, NOTES_DROPPED, PLAN_NOTES_HEADING, PLAN_NOTES_LIMIT, UNANSWERED_REASONING } from "./claudeAgent.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
 import { listedEntries } from "./scriptedPlay.js";
 
@@ -198,68 +198,103 @@ describe("claudeAgent", () => {
     GAME_TIMEOUT,
   );
 
-  it(
-    "retries a refusal three times with the same message, then ends the Game as an error with cause refusal when the decision has a choice",
-    async () => {
-      const refusal = (n: number): CallResult => ({ kind: "refusal", detail: `refusal ${n}` });
-      let decision = -1;
-      /** Refuses `times` calls at the first decision with a choice, then answers as `varied`. */
-      const refusingAt = (times: number) => {
-        let refused = 0;
-        return (request: RecordedCall, index: number): CallResult => {
-          if (refused < times && listedIntents(request) > 1) {
-            if (refused === 0) decision = index;
-            refused++;
-            return refusal(refused);
-          }
-          return varied(request, index);
-        };
-      };
+  /** Refuses `times` calls at the first decision after the first that lists
+   * `choice` Intents or more (so the Agent has Plan notes), then answers as
+   * `varied`; `at` is set to that decision's index. */
+  const refusingAt = (times: number, choice: 1 | 2, at: { decision: number }) => {
+    let refused = 0;
+    return (request: RecordedCall, index: number): CallResult => {
+      if ((refused > 0 || index > 0) && refused < times && (choice === 1 ? listedIntents(request) === 1 : listedIntents(request) > 1)) {
+        if (refused === 0) at.decision = index;
+        refused++;
+        return { kind: "refusal", detail: `refusal ${refused}` };
+      }
+      return varied(request, index);
+    };
+  };
 
-      const cleared = await play(refusingAt(3));
+  it(
+    "retries a refusal three times with the same message, then three more without the Plan notes, then ends the Game as an error with cause refusal when the decision has a choice",
+    async () => {
+      const at = { decision: -1 };
+
+      const cleared = await play(refusingAt(3, 2, at));
+      const { decision } = at;
+      expect(decision).toBeGreaterThan(0);
       expect(cleared.result.outcome).toMatch(/^(win|draw)$/);
       expect(cleared.fake.calls.slice(decision, decision + 4).map(({ message }) => message)).toEqual(Array(4).fill(cleared.fake.calls[decision]!.message));
       expect(cleared.own[decision]!.decision).toMatchObject({ measurements: { retries: 3, firstAnswerInvalid: false, inputTokens: 100 } });
 
-      const refused = await play(refusingAt(4));
-      expect(refused.result).toMatchObject({ outcome: "error", cause: "refusal", detail: "Seat 0's Claude Agent (opus, medium): refusal 4" });
-      expect(refused.fake.calls).toHaveLength(decision + 4);
-      expect(refused.own[decision]!.decision).toMatchObject({ cause: "refusal", measurements: { effort: "medium", retries: 3, inputTokens: 0, latencyMs: 0 } });
+      const refused = await play(refusingAt(8, 2, at));
+      expect(refused.result).toMatchObject({ outcome: "error", cause: "refusal", detail: "Seat 0's Claude Agent (opus, medium): refusal 8" });
+      expect(refused.fake.calls).toHaveLength(decision + 8);
+      const withNotes = refused.fake.calls[decision]!.message;
+      expect(withNotes.endsWith(`${PLAN_NOTES_HEADING}\nkeep pressure on`)).toBe(true);
+      for (const { message } of refused.fake.calls.slice(decision + 4, decision + 8)) {
+        expect(message).toBe(withNotes.replace("keep pressure on", NOTES_DROPPED));
+      }
+      expect(refused.own[decision]!.decision).toMatchObject({ cause: "refusal", measurements: { effort: "medium", retries: 7, inputTokens: 0, latencyMs: 0 } });
     },
     GAME_TIMEOUT,
   );
 
   it(
-    "applies the only listed Intent without an answer when a refusal outlasts its retries at a decision with no choice, keeping its Plan notes",
+    "takes the answer to the message without the Plan notes, and its new notes replace the refused ones",
     async () => {
-      let decision = -1;
-      let refused = 0;
-      const script = (request: RecordedCall, index: number): CallResult => {
-        if (refused < 4 && listedIntents(request) === 1) {
-          if (refused === 0) decision = index;
-          refused++;
-          return { kind: "refusal", detail: `refusal ${refused}` };
-        }
-        return varied(request, index);
-      };
+      const at = { decision: -1 };
+      const refusing = refusingAt(4, 2, at);
+      const fresh = (request: RecordedCall, index: number): CallResult => (request.message.includes(NOTES_DROPPED) ? answer(1, "fresh notes") : refusing(request, index));
+      const { fake, result, own } = await play(fresh);
+      const { decision } = at;
+
+      expect(result.outcome).toMatch(/^(win|draw)$/);
+      expect(fake.calls).toHaveLength(own.length + 4);
+      expect(fake.calls[decision + 4]!.message.endsWith(`${PLAN_NOTES_HEADING}\n${NOTES_DROPPED}`)).toBe(true);
+      expect(own[decision]!.decision).toMatchObject({
+        reasoning: "the first listed Intent looks fine",
+        planNotes: "fresh notes",
+        measurements: { retries: 4, firstAnswerInvalid: false, inputTokens: 100, notesCut: false },
+      });
+      expect(fake.calls[decision + 5]!.message.endsWith(`${PLAN_NOTES_HEADING}\nfresh notes`)).toBe(true);
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "does not ask again without the Plan notes when there are none",
+    async () => {
+      const { fake, own } = await play((request, index) => (index < 4 ? { kind: "refusal", detail: `refusal ${index + 1}` } : varied(request, index)));
+
+      expect(fake.calls).toHaveLength(own.length === 1 ? 4 : own.length + 3);
+      expect(own[0]!.decision).toMatchObject({ measurements: { retries: 3 } });
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "applies the only listed Intent without an answer when a refusal outlasts its retries, with and without the notes, at a decision with no choice, keeping its Plan notes",
+    async () => {
+      const at = { decision: -1 };
+      const script = refusingAt(8, 1, at);
       const fake = fakeClaudeCode(script);
       const renderings: RenderedDecision[] = [];
       const agent = recordingRenderings(claudeAgent({ seat: 0, decklist: decklists[0], model: "opus", effort: "medium" }, fake), renderings);
 
       const result = await runGame({ decklists, seed: SEED, startingSeat: 0, agents: [agent, randomAgent] });
 
+      const { decision } = at;
       expect(result.outcome).toMatch(/^(win|draw)$/);
       expect(decision).toBeGreaterThan(0);
       const own = result.decisions.filter(({ seat }) => seat === 0);
-      expect(fake.calls).toHaveLength(own.length + 3);
+      expect(fake.calls).toHaveLength(own.length + 7);
       expect(renderings[decision]!.intents).toHaveLength(1);
       expect(own[decision]!.decision).toEqual({
         intent: renderings[decision]!.intents[0],
-        reasoning: `${UNANSWERED_REASONING} Seat 0's Claude Agent (opus, medium): refusal 4`,
+        reasoning: `${UNANSWERED_REASONING} Seat 0's Claude Agent (opus, medium): refusal 8`,
         planNotes: "keep pressure on",
-        measurements: expect.objectContaining({ effort: "medium", retries: 3, firstAnswerInvalid: false, inputTokens: 0, notesCut: false }),
+        measurements: expect.objectContaining({ effort: "medium", retries: 7, firstAnswerInvalid: false, inputTokens: 0, notesCut: false }),
       });
-      expect(fake.calls[decision + 4]!.message.endsWith(`${PLAN_NOTES_HEADING}\nkeep pressure on`)).toBe(true);
+      expect(fake.calls[decision + 8]!.message.endsWith(`${PLAN_NOTES_HEADING}\nkeep pressure on`)).toBe(true);
     },
     GAME_TIMEOUT,
   );
