@@ -11,7 +11,8 @@ import { describeCardId, nameWithColour } from "./cards.js";
 /** One rendered decision. `intents[i]` is the engine Intent behind numbered
  * entry `i + 1` of `text`, whose wording (without its number) is `entries[i]`:
  * Intents that differ only in pitch order share one entry, which stands for
- * the first ordering the engine listed. */
+ * the first ordering the engine listed, and defend staging is cumulative (see
+ * `withStaging`). */
 export interface RenderedDecision {
   text: string;
   intents: Intent[];
@@ -47,7 +48,7 @@ function opponentReference(view: View, seat: Seat): string[] {
 /** Renders a Seat's View and its legal Intents as text. */
 export function renderDecision(view: View, seat: Seat, legalIntents: readonly Intent[]): RenderedDecision {
   const names = namesOf(view);
-  const intents = collapsePitchOrderings(legalIntents, view);
+  const intents = withStaging(collapsePitchOrderings(legalIntents, view), view, seat);
   const entries = intents.map((intent) => renderIntent(intent, names, view, seat));
   const text = [
     `Turn ${view.turn}, ${view.phase} phase. Seat ${view.activePlayer}'s turn; Seat ${view.priorityPlayer} has priority. You are Seat ${seat}.`,
@@ -72,6 +73,34 @@ function collapsePitchOrderings(legalIntents: readonly Intent[], view: View): In
     seen.add(key);
     return true;
   });
+}
+
+/** Upstream advertises defend staging one card at a time: each `stage-defenders`
+ * it lists names a single card that could join the staged set, and applying
+ * one sets the staged set to exactly the cards it names (vendor `legal.ts`,
+ * `defense.ts`). Offered as they are, staging a second card would drop the
+ * first, so a block with two cards could never be reached. Each candidate is
+ * offered as the staged set plus that card, and each staged card as the set
+ * without it. The staged set comes from the Seat's own pending decision in its
+ * View. */
+function withStaging(intents: Intent[], view: View, seat: Seat): Intent[] {
+  const staged = stagedIds(view, seat);
+  if (staged.length === 0) return intents;
+  const cumulative = intents.map((intent) =>
+    intent.kind === "stage-defenders" ? { ...intent, instanceIds: [...staged, ...intent.instanceIds] } : intent,
+  );
+  const unstaging = staged.map((id): Intent => ({ kind: "stage-defenders", instanceIds: staged.filter((other) => other !== id) }));
+  let afterStaging = cumulative.length;
+  cumulative.forEach((intent, i) => {
+    if (intent.kind === "stage-defenders") afterStaging = i + 1;
+  });
+  return [...cumulative.slice(0, afterStaging), ...unstaging, ...cumulative.slice(afterStaging)];
+}
+
+/** The defenders the Seat has staged, when it is its defend decision. */
+function stagedIds(view: View, seat: Seat): number[] {
+  const decision = view.pendingDecision;
+  return decision?.kind === "defend" && decision.player === seat ? (decision.stagedCards ?? []).map((card) => card.instanceId) : [];
 }
 
 /** Identifies an Intent up to the order its cards are pitched in. A scripted
@@ -164,9 +193,13 @@ function renderDecisionPrompt(view: View, seat: Seat): string[] {
   if (!decision || decision.player !== seat) return [];
   const prompt = `Decision: ${decision.prompt || DECISION_KINDS[decision.kind]}`;
   const staged = decision.stagedCards?.length ? [`Staged defenders: ${decision.stagedCards.map(describeCard).join(", ")}`] : [];
+  const blocking =
+    decision.kind === "defend"
+      ? ['Blocking: stage each card you want to block with, one per decision (staged cards stay staged), then choose "block with …" to confirm.']
+      : [];
   const revealed = decision.revealedCards?.length ? [`Revealed: ${decision.revealedCards.map(describeCard).join(", ")}`] : [];
   const looked = decision.lookedCards?.length ? [`Looked at: ${decision.lookedCards.map(describeCard).join(", ")}`] : [];
-  return [prompt, ...staged, ...revealed, ...looked];
+  return [prompt, ...staged, ...blocking, ...revealed, ...looked];
 }
 
 /** Names of the cards this View shows, by instance id, plus the labels the
@@ -208,8 +241,13 @@ function renderIntent(intent: Intent, names: Names, view: View, seat: Seat): str
       return intent.instanceIds.length === 0
         ? "block with nothing"
         : `block with ${list(intent.instanceIds)}${pitching(intent.pitchInstanceIds)}`;
-    case "stage-defenders":
-      return `stage ${list(intent.instanceIds)} to block`;
+    case "stage-defenders": {
+      const staged = stagedIds(view, seat);
+      const unstaged = staged.filter((id) => !intent.instanceIds.includes(id));
+      if (unstaged.length > 0) return `unstage ${list(unstaged)}`;
+      const added = list(intent.instanceIds.filter((id) => !staged.includes(id)));
+      return staged.length > 0 ? `stage ${added} to block as well (with ${list(staged)})` : `stage ${added} to block`;
+    }
     case "choose": {
       const payment = view.pendingDecision?.resourcePayment?.options.find(({ optionId }) => optionId === intent.optionId);
       if (payment) return `pay ${view.pendingDecision?.resourcePayment?.cost} by pitching ${list(payment.pitchInstanceIds)}`;

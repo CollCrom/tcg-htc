@@ -8,7 +8,8 @@ export interface DecisionMeasurement {
   seat: Seat;
   /** Legal Intents offered. */
   intents: number;
-  /** Legal Intents offered, counting Intents that differ only in pitch order once. */
+  /** Numbered entries offered: the legal Intents counting those that differ
+   * only in pitch order once, plus an unstage entry per staged defender. */
   reorderFreeIntents: number;
   /** Rendered View plus legal Intents, in characters ÷ 4. */
   tokens: number;
