@@ -32,8 +32,10 @@ import { agentTotals, gameFileName, writeGameFile, type DecklistDecisionRecord, 
 import { heroOf } from "./heroLists.js";
 
 /** Decisions after which a Game between Claude Agents is abandoned as a
- * stall, so a runaway Game can't drain the subscription window. */
-export const CLAUDE_MAX_DECISIONS = 600;
+ * stall, so a runaway Game can't drain the subscription window. Two and a
+ * half times the first complete live Game (400 decisions, 21 turns); Claude
+ * plays longer Games than Phase 1's random Agents (mean 250, max 452). */
+export const CLAUDE_MAX_DECISIONS = 1_000;
 
 export interface PlayGameOptions {
   seed: number;
