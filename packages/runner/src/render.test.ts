@@ -22,6 +22,10 @@ const { replay } = await runGame({
  * graveyard, banish, equipment and weapon zones. */
 const MID_GAME_STEP = 78;
 
+/** Step 36 of that Game: turn 2, Ira (Seat 0) is asked to defend and has
+ * staged nothing yet. */
+const DEFEND_STEP = 36;
+
 describe("renderDecision", () => {
   it("numbers one entry per Intent after collapsing pitch orderings, each resolving to an Intent the engine accepts", () => {
     // The state is rebuilt once: replaying it per Intent took 10 s on CI's runner.
@@ -80,6 +84,31 @@ describe("renderDecision", () => {
     expect(reference.filter((line) => line.startsWith("Sirens of Safe Harbor"))).toHaveLength(2);
     expect(reference).toHaveLength(10);
     expect(reference.join("\n")).not.toMatch(/Buckling Blow|Titan's Fist|Bravo|Feign Vengeance/);
+  });
+
+  it("lets a Seat block with two cards by staging one, then the other, then confirming", () => {
+    // Step 36: turn 2, Ira (Seat 0) defends with nothing staged yet and six cards that could block.
+    let state = stateAt({ ...replay, intents: replay.intents.slice(0, DEFEND_STEP) });
+    const first = renderDecision(...decisionArgs(state));
+    expect(first.entries).toContain("block with nothing");
+    expect(first.text).toContain('Blocking: stage each card you want to block with, one per decision (staged cards stay staged), then choose "block with …" to confirm.');
+
+    state = choose(state, first, /^stage Feign Vengeance \(blue\) to block$/);
+    const second = renderDecision(...decisionArgs(state));
+    expect(second.entries).toContain("block with Feign Vengeance (blue)");
+    expect(second.entries).toContain("unstage Feign Vengeance (blue)");
+    expect(second.entries).not.toContain("stage Feign Vengeance (blue) to block");
+
+    state = choose(state, second, /^stage Blade Beckoner Helm to block as well \(with Feign Vengeance \(blue\)\)$/);
+    const third = renderDecision(...decisionArgs(state));
+    expect(third.entries).toContain("block with Feign Vengeance (blue) and Blade Beckoner Helm");
+    expect(third.entries).toContain("unstage Blade Beckoner Helm");
+    expect(third.entries.filter((entry) => entry.startsWith("unstage"))).toHaveLength(2);
+
+    state = choose(state, third, /^block with Feign Vengeance \(blue\) and Blade Beckoner Helm$/);
+    // The engine keeps a blocking hand card and blocking equipment in separate fields.
+    expect(state.chain.at(-1)?.defendingCards).toHaveLength(1);
+    expect(state.chain.at(-1)?.defendingEquipment).toHaveLength(1);
   });
 
   it("pins one rendered decision", () => {
@@ -154,6 +183,21 @@ function* decisions(replay: Replay): Generator<Decision> {
     if (!applied.ok) throw new Error(`engine rejected ${intent.kind}: ${applied.error}`);
     state = applied.state;
   }
+}
+
+/** `renderDecision`'s arguments for the acting Seat of a state. */
+function decisionArgs(state: GameState): [View, Seat, Intent[]] {
+  const { view, seat, legal } = decisionOf(state);
+  return [view, seat, legal];
+}
+
+/** Applies the Intent behind the one rendered entry matching `entry`. */
+function choose(state: GameState, rendered: ReturnType<typeof renderDecision>, entry: RegExp): GameState {
+  const matches = rendered.entries.map((text, i) => (entry.test(text) ? i : -1)).filter((i) => i >= 0);
+  expect(matches, `entries matching ${entry}`).toHaveLength(1);
+  const applied = applyIntent(state, decisionOf(state).seat, rendered.intents[matches[0]!]!);
+  if (!applied.ok) throw new Error(`engine rejected ${rendered.entries[matches[0]!]}: ${applied.error}`);
+  return applied.state;
 }
 
 function decisionOf(state: GameState): Decision {

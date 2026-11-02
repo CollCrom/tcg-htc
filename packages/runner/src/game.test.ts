@@ -51,7 +51,16 @@ describe("runGame", () => {
         // The rendering is of this Seat's View, with the legal Intents behind its numbered entries.
         expect(rendered.text).toContain(`You are Seat ${seat}`);
         expect(rendered.entries).toHaveLength(rendered.intents.length);
-        for (const intent of rendered.intents) expect(legal).toContain(intent);
+        // Defend staging is re-offered cumulatively (render.ts `withStaging`): those Intents name
+        // only cards the Seat has staged or the engine listed as stageable.
+        const stageable = [
+          ...(view.pendingDecision?.stagedCards ?? []).map((card) => card.instanceId),
+          ...legal.flatMap((intent) => (intent.kind === "stage-defenders" ? intent.instanceIds : [])),
+        ];
+        for (const intent of rendered.intents) {
+          if (intent.kind === "stage-defenders") for (const id of intent.instanceIds) expect(stageable).toContain(id);
+          else expect(legal).toContain(intent);
+        }
         expect(view.players[seat].deck).toBeUndefined();
         const opponent = view.players[opponentOf(seat)];
         expect(opponent.hand).toEqual([]);
@@ -92,8 +101,10 @@ describe("runGame", () => {
     "measures every decision: Seat, Intents offered and estimated tokens",
     async () => {
       const offered: number[] = [];
+      const staged: number[] = [];
       const counting: Agent = (view, legal, rng, rendered) => {
         offered.push(legal.length);
+        staged.push(view.pendingDecision?.stagedCards?.length ?? 0);
         return randomAgent(view, legal, rng, rendered);
       };
       const { measurements, steps } = await runGame({ decklists, seed: 7, startingSeat: 0, agents: [counting, counting] });
@@ -103,11 +114,12 @@ describe("runGame", () => {
       expect(measurements.decisionsPerSeat[0] + measurements.decisionsPerSeat[1]).toBe(steps);
       expect(measurements.decisions).toHaveLength(steps);
       expect(measurements.decisions.map(({ intents }) => intents)).toEqual(offered);
-      for (const decision of measurements.decisions) {
+      measurements.decisions.forEach((decision, i) => {
         expect(decision.reorderFreeIntents).toBeGreaterThan(0);
-        expect(decision.reorderFreeIntents).toBeLessThanOrEqual(decision.intents);
+        // Each staged defender adds an unstage entry (render.ts `withStaging`).
+        expect(decision.reorderFreeIntents).toBeLessThanOrEqual(decision.intents + staged[i]!);
         expect(decision.tokens).toBeGreaterThan(0);
-      }
+      });
       expect(measurements.decisions.filter(({ seat }) => seat === 1)).toHaveLength(measurements.decisionsPerSeat[1]);
       expect(measurements.durationMs).toBeGreaterThan(0);
     },
@@ -387,7 +399,8 @@ describe("runGame", () => {
         expect(progress.intents.slice(0, applied)).toEqual(result.replay.intents.slice(0, applied));
         expect(progress.rendered).toEqual(renderDecision(views[i]!, record.seat, record.intents));
         expect(progress.rendered.text).toBe(record.rendered);
-        for (const intent of progress.rendered.intents) expect(record.intents).toContain(intent);
+        // Staging Intents are re-offered cumulatively; the honesty test above checks their cards.
+        for (const intent of progress.rendered.intents) if (intent.kind !== "stage-defenders") expect(record.intents).toContain(intent);
       });
       // The random Agent picks from the raw list, so its choice can be a pitch ordering the numbered entries fold away.
       expect(seen.some(({ record, progress }) => progress.rendered.intents.length < record.intents.length)).toBe(true);

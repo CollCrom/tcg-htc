@@ -112,8 +112,9 @@ export interface DecisionRecord {
   seat: Seat;
   /** The View and legal Intents as rendered for the Agent. */
   rendered: string;
-  /** Every legal Intent offered. The numbered entries of `rendered` are the
-   * `intents` of `renderDecision`: the same list with pitch orderings collapsed. */
+  /** Every legal Intent the engine listed. The numbered entries of `rendered`
+   * are the `intents` of `renderDecision`: the same list with pitch orderings
+   * collapsed and defend staging made cumulative. */
   intents: readonly Intent[];
   decision: Decision;
 }

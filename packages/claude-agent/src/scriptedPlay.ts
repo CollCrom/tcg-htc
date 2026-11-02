@@ -33,9 +33,9 @@ export function scriptedAnswer(lists: readonly List[], request: RecordedCall): C
     return { kind: "answer", output: { ...legalPresentation(list), reasoning: "built" }, turns: 2, usage: SCRIPTED_USAGE };
   }
   const entries = listedEntries(request.message);
-  // Staging a defender toggles it, so a pure choice could cycle through the
-  // same staging forever; anything else moves the Game along.
-  const candidates = entries.map((entry, i) => (entry.startsWith("stage ") ? -1 : i + 1)).filter((n) => n > 0);
+  // Staging and unstaging defenders never moves the Game on by itself, so a
+  // pure choice could cycle through stagings forever; anything else does.
+  const candidates = entries.map((entry, i) => (/^(un)?stage /.test(entry) ? -1 : i + 1)).filter((n) => n > 0);
   const numbered = candidates.length > 0 ? candidates : entries.map((_, i) => i + 1);
   const seed = hash(request.message);
   return {

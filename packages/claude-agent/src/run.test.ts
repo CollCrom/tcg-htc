@@ -36,8 +36,14 @@ const building =
     return { kind: "answer", output: { ...legalPresentation(list), reasoning: "built" }, turns: 2, usage };
   };
 
-/** Answers a different listed Intent each call, so Games move along and end. */
-const varied: FakeScript = building((request, index) => answer(1 + (index % entriesOf(request).length)));
+/** Answers a different listed Intent each call, skipping defender staging
+ * (which never moves a Game on by itself), so Games move along and end. */
+const varied: FakeScript = building((request, index) => {
+  const entries = entriesOf(request);
+  const moving = entries.map((entry, i) => (/^(un)?stage /.test(entry) ? -1 : i + 1)).filter((n) => n > 0);
+  const numbered = moving.length > 0 ? moving : entries.map((_, i) => i + 1);
+  return answer(numbered[index % numbered.length]);
+});
 
 /** Passes whenever it can, so the Game never ends and runs into the cap. */
 const passing: FakeScript = building((request) => {
