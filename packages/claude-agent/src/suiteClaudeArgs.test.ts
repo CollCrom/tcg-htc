@@ -14,7 +14,7 @@ describe("parseSuiteClaudeArgs", () => {
           { model: "haiku", effort: "low" },
         ],
         concurrency: 3,
-        maxSteps: 600,
+        maxSteps: 1000,
       },
       results: "out",
     });
@@ -30,7 +30,7 @@ describe("parseSuiteClaudeArgs", () => {
           { model: "opus", effort: "medium" },
         ],
         concurrency: 2,
-        maxSteps: 600,
+        maxSteps: 1000,
       },
       results: "results",
     });
