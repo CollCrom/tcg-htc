@@ -202,6 +202,13 @@ describe("classify", () => {
     expect(classify(run({ stdout }))).toMatchObject({ kind: "refusal", detail: expect.stringContaining("I can't help with that.") });
   });
 
+  it("reports a refusal when the model's safeguards flagged the message, so it is retried more and not taken for a broken call", () => {
+    const flagged =
+      "API Error: Opus 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup). This sometimes happens with safe, normal conversations. Claude Code can't respond to this message with Opus 5.5.\n\nTry rephrasing the request in a new session or change your model.\n\nDetails: `[reasoning_extraction]`";
+    const stdout = resultJson({ is_error: true, subtype: "success", structured_output: undefined, result: flagged });
+    expect(classify(run({ stdout, exitCode: 1 }))).toMatchObject({ kind: "refusal", detail: flagged });
+  });
+
   it("reports a failure with the message on a non-zero exit", () => {
     expect(classify(run({ stdout: "", stderr: "Not logged in · run /login", exitCode: 1 }))).toMatchObject({ kind: "failure", detail: expect.stringContaining("Not logged in") });
   });

@@ -9,7 +9,7 @@ import { ask, describeAgent, failed, field, textField, type Read } from "./ask.j
 import type { ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 import { CARD_SYMBOLS_SECTION, primer } from "./prompt.js";
 
-export { MAX_RETRIES } from "./ask.js";
+export { MAX_RETRIES, REFUSAL_RETRIES } from "./ask.js";
 export { PRIMER_FILE } from "./prompt.js";
 
 /** Plan notes longer than this are cut, and the cut recorded on the Decision. */
@@ -31,6 +31,12 @@ export const ANSWER_SCHEMA = {
   required: ["intent", "reasoning", "planNotes"],
   additionalProperties: false,
 } as const;
+
+/** How the reasoning of a Decision made without an answer starts: a refusal
+ * outlasted its retries at a decision that listed one Intent, so the Agent
+ * applied it rather than lose the Game to a call it had no say in. The
+ * failure's detail follows. A decision with a choice still fails. */
+export const UNANSWERED_REASONING = "Applied the only listed Intent without an answer; the call was refused.";
 
 /** The heading the message puts the Seat's Plan notes under. */
 export const PLAN_NOTES_HEADING = "Your Plan notes, from your last decision:";
@@ -79,7 +85,13 @@ export function claudeAgent(config: ClaudeAgentConfig, call: ClaudeCodeCall, opt
       resultsDir,
       read: (output) => readAnswer(output, rendered.intents.length),
     });
-    if (failed(asked)) return { ...asked, measurements: { ...asked.measurements, notesCut: false } };
+    if (failed(asked)) {
+      const measurements = { ...asked.measurements, notesCut: false };
+      if (asked.cause === "refusal" && rendered.intents.length === 1) {
+        return { intent: rendered.intents[0]!, reasoning: `${UNANSWERED_REASONING} ${asked.detail}`, planNotes, measurements };
+      }
+      return { ...asked, measurements };
+    }
     const { value, measurements } = asked;
     measurements.notesCut = value.planNotes.length > PLAN_NOTES_LIMIT;
     planNotes = value.planNotes.slice(0, PLAN_NOTES_LIMIT);
