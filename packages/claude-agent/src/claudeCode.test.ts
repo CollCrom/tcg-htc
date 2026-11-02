@@ -186,6 +186,13 @@ describe("classify", () => {
     expect(classify(run({ stdout, exitCode: 1 }))).toMatchObject({ kind: "rate-limit", detail: expect.stringContaining("hit your limit · resets 3pm") });
   });
 
+  it("reports the live 5-hour limit as a rate limit, from the result text and from stderr", () => {
+    const live = "You've hit your 5-hour limit · resets 12:40pm (America/New_York)";
+    const stdout = resultJson({ is_error: true, subtype: "success", structured_output: undefined, result: live });
+    expect(classify(run({ stdout, exitCode: 1 }))).toMatchObject({ kind: "rate-limit", detail: live });
+    expect(classify(run({ stdout: "", stderr: live, exitCode: 1 }))).toMatchObject({ kind: "rate-limit", detail: live });
+  });
+
   it("reports a rate limit from stderr when there is no result", () => {
     expect(classify(run({ stdout: "", stderr: "Error: usage limit reached", exitCode: 1 }))).toMatchObject({ kind: "rate-limit", detail: expect.stringContaining("usage limit reached") });
   });
