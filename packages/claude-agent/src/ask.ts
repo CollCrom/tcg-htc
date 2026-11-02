@@ -1,11 +1,16 @@
-// ask: one question to Claude Code, asked again once when the answer is not
-// accepted or the call fails, with the model's measurements summed over the
-// attempts. Both the Decklist build and every play decision go through it.
+// ask: one question to Claude Code, asked again when the answer is not
+// accepted or the call fails (once, or three times for a refusal), with the
+// model's measurements summed over the attempts. Both the Decklist build and every play decision go through it.
 import type { AgentMeasurements, DecisionFailure, DecisionFailureCause, Seat } from "@tcg-htc/runner";
 import type { CallRequest, CallResult, ClaudeCodeCall, ClaudeConfig } from "./claudeCode.js";
 
 /** Calls made for one question after the first: one retry. */
 export const MAX_RETRIES = 1;
+
+/** Retries of a refusal, which outnumber the rest: the model's safeguards flag
+ * an ordinary decision now and then ("this sometimes happens with safe, normal
+ * conversations"), and a repeat of the same message usually clears it. */
+export const REFUSAL_RETRIES = 3;
 
 /** Heads the problem appended to the message on a retry after an invalid answer. */
 export const PROBLEM_HEADING = "Your previous answer was not accepted. Answer again, fixing this problem:";
@@ -33,8 +38,9 @@ export function failed<T extends object>(result: T | DecisionFailure): result is
 
 /** Asks until an answer is accepted or the retries run out. An invalid answer
  * is retried with the problem appended to the message; a refusal, timeout or
- * failure is retried with the same message; a rate limit fails at once, so the
- * Run can pause. */
+ * failure is retried with the same message, a refusal `REFUSAL_RETRIES` times
+ * and the rest `MAX_RETRIES`; a rate limit fails at once, so the Run can
+ * pause. */
 export async function ask<T>({ call, read, who, ...request }: Question<T>): Promise<Asked<T>> {
   const measurements: AgentMeasurements = {
     effort: request.config.effort,
@@ -65,7 +71,7 @@ export async function ask<T>({ call, read, who, ...request }: Question<T>): Prom
     if (outcome.kind === "accepted") return { value: outcome.value, measurements };
     if (outcome.kind === "rate-limit") return fail("rate-limit", outcome.detail);
     if (outcome.kind === "invalid-answer" && attempt === 0) measurements.firstAnswerInvalid = true;
-    if (attempt >= MAX_RETRIES) return fail(outcome.kind, outcome.detail);
+    if (attempt >= (outcome.kind === "refusal" ? REFUSAL_RETRIES : MAX_RETRIES)) return fail(outcome.kind, outcome.detail);
     problem = outcome.kind === "invalid-answer" ? outcome.detail : undefined;
   }
 }

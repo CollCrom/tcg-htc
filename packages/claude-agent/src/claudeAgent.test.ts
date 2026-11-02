@@ -4,7 +4,7 @@ import { cardData } from "@fyendal/cards";
 import { BRAVO_LIST_FILE, fixtureList, IRA_LIST_FILE, pickDecklist, randomAgent, runGame, type Agent, type RenderedDecision } from "@tcg-htc/runner";
 import { describe, expect, it } from "vitest";
 import type { CallResult } from "./claudeCode.js";
-import { ANSWER_SCHEMA, claudeAgent, PLAN_NOTES_HEADING, PLAN_NOTES_LIMIT } from "./claudeAgent.js";
+import { ANSWER_SCHEMA, claudeAgent, PLAN_NOTES_HEADING, PLAN_NOTES_LIMIT, UNANSWERED_REASONING } from "./claudeAgent.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
 import { listedEntries } from "./scriptedPlay.js";
 
@@ -198,7 +198,73 @@ describe("claudeAgent", () => {
     GAME_TIMEOUT,
   );
 
-  for (const kind of ["refusal", "timeout", "failure"] as const) {
+  it(
+    "retries a refusal three times with the same message, then ends the Game as an error with cause refusal when the decision has a choice",
+    async () => {
+      const refusal = (n: number): CallResult => ({ kind: "refusal", detail: `refusal ${n}` });
+      let decision = -1;
+      /** Refuses `times` calls at the first decision with a choice, then answers as `varied`. */
+      const refusingAt = (times: number) => {
+        let refused = 0;
+        return (request: RecordedCall, index: number): CallResult => {
+          if (refused < times && listedIntents(request) > 1) {
+            if (refused === 0) decision = index;
+            refused++;
+            return refusal(refused);
+          }
+          return varied(request, index);
+        };
+      };
+
+      const cleared = await play(refusingAt(3));
+      expect(cleared.result.outcome).toMatch(/^(win|draw)$/);
+      expect(cleared.fake.calls.slice(decision, decision + 4).map(({ message }) => message)).toEqual(Array(4).fill(cleared.fake.calls[decision]!.message));
+      expect(cleared.own[decision]!.decision).toMatchObject({ measurements: { retries: 3, firstAnswerInvalid: false, inputTokens: 100 } });
+
+      const refused = await play(refusingAt(4));
+      expect(refused.result).toMatchObject({ outcome: "error", cause: "refusal", detail: "Seat 0's Claude Agent (opus, medium): refusal 4" });
+      expect(refused.fake.calls).toHaveLength(decision + 4);
+      expect(refused.own[decision]!.decision).toMatchObject({ cause: "refusal", measurements: { effort: "medium", retries: 3, inputTokens: 0, latencyMs: 0 } });
+    },
+    GAME_TIMEOUT,
+  );
+
+  it(
+    "applies the only listed Intent without an answer when a refusal outlasts its retries at a decision with no choice, keeping its Plan notes",
+    async () => {
+      let decision = -1;
+      let refused = 0;
+      const script = (request: RecordedCall, index: number): CallResult => {
+        if (refused < 4 && listedIntents(request) === 1) {
+          if (refused === 0) decision = index;
+          refused++;
+          return { kind: "refusal", detail: `refusal ${refused}` };
+        }
+        return varied(request, index);
+      };
+      const fake = fakeClaudeCode(script);
+      const renderings: RenderedDecision[] = [];
+      const agent = recordingRenderings(claudeAgent({ seat: 0, decklist: decklists[0], model: "opus", effort: "medium" }, fake), renderings);
+
+      const result = await runGame({ decklists, seed: SEED, startingSeat: 0, agents: [agent, randomAgent] });
+
+      expect(result.outcome).toMatch(/^(win|draw)$/);
+      expect(decision).toBeGreaterThan(0);
+      const own = result.decisions.filter(({ seat }) => seat === 0);
+      expect(fake.calls).toHaveLength(own.length + 3);
+      expect(renderings[decision]!.intents).toHaveLength(1);
+      expect(own[decision]!.decision).toEqual({
+        intent: renderings[decision]!.intents[0],
+        reasoning: `${UNANSWERED_REASONING} Seat 0's Claude Agent (opus, medium): refusal 4`,
+        planNotes: "keep pressure on",
+        measurements: expect.objectContaining({ effort: "medium", retries: 3, firstAnswerInvalid: false, inputTokens: 0, notesCut: false }),
+      });
+      expect(fake.calls[decision + 4]!.message.endsWith(`${PLAN_NOTES_HEADING}\nkeep pressure on`)).toBe(true);
+    },
+    GAME_TIMEOUT,
+  );
+
+  for (const kind of ["timeout", "failure"] as const) {
     it(
       `retries a ${kind} once with the same message, then ends the Game as an error with that cause`,
       async () => {

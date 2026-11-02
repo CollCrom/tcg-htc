@@ -18,7 +18,7 @@ export {
   systemPromptFile,
 } from "./claudeCode.js";
 export { type FakeClaudeCode, type FakeScript, type RecordedCall, fakeClaudeCode } from "./fakeClaudeCode.js";
-export { type Asked, type Question, type Read, MAX_RETRIES, PROBLEM_HEADING, ask, describeAgent, failed, field, textField } from "./ask.js";
+export { type Asked, type Question, type Read, MAX_RETRIES, PROBLEM_HEADING, REFUSAL_RETRIES, ask, describeAgent, failed, field, textField } from "./ask.js";
 export { CARD_SYMBOLS_SECTION, PRIMER_FILE, primer } from "./prompt.js";
 export {
   type BuildDecklistOptions,
@@ -39,6 +39,7 @@ export {
   ANSWER_SCHEMA,
   PLAN_NOTES_HEADING,
   PLAN_NOTES_LIMIT,
+  UNANSWERED_REASONING,
   buildMessage,
   buildSystemPrompt,
   claudeAgent,

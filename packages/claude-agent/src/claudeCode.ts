@@ -188,6 +188,11 @@ export interface ProcessRun {
  * live run refines it. */
 export const RATE_LIMIT_PATTERN = /hit your limit|usage limit|rate[ _-]?limit/i;
 
+/** Text of the API error when the model's safeguards flag a message. Seen live
+ * on ordinary decisions ("This sometimes happens with safe, normal
+ * conversations"), so it is a refusal to retry, not a broken call. */
+export const SAFEGUARDS_PATTERN = /safeguards flagged this message/i;
+
 /** Turns a process run into a CallResult. Pure, so tests drive it without
  * spawning anything. */
 export function classify(run: ProcessRun): CallResult {
@@ -207,6 +212,9 @@ export function classify(run: ProcessRun): CallResult {
   if (failed) {
     if (RATE_LIMIT_PATTERN.test(text) || RATE_LIMIT_PATTERN.test(stderr)) {
       return { kind: "rate-limit", detail: text || stderr };
+    }
+    if (SAFEGUARDS_PATTERN.test(text)) {
+      return { kind: "refusal", detail: text };
     }
     const subtype = typeof parsed.subtype === "string" && parsed.subtype !== "success" ? ` (${parsed.subtype})` : "";
     return { kind: "failure", detail: `claude exited ${run.exitCode}${subtype}: ${[text, stderr].filter(Boolean).join("\n")}` };

@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { MAX_RETRIES, REFUSAL_RETRIES } from "./ask.js";
 import { DECKLIST_SCHEMA } from "./buildDecklist.js";
 import type { CallResult, ClaudeConfig } from "./claudeCode.js";
 import { fakeClaudeCode, type RecordedCall } from "./fakeClaudeCode.js";
@@ -217,19 +218,20 @@ describe("an invalid build", () => {
   );
 
   for (const kind of ["refusal", "timeout", "failure"] as const) {
+    const retries = kind === "refusal" ? REFUSAL_RETRIES : MAX_RETRIES;
     it(
-      `a ${kind} of the build call is retried once with the same message, then ends the Game with that cause`,
+      `a ${kind} of the build call is retried ${retries === 1 ? "once" : `${retries} times`} with the same message, then ends the Game with that cause`,
       async () => {
-        const once = fakeClaudeCode((request, index) => (index === 0 ? { kind, detail: `${kind} detail` } : buildsThenPlays(request, index === 1 ? 0 : index - 1)));
+        const once = fakeClaudeCode((request, index) => (index < retries ? { kind, detail: `${kind} detail` } : buildsThenPlays(request, index - retries)));
         const recovered = await playGame({ seed: SEED, lists, configs, call: once, runDir: tempRunDir() });
         expect(recovered.result.outcome).toMatch(/^(win|draw)$/);
-        expect(once.calls[1]!.message).toBe(once.calls[0]!.message);
-        expect(recovered.file.decklistDecisions[0]!.decision).toMatchObject({ measurements: { retries: 1, firstAnswerInvalid: false, inputTokens: 100 } });
+        expect(once.calls[retries]!.message).toBe(once.calls[0]!.message);
+        expect(recovered.file.decklistDecisions[0]!.decision).toMatchObject({ measurements: { retries, firstAnswerInvalid: false, inputTokens: 100 } });
 
-        const twice = fakeClaudeCode([{ kind, detail: `${kind} detail` }, { kind, detail: `${kind} again` }]);
+        const twice = fakeClaudeCode([...Array<CallResult>(retries).fill({ kind, detail: `${kind} detail` }), { kind, detail: `${kind} again` }]);
         const failedGame = await playGame({ seed: SEED, lists, configs, call: twice, runDir: tempRunDir() });
         expect(failedGame.result).toMatchObject({ outcome: "error", cause: kind, step: 0, detail: `Seat 0's Claude Agent (opus, medium): ${kind} again` });
-        expect(failedGame.file.decklistDecisions[0]!.decision).toMatchObject({ cause: kind, measurements: { retries: 1, inputTokens: 0 } });
+        expect(failedGame.file.decklistDecisions[0]!.decision).toMatchObject({ cause: kind, measurements: { retries, inputTokens: 0 } });
       },
       GAME_TIMEOUT,
     );
