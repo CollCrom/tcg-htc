@@ -13,7 +13,7 @@ Every decision is one fresh call. The system prompt is built once in the factory
 | a listed number | the Decision's Intent is the rendering's `intents[n - 1]`; notes over `PLAN_NOTES_LIMIT` (2,000) characters are cut and `notesCut` recorded |
 | a number out of range, or none | one retry whose message appends the problem; a second failure is a `DecisionFailure` with cause `invalid-answer` |
 | `timeout`, `failure` | one retry with the same message, then a `DecisionFailure` with that cause |
-| `refusal` (prose instead of the schema, or the model's safeguards flagging the message) | three retries with the same message; then, if the decision lists one Intent, that Intent with a reasoning starting `UNANSWERED_REASONING` and the Plan notes kept, otherwise a `DecisionFailure` with cause `refusal` |
+| `refusal` (prose instead of the schema, or the model's safeguards flagging the message) | three retries with the same message; then, when the Seat has Plan notes, the question again with `NOTES_DROPPED` in their place (and three retries), an answer's notes replacing them; then, if the decision lists one Intent, that Intent with a reasoning starting `UNANSWERED_REASONING` and the Plan notes kept, otherwise a `DecisionFailure` with cause `refusal`. `retries` counts every call after the first across both questions |
 | `rate-limit` | a `DecisionFailure` with cause `rate-limit` at once; the runner pauses the Game on it and the Run pauses (see "Pausing and resuming") |
 
 A failure's `detail` starts "Seat N's Claude Agent (model, effort): ". Every Decision carries `measurements`: the model Claude Code reported, the effort, tokens, latency and cost summed over the decision's calls, `retries`, `firstAnswerInvalid` and `notesCut`.
